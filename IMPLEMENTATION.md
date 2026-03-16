@@ -1357,6 +1357,4 @@ Tech: Next.js, Node.js, PostgreSQL, Redis, BullMQ, GitHub GraphQL API
 ```
 
 ---
-
-*Built for SDE placements — Bangalore, India*
 *Stack: Next.js · Node.js · PostgreSQL · Redis · BullMQ · GitHub GraphQL API*
