@@ -41,6 +41,8 @@ User inputs a GitHub repo URL. RepoPulse fetches data from GitHub's API, runs it
 - **Risk Flags** — plain English warnings when something looks bad
 - A **Health Timeline** showing how the repo has changed over months
 - **Repo Comparison** — compare two repos side by side
+- **Developer Health Score & Gamification** — aggregate metrics to rank developers globally
+- **AI-Powered Advice** — personalized, automated suggestions on how to improve repo/developer health
 
 ### Real use cases
 - A developer evaluating whether to use an open source library
@@ -145,6 +147,7 @@ The async queue pattern is used everywhere at scale — Swiggy for order process
 | PostgreSQL | Main database | Relational data, good for metrics |
 | Prisma | ORM | Clean schema management, good DX |
 | node-cron | Scheduled refresh | Auto re-analyze repos every 24hrs |
+| Gemini / OpenAI API | AI Integration | Generates personalized "Actionable Advice" for developers |
 
 ### Frontend
 | Tool | Purpose |
@@ -459,7 +462,7 @@ churn_score = total (additions + deletions) over last 100 commits
 
 ---
 
-## 8. The Three Power Features
+## 8. The Core Power Features & Gamification Additions
 
 ### Power Feature 1: Repo Comparison
 
@@ -577,9 +580,50 @@ if (velocityChange > 20) → "GROWING ACTIVITY"
 
 ---
 
-### Power Feature 4 (Bonus): Embeddable Badge
+### Power Feature 4: AI-Powered "Actionable Advice"
 
-A URL that returns an SVG badge, like GitHub's own shields.
+Instead of just showing standard risk flags (like "PRs are slow"), integrate a lightweight LLM API (like Google Gemini or OpenAI) to read the user's metrics and generate personalized, actionable advice.
+
+```
+Example output:
+"You're doing great with commits, but your PRs on repo `xyz` take 14 days to merge. Try setting aside 15 mins every morning to review open PRs to boost your score to the top 10%!"
+```
+
+**Implementation:**
+- Take computed metrics and feed them into a prompt template.
+- Call LLM API to get a 2-sentence actionable tip.
+- Store the advice along with the metrics.
+
+**Why it matters:** AI integration is a massive buzzword for placements. It turns raw data into a personal coach, fulfilling the goal of "telling them how to improve."
+
+**Difficulty:** Medium — requires good prompt engineering.
+
+---
+
+### Power Feature 5: Gamified Developer Profile & Leaderboards
+
+Aggregate the metrics for all repositories a logged-in user owns to create a **"Developer Health Score"**. Calculate their percentile rank compared to all other users in the platform.
+
+```
+Example:
+"Your profile is better than 90% of developers. You resolved 52 issues this month!"
+```
+
+**Implementation:**
+- Compute global metrics for the user using all their fetched repos.
+- Use PostgreSQL window functions like `PERCENT_RANK()` to rank users.
+- Create unlockable badges (e.g., "The Speedster" for < 2hr PR merge time, "The Closer" for 50+ solved issues).
+- Add a `/leaderboard` page to drive healthy competition.
+
+**Why it matters:** This builds a "Spotify Wrapped" effect for developers. They love stats about themselves and are likely to share a high ranking, bringing in organic traffic.
+
+**Difficulty:** Medium/Hard — requires heavy SQL aggregation and background computation to update leaderboards continuously.
+
+---
+
+### Power Feature 6 (Bonus): Embeddable Repo & Developer Badge
+
+A URL that returns an SVG badge, like GitHub's own shields. Do this for both Repositories AND Developer Profiles.
 
 ```
 https://repopulse.dev/badge/facebook/react
@@ -608,11 +652,14 @@ Maintainers can embed this in their README:
 ```sql
 -- Users table
 CREATE TABLE users (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  github_id    TEXT UNIQUE NOT NULL,
-  username     TEXT NOT NULL,
-  access_token TEXT NOT NULL,  -- encrypted
-  created_at   TIMESTAMPTZ DEFAULT NOW()
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  github_id        TEXT UNIQUE NOT NULL,
+  username         TEXT NOT NULL,
+  access_token     TEXT NOT NULL,  -- encrypted
+  developer_score  NUMERIC(5,2) DEFAULT 0,
+  global_rank      INTEGER,
+  achievements     JSONB DEFAULT '[]', -- Store earned badges
+  created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Repos table
@@ -855,6 +902,8 @@ cron.schedule("0 2 * * *", async () => {
 /repo/:owner/:repo       → Main analysis dashboard
 /compare                 → Side-by-side comparison page
 /status/:jobId           → "Analyzing..." loading screen with polling
+/u/:username             → Developer Profile: Stats, badges, AI advice, global rank
+/leaderboard             → Global and language-specific leaderboards
 ```
 
 ### Key Components
@@ -881,6 +930,10 @@ cron.schedule("0 2 * * *", async () => {
 **ComparisonTable** — Side-by-side metrics table for two repos
 
 **AnalysisStatus** — Polling component that calls `/api/status/:jobId` every 3 seconds until done, then redirects to dashboard
+
+**AIAdvicePanel** — Displays LLM-generated coaching tips for the repository or the developer
+
+**AchievementBadgeCollection** — Grid of unlocked gamified titles ("The Speedster", "The Closer")
 
 ---
 
@@ -1295,6 +1348,12 @@ Tech: Next.js, Node.js, PostgreSQL, Redis, BullMQ, GitHub GraphQL API
 
 - Built repo comparison feature and embeddable SVG health badge consumed
   by external README files
+
+- Integrated AI-powered suggestions (LLM API) to provide actionable coaching 
+  for repository maintainers based on raw metrics
+
+- Implemented a gamified Developer Health tracking system leveraging PostgreSQL 
+  window functions to compute global percentiles and rank users on a leaderboard
 ```
 
 ---
