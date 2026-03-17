@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "ts-node src/server/index.ts",
+    "build": "tsc",
+    "start": "node dist/server/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -23,6 +26,7 @@
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.19.2",
     "bullmq": "^5.71.0",
+    "connect-redis": "^9.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
