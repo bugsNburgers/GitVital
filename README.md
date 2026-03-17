@@ -1,14 +1,18 @@
-# RepoPulse - GitHub Repository Health Analyzer
+# GitVital - GitHub Repository Health Analyzer
 
 <p align="center">
-  <em>Is this open-source library healthy or slowly dying? RepoPulse answers that question.</em>
+  <em>Is this open-source library healthy or slowly dying? GitVital answers that question.</em>
+</p>
+
+<p align="center">
+  💡 <strong>Quick Start:</strong> Replace <code>github.com</code> with <code>gitvital.com</code> in any repo URL to instantly analyze it.
 </p>
 
 ## Overview
 
-RepoPulse is a specialized data ingestion and analytics pipeline that evaluates the health, sustainability, and maintainability of public GitHub repositories. 
+GitVital is a specialized data ingestion and analytics pipeline that evaluates the health, sustainability, and maintainability of public GitHub repositories. 
 
-Developers manually check commit dates and open issue counts when evaluating open-source dependencies. RepoPulse automates and deeply expands this process by converting raw GitHub GraphQL data into a multi-variable **Health Score (0-100)**, alongside actionable intelligence like Bus Factor, PR Turnaround Time, and Code Churn.
+Developers manually check commit dates and open issue counts when evaluating open-source dependencies. GitVital automates and deeply expands this process by converting raw GitHub GraphQL data into a multi-variable **Health Score (0-100)**, alongside actionable intelligence like Bus Factor, PR Turnaround Time, and Code Churn.
 
 It also gamifies open-source contributions by aggregating a **Developer Health Score** for maintainers, ranking them on a global leaderboard based on the health of their projects.
 
@@ -16,14 +20,14 @@ It also gamifies open-source contributions by aggregating a **Developer Health S
 
 - **The Health Score:** A 0-100 composite score weighted by commit activity, contributor diversity, PR responsiveness, issue backlog management, and code churn.
 - **Risk Flags:** Automated, plain-English warnings generated from metrics (e.g., *⚠️ PR REVIEW DELAYED: Average merge time is 14 days*).
-- **Gamified Developer Profiles:** Aggregated metrics across a user's repositories to calculate a global percentile ranking (e.g., *Better than 90% of developers on RepoPulse*), featuring unlockable achievement badges.
+- **Gamified Developer Profiles:** Aggregated metrics across a user's repositories to calculate a global percentile ranking (e.g., *Better than 90% of developers on GitVital*), featuring unlockable achievement badges.
 - **AI-Powered "Actionable Advice":** Personalized coaching tips generated from repository metrics to help maintainers improve their project's health.
 - **Repository Comparison:** A side-by-side metric comparison tool for evaluating competing libraries (e.g., React vs. Vue).
 - **Embeddable SVG Badges:** Dynamic health badges that maintainers can embed directly into their repository `README.md` files.
 
 ## Technical Architecture
 
-RepoPulse is built as an asynchronous data pipeline designed to handle extensive third-party API rate limits and complex data aggregation.
+GitVital is built as an asynchronous data pipeline designed to handle extensive third-party API rate limits and complex data aggregation.
 
 **Tech Stack:**
 - **Frontend:** Next.js 14, Tailwind CSS, Recharts / D3.js
@@ -56,7 +60,7 @@ Ranking developers globally based on aggregated repository metrics requires inte
 Designing a metric that accurately reflects "health" requires nuanced handling of missing or sparse data (e.g., repositories that don't use Pull Requests).
 - **Solution:** Built a pure-function metrics engine that dynamically redistributes scoring weights if a particular metric (like PR Turnaround Time) is missing, ensuring the final 0-100 score remains mathematically sound and fair.
 
-## How RepoPulse Compares
+## How GitVital Compares
 
 We believe in transparency. Several great tools exist in the GitHub analytics space, and we want to be upfront about the landscape — what overlaps, and what we're doing differently.
 
@@ -76,7 +80,7 @@ We believe in transparency. Several great tools exist in the GitHub analytics sp
 
 ✅ = Has it &emsp; ⚠️ = Partial &emsp; ❌ = Doesn't have it
 
-| Feature | **RepoPulse** | repopulse.dev | OSS Insight | GitPulse | CodeScene |
+| Feature | **GitVital** | repopulse.dev | OSS Insight | GitPulse | CodeScene |
 |---|:---:|:---:|:---:|:---:|:---:|
 | Health Score (0-100) | ✅ | ✅ | ❌ | ✅ | ✅ |
 | Bus Factor | ✅ | ✅ | ❌ | ❌ | ✅ |
@@ -92,14 +96,14 @@ We believe in transparency. Several great tools exist in the GitHub analytics sp
 
 ### What Makes This Project Different
 
-The core analytics (commits, PRs, issues, contributors) are table stakes — most tools compute these. Where RepoPulse diverges is the **developer-centric gamification layer**:
+The core analytics (commits, PRs, issues, contributors) are table stakes — most tools compute these. Where GitVital diverges is the **developer-centric gamification layer**:
 
 - **Developer Health Score** — Aggregating metrics across all of a user's repositories into a single profile score. No existing tool does this.
 - **Gamified Achievement Badges** — Unlockable badges like *"The Speedster"* (< 2hr PR merge time) and *"The Closer"* (50+ resolved issues). Designed to drive engagement the way Spotify Wrapped drives sharing.
-- **Global Leaderboard** — Percentile rankings using PostgreSQL window functions. "You're better than 90% of developers on RepoPulse."
+- **Global Leaderboard** — Percentile rankings using PostgreSQL window functions. "You're better than 90% of developers on GitVital."
 - **Embeddable SVG Badges** — Dynamic health badges for READMEs. Every badge is organic distribution.
 
-Together, these features turn RepoPulse from a passive analytics dashboard into an active engagement platform for developers.
+Together, these features turn GitVital from a passive analytics dashboard into an active engagement platform for developers.
 
 ## Getting Started (Local Development)
 

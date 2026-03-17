@@ -400,7 +400,7 @@ app.get(
 // 6g. GET /badge/:owner/:repo — Generate an embeddable SVG badge
 // ─────────────────────────────────────────────────────────────
 // Returns an SVG image that can be embedded in a README.md:
-// ![RepoPulse Score](https://repopulse.dev/badge/facebook/react)
+// ![GitVital Score](https://gitvital.com/badge/facebook/react)
 
 app.get(
   '/badge/:owner/:repo',
@@ -419,8 +419,8 @@ app.get(
 
       // Generate a simple SVG badge
       const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="160" height="28" role="img" aria-label="RepoPulse: ${score}">
-          <title>RepoPulse: ${score}</title>
+        <svg xmlns="http://www.w3.org/2000/svg" width="160" height="28" role="img" aria-label="GitVital: ${score}">
+          <title>GitVital: ${score}</title>
           <linearGradient id="s" x2="0" y2="100%">
             <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
             <stop offset="1" stop-opacity=".1"/>
@@ -432,8 +432,8 @@ app.get(
             <rect width="160" height="28" fill="url(#s)"/>
           </g>
           <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-            <text x="45" y="19.5" fill="#010101" fill-opacity=".3">RepoPulse</text>
-            <text x="45" y="18.5">RepoPulse</text>
+            <text x="45" y="19.5" fill="#010101" fill-opacity=".3">GitVital</text>
+            <text x="45" y="18.5">GitVital</text>
             <text x="125" y="19.5" fill="#010101" fill-opacity=".3">${score}/100</text>
             <text x="125" y="18.5">${score}/100</text>
           </g>
@@ -594,7 +594,7 @@ app.get('/health', (_req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════
 
 const server = app.listen(config.port, () => {
-  console.log(`🚀 RepoPulse API server running on http://localhost:${config.port}`);
+  console.log(`🚀 GitVital API server running on http://localhost:${config.port}`);
   console.log(`   Environment: ${config.nodeEnv}`);
 });
 

@@ -22,7 +22,7 @@ export const config = {
   // ──────────────────────────────────────────────
   // Session — the secret key used to encrypt session cookies
   // ──────────────────────────────────────────────
-  sessionSecret: process.env.SESSION_SECRET || 'repopulse-dev-secret-change-me',
+  sessionSecret: process.env.SESSION_SECRET || 'gitvital-dev-secret-change-me',
 
   // ──────────────────────────────────────────────
   // GitHub OAuth — credentials from your GitHub Developer Settings

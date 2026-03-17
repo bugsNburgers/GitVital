@@ -356,7 +356,7 @@ const worker = new Worker<JobData>(
 // These log what's happening so we can monitor the worker.
 
 worker.on('ready', () => {
-  console.log('🏭 RepoPulse Worker is ready and waiting for jobs...');
+  console.log('🏭 GitVital Worker is ready and waiting for jobs...');
   console.log(`   Queue: "repo-analysis"`);
   console.log(`   Concurrency: 2 jobs at a time`);
   console.log(`   Rate limit: 5 jobs per minute`);
