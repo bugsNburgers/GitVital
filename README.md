@@ -56,6 +56,51 @@ Ranking developers globally based on aggregated repository metrics requires inte
 Designing a metric that accurately reflects "health" requires nuanced handling of missing or sparse data (e.g., repositories that don't use Pull Requests).
 - **Solution:** Built a pure-function metrics engine that dynamically redistributes scoring weights if a particular metric (like PR Turnaround Time) is missing, ensuring the final 0-100 score remains mathematically sound and fair.
 
+## How RepoPulse Compares
+
+We believe in transparency. Several great tools exist in the GitHub analytics space, and we want to be upfront about the landscape — what overlaps, and what we're doing differently.
+
+### The Landscape
+
+| Tool | What it does | How we differ |
+|---|---|---|
+| [repopulse.dev](https://repopulse.dev) | Repo health scores, bus factor, contributor charts | Similar core metrics — but no comparison tool, no gamification, no developer profiles, no AI advice, no embeddable badges |
+| [OSS Insight](https://ossinsight.io) | Massive GitHub event explorer (10B+ events) | Data explorer, not a health analyzer. No health scores, no risk flags, no developer scoring |
+| [GitPulse](https://gitpulse.xyz) | Repo analytics, health scores, commit heatmaps, repo comparison | Closest feature overlap — but no bus factor, no risk flags, no gamification, no developer profiles |
+| [CodeScene](https://codescene.com) | Enterprise code quality & behavioral analysis | Different category. Focuses on code maintainability for engineering orgs, not project/community health for individual developers |
+| [Cauldron](https://cauldron.io) | Open-source community analytics (GrimoireLab) | Multi-platform community analysis for foundations. No health scores, no gamification |
+| [RepoTracker](https://githubtracker.com) | Basic GitHub stats with charts | Simple stats viewer. No health scores, no bus factor, no AI, no gamification |
+| [Repo Doctor](https://github.com/nicepkg/repo-doctor) | CLI-based repo health audit | CLI tool for one-time audits, not a web dashboard for ongoing monitoring |
+
+### Feature Overlap Matrix
+
+✅ = Has it &emsp; ⚠️ = Partial &emsp; ❌ = Doesn't have it
+
+| Feature | **RepoPulse** | repopulse.dev | OSS Insight | GitPulse | CodeScene |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Health Score (0-100) | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Bus Factor | ✅ | ✅ | ❌ | ❌ | ✅ |
+| PR Merge Time Analysis | ✅ | ❌ | ✅ | ✅ | ✅ |
+| Risk Flags (plain English) | ✅ | ❌ | ❌ | ❌ | ⚠️ |
+| Repo vs Repo Comparison | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Health Timeline (trends) | ✅ | ❌ | ✅ | ✅ | ✅ |
+| AI-Powered Advice | ✅ | ⚠️ | ❌ | ❌ | ✅ |
+| **Developer Health Score** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Gamified Badges** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Global Leaderboard** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Embeddable SVG Badge** | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+### What Makes This Project Different
+
+The core analytics (commits, PRs, issues, contributors) are table stakes — most tools compute these. Where RepoPulse diverges is the **developer-centric gamification layer**:
+
+- **Developer Health Score** — Aggregating metrics across all of a user's repositories into a single profile score. No existing tool does this.
+- **Gamified Achievement Badges** — Unlockable badges like *"The Speedster"* (< 2hr PR merge time) and *"The Closer"* (50+ resolved issues). Designed to drive engagement the way Spotify Wrapped drives sharing.
+- **Global Leaderboard** — Percentile rankings using PostgreSQL window functions. "You're better than 90% of developers on RepoPulse."
+- **Embeddable SVG Badges** — Dynamic health badges for READMEs. Every badge is organic distribution.
+
+Together, these features turn RepoPulse from a passive analytics dashboard into an active engagement platform for developers.
+
 ## Getting Started (Local Development)
 
 *(Instructions for cloning, installing dependencies, setting up `.env` files for GitHub OAuth, PostgreSQL, and Redis, and running locally will be added here as the project is developed.)*

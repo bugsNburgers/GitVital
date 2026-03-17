@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node src/server/index.ts",
+    "worker": "ts-node src/workers/repoAnalyzer.ts",
     "build": "tsc",
     "start": "node dist/server/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
