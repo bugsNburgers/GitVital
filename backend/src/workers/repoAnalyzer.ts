@@ -9,6 +9,7 @@ import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis } from '../config/redis';
 import { config } from '../config';
 import { JobData, CommitNode, PRNode, IssueNode, AllMetrics } from '../types';
+import { generateAIAdvice } from '../ai/advice';
 
 interface TimelineEntry {
   period: string;
@@ -62,12 +63,6 @@ function computeAllMetrics(
     riskFlags: [],
     aiAdvice: null,
   };
-}
-
-// TODO: Replace with real Gemini AI advice generator (Prompt 4.x)
-async function generateAIAdvice(_metrics: AllMetrics, _owner: string, _repo: string): Promise<string | null> {
-  console.log('   [STUB] generateAIAdvice()');
-  return null;
 }
 
 // TODO: Replace with real timeline builder (Prompt 8.x)

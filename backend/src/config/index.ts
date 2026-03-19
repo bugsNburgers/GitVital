@@ -38,6 +38,14 @@ export const config = {
   // ──────────────────────────────────────────────
   geminiApiKey: process.env.GEMINI_API_KEY || '',
 
+  // Cost-budget policy guardrails (Prompt 3.3)
+  // Keep usage on free tiers and degrade gracefully on quota pressure.
+  costBudget: {
+    monthlyTargetUsd: parseFloat(process.env.MONTHLY_COST_TARGET_USD || '0'),
+    freeTierOnly: (process.env.FREE_TIER_ONLY || 'true').toLowerCase() === 'true',
+    degradeGracefullyOnLimit: (process.env.DEGRADE_GRACEFULLY_ON_LIMIT || 'true').toLowerCase() === 'true',
+  },
+
   // ──────────────────────────────────────────────
   // Rate Limiting
   // ──────────────────────────────────────────────
