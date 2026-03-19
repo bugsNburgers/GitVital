@@ -19,6 +19,7 @@ import { RedisStore } from 'connect-redis';
 import { config } from '../config';
 import { redis } from '../config/redis';
 import { JobData, JobStatus, UserJobData } from '../types';
+import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 2: CREATE THE EXPRESS APP
@@ -27,6 +28,77 @@ import { JobData, JobStatus, UserJobData } from '../types';
 // Think of it as building an empty restaurant — no tables, no menu yet.
 
 const app = express();
+
+if (config.session.secureCookies) {
+  // Required behind reverse proxies so secure cookies are preserved.
+  app.set('trust proxy', 1);
+}
+
+const OAUTH_TOKEN_TTL_SECONDS = Math.floor(config.session.ttlMs / 1000);
+const REDACTED_VALUE = '[REDACTED]';
+const DAILY_LIMIT_TTL_SECONDS = 60 * 60 * 24 + 60 * 60;
+const MAX_PENDING_ANALYSES_PER_USER = 5;
+const MAX_UNIQUE_REPOS_PER_USER_PER_DAY = 20;
+const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 10;
+const RAPID_FIRE_WINDOW_SECONDS = 60;
+const RAPID_FIRE_ALERT_THRESHOLD = 8;
+const SENSITIVE_RESPONSE_KEYS = new Set([
+  'access_token',
+  'accessToken',
+  'token',
+  'authorization',
+  'client_secret',
+  'clientSecret',
+]);
+
+function getTokenCacheKeyForUser(userId: number | string): string {
+  return `oauth:github:token:user:${String(userId)}`;
+}
+
+async function storeEncryptedGitHubToken(userId: number | string, plainToken: string): Promise<void> {
+  const encrypted = encryptAccessToken(plainToken, config.encryptionKey);
+  await redis.set(getTokenCacheKeyForUser(userId), encrypted, 'EX', OAUTH_TOKEN_TTL_SECONDS);
+}
+
+async function getDecryptedGitHubToken(userId: number | string): Promise<string | null> {
+  const encrypted = await redis.get(getTokenCacheKeyForUser(userId));
+  if (!encrypted) {
+    return null;
+  }
+
+  return decryptAccessToken(encrypted, config.encryptionKey);
+}
+
+async function removeGitHubToken(userId: number | string): Promise<void> {
+  await redis.del(getTokenCacheKeyForUser(userId));
+}
+
+function redactSensitivePayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactSensitivePayload(entry));
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const redacted: Record<string, unknown> = {};
+
+    for (const [key, nested] of Object.entries(record)) {
+      if (SENSITIVE_RESPONSE_KEYS.has(key)) {
+        redacted[key] = REDACTED_VALUE;
+      } else {
+        redacted[key] = redactSensitivePayload(nested);
+      }
+    }
+
+    return redacted;
+  }
+
+  return value;
+}
+
+function getClientIp(req: Request): string {
+  return req.ip || req.socket.remoteAddress || 'unknown-ip';
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 3: MIDDLEWARE (the "security checkpoints")
@@ -49,6 +121,13 @@ app.use(cors({
 // When the frontend sends { "url": "facebook/react" }, Express needs this to read it
 app.use(express.json());
 
+// Never leak tokens or secrets in API JSON responses.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const originalJson = res.json.bind(res);
+  res.json = ((body?: unknown) => originalJson(redactSensitivePayload(body))) as typeof res.json;
+  next();
+});
+
 // 3d. Session middleware — manages login sessions using Redis
 // After a user logs in via GitHub, this creates a session stored in Redis
 // and sends a cookie to the browser so the user stays logged in.
@@ -59,26 +138,65 @@ const sessionStore = new RedisStore({
 
 app.use(session({
   store: sessionStore,
-  secret: config.sessionSecret,    // Used to encrypt the session cookie
+  name: config.session.cookieName,
+  secret: config.sessionSecret,
   resave: false,                   // Don't re-save session if nothing changed (performance)
   saveUninitialized: false,        // Don't create a session until the user actually logs in
+  rolling: true,
   cookie: {
-    secure: config.nodeEnv === 'production', // HTTPS only in production
-    httpOnly: true,                          // JavaScript can't read this cookie (prevents XSS)
-    maxAge: 1000 * 60 * 60 * 24 * 7,       // Session lasts 7 days
-    sameSite: 'strict',                      // Strong CSRF protection for session cookie
+    secure: config.session.secureCookies,
+    httpOnly: true,
+    maxAge: config.session.ttlMs,
+    sameSite: config.session.sameSite,
   },
 }));
 
-// 3e. Rate limiter for the /api/analyze endpoint
-// Prevents a single user from spamming repo analysis requests
-const analyzeLimiter = rateLimit({
-  windowMs: config.rateLimit.windowMs,       // 1-minute window
-  max: config.rateLimit.maxRequests,          // Max 30 requests per minute
+// 3e. Global and route-specific abuse protection rate limiters
+const defaultLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Slow down and try again shortly.' },
+});
+
+const analyzeAuthenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skip: (req) => !(req.session as any)?.userId,
+  keyGenerator: (req) => `auth-user:${String((req.session as any).userId)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many analysis requests for this account. Try again later.' },
+});
+
+const analyzeUnauthenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  skip: (req) => Boolean((req.session as any)?.userId),
+  keyGenerator: (req) => `anon-ip:${getClientIp(req)}`,
   standardHeaders: true,                      // Return rate limit info in headers
   legacyHeaders: false,                       // Disable old-style X-RateLimit headers
-  message: { error: 'Too many requests, please try again later.' },
+  message: { error: 'Too many unauthenticated analysis requests from this IP. Try again later.' },
 });
+
+const leaderboardLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Leaderboard rate limit exceeded. Try again shortly.' },
+});
+
+const badgeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Badge rate limit exceeded. Try again shortly.' },
+});
+
+app.use(defaultLimiter);
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 4: BULLMQ QUEUE SETUP
@@ -116,12 +234,91 @@ function handleValidationErrors(req: Request, res: Response, next: NextFunction)
 }
 
 const GITHUB_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
+const STRICT_GITHUB_REPO_URL_REGEX = /^https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
+const MAX_GITHUB_NAME_LENGTH = 100;
+
+function isValidGitHubNameSegment(input: string): boolean {
+  if (!input || input.length > MAX_GITHUB_NAME_LENGTH) {
+    return false;
+  }
+
+  if (input.includes('..')) {
+    return false;
+  }
+
+  return GITHUB_NAME_REGEX.test(input);
+}
+
+function currentDayBucket(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getDailyUniqueRepoKey(scope: 'user' | 'ip', id: string): string {
+  return `abuse:unique-repos:${scope}:${id}:${currentDayBucket()}`;
+}
+
+function getRapidFireKey(ip: string): string {
+  return `abuse:rapid-fire:${ip}:${Math.floor(Date.now() / 1000 / RAPID_FIRE_WINDOW_SECONDS)}`;
+}
+
+async function enforceDailyUniqueRepoLimit(
+  scope: 'user' | 'ip',
+  subjectId: string,
+  normalizedRepo: string,
+  maxUniqueReposPerDay: number,
+): Promise<{ allowed: boolean; count: number }> {
+  const key = getDailyUniqueRepoKey(scope, subjectId);
+  const wasAdded = await redis.sadd(key, normalizedRepo);
+  await redis.expire(key, DAILY_LIMIT_TTL_SECONDS);
+
+  const count = await redis.scard(key);
+  const allowed = count <= maxUniqueReposPerDay;
+
+  if (!allowed && wasAdded === 1) {
+    await redis.srem(key, normalizedRepo);
+  }
+
+  return { allowed, count };
+}
+
+async function trackRapidFireAndAlert(ip: string, normalizedRepo: string): Promise<void> {
+  const rapidKey = getRapidFireKey(ip);
+  const count = await redis.incr(rapidKey);
+  if (count === 1) {
+    await redis.expire(rapidKey, RAPID_FIRE_WINDOW_SECONDS);
+  }
+
+  if (count >= RAPID_FIRE_ALERT_THRESHOLD) {
+    console.warn('[ALERT] Suspicious rapid-fire analyze requests detected', {
+      ip,
+      normalizedRepo,
+      windowSeconds: RAPID_FIRE_WINDOW_SECONDS,
+      requestCount: count,
+    });
+  }
+}
+
+async function countPendingJobsForUser(userId: string): Promise<number> {
+  const jobs = await analysisQueue.getJobs(['waiting', 'delayed', 'active'], 0, 999);
+  let pendingCount = 0;
+
+  for (const job of jobs) {
+    if (String((job.data as JobData)?.userId ?? '') === userId) {
+      pendingCount += 1;
+      if (pendingCount >= MAX_PENDING_ANALYSES_PER_USER) {
+        return pendingCount;
+      }
+    }
+  }
+
+  return pendingCount;
+}
 
 function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }): { owner: string; repo: string } | null {
   if (typeof payload.owner === 'string' && typeof payload.repo === 'string') {
     const owner = payload.owner.trim();
     const repo = payload.repo.trim();
-    if (owner && repo && GITHUB_NAME_REGEX.test(owner) && GITHUB_NAME_REGEX.test(repo)) {
+    if (isValidGitHubNameSegment(owner) && isValidGitHubNameSegment(repo)) {
       return { owner, repo };
     }
   }
@@ -130,14 +327,11 @@ function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }
     return null;
   }
 
-  const raw = payload.url.trim().replace(/\/+$/, '');
+  const normalized = payload.url.trim().replace(/\/+$/, '');
 
-  // Supports: https://github.com/owner/repo, github.com/owner/repo, owner/repo
-  const normalized = raw.startsWith('http://') || raw.startsWith('https://')
-    ? raw
-    : raw.startsWith('github.com/')
-      ? `https://${raw}`
-      : `https://github.com/${raw}`;
+  if (!STRICT_GITHUB_REPO_URL_REGEX.test(normalized)) {
+    return null;
+  }
 
   try {
     const parsed = new URL(normalized);
@@ -145,8 +339,12 @@ function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }
       return null;
     }
 
+    if (parsed.search || parsed.hash) {
+      return null;
+    }
+
     const [owner, repo] = parsed.pathname.split('/').filter(Boolean);
-    if (!owner || !repo || !GITHUB_NAME_REGEX.test(owner) || !GITHUB_NAME_REGEX.test(repo)) {
+    if (!owner || !repo || !isValidGitHubNameSegment(owner) || !isValidGitHubNameSegment(repo)) {
       return null;
     }
 
@@ -185,14 +383,16 @@ function mapQueueStateToJobStatus(state: string): JobStatus {
 
 app.post(
   '/api/analyze',
-  analyzeLimiter,  // Rate limit this route specifically
+  analyzeAuthenticatedLimiter,
+  analyzeUnauthenticatedLimiter,
   [
-    body('url').optional().isString().trim().notEmpty(),
-    body('owner').optional().isString().trim().matches(GITHUB_NAME_REGEX),
-    body('repo').optional().isString().trim().matches(GITHUB_NAME_REGEX),
+    body('url').optional().isString().trim().matches(STRICT_GITHUB_REPO_URL_REGEX)
+      .withMessage('url must match https://github.com/{owner}/{repo}'),
+    body('owner').optional().isString().trim().isLength({ min: 1, max: MAX_GITHUB_NAME_LENGTH }).matches(GITHUB_NAME_REGEX),
+    body('repo').optional().isString().trim().isLength({ min: 1, max: MAX_GITHUB_NAME_LENGTH }).matches(GITHUB_NAME_REGEX),
     body().custom((value) => {
       if (!parseRepoInput(value as { url?: string; owner?: string; repo?: string })) {
-        throw new Error('Provide a valid GitHub repo using url or owner/repo');
+        throw new Error('Provide a valid GitHub repository URL or valid owner/repo values.');
       }
       return true;
     }),
@@ -210,7 +410,55 @@ app.post(
       const repo = parsed.repo;
       const normalizedOwner = owner.toLowerCase();
       const normalizedRepo = repo.toLowerCase();
+      const normalizedRepoRef = `${normalizedOwner}/${normalizedRepo}`;
       const jobId = `analyze:${normalizedOwner}:${normalizedRepo}`;
+      const userId = (req.session as any)?.userId as string | number | undefined;
+      const requesterIp = getClientIp(req);
+
+      await trackRapidFireAndAlert(requesterIp, normalizedRepoRef);
+
+      if (userId !== undefined && userId !== null) {
+        const pendingJobs = await countPendingJobsForUser(String(userId));
+        if (pendingJobs >= MAX_PENDING_ANALYSES_PER_USER) {
+          res.status(429).json({ error: 'Too many pending analyses' });
+          return;
+        }
+
+        const userDaily = await enforceDailyUniqueRepoLimit(
+          'user',
+          String(userId),
+          normalizedRepoRef,
+          MAX_UNIQUE_REPOS_PER_USER_PER_DAY,
+        );
+
+        if (!userDaily.allowed) {
+          console.warn('[ALERT] Daily unique repo limit exceeded for authenticated user', {
+            userId: String(userId),
+            ip: requesterIp,
+            count: userDaily.count,
+            maxAllowed: MAX_UNIQUE_REPOS_PER_USER_PER_DAY,
+          });
+          res.status(429).json({ error: 'Daily repository analysis limit reached for this account.' });
+          return;
+        }
+      } else {
+        const ipDaily = await enforceDailyUniqueRepoLimit(
+          'ip',
+          requesterIp,
+          normalizedRepoRef,
+          MAX_UNIQUE_REPOS_PER_IP_PER_DAY,
+        );
+
+        if (!ipDaily.allowed) {
+          console.warn('[ALERT] Daily unique repo limit exceeded for unauthenticated IP', {
+            ip: requesterIp,
+            count: ipDaily.count,
+            maxAllowed: MAX_UNIQUE_REPOS_PER_IP_PER_DAY,
+          });
+          res.status(429).json({ error: 'Daily repository analysis limit reached for this IP.' });
+          return;
+        }
+      }
 
       // Idempotency: reuse in-flight job for the same repo.
       const existingJob = await analysisQueue.getJob(jobId);
@@ -226,7 +474,7 @@ app.post(
       // ── CREATE NEW JOB ──
       const job = await analysisQueue.add(
         'analyze-repo',                           // Job name (for logging/filtering)
-        { owner, repo, userId: (req.session as any)?.userId },  // Job data
+        { owner, repo, userId: userId !== undefined && userId !== null ? String(userId) : undefined },  // Job data
         {
           jobId,
           attempts: 3,                            // Retry up to 3 times on failure
@@ -482,6 +730,7 @@ app.get(
 
 app.get(
   '/api/leaderboard',
+  leaderboardLimiter,
   [query('lang').optional().isString().trim()],
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
@@ -512,6 +761,7 @@ app.get(
 
 app.get(
   '/badge/:owner/:repo',
+  badgeLimiter,
   [
     param('owner').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_.-]+$/),
     param('repo').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_.-]+$/),
@@ -564,6 +814,7 @@ app.get(
 
 app.get(
   '/badge/user/:username',
+  badgeLimiter,
   [param('username').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_-]+$/)],
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
@@ -612,6 +863,11 @@ app.get(
 // Redirects the user to GitHub's authorization page
 
 app.get('/auth/github', (_req: Request, res: Response) => {
+  if (!config.github.clientId || !config.github.clientSecret) {
+    res.status(500).json({ error: 'GitHub OAuth is not configured.' });
+    return;
+  }
+
   const params = new URLSearchParams({
     client_id: config.github.clientId,
     redirect_uri: config.github.callbackUrl,
@@ -634,6 +890,11 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
 
     if (!code || typeof code !== 'string') {
       res.status(400).json({ error: 'Missing authorization code' });
+      return;
+    }
+
+    if (!config.github.clientId || !config.github.clientSecret) {
+      res.status(500).json({ error: 'GitHub OAuth is not configured.' });
       return;
     }
 
@@ -665,15 +926,22 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
 
     const userData = await userResponse.json() as { login: string; id: number; avatar_url: string; name: string };
 
+    if (!userData || !userData.id || !userData.login) {
+      res.status(401).json({ error: 'Unable to load GitHub user profile.' });
+      return;
+    }
+
+    // Encrypt before persistence and avoid storing plain access tokens in session.
+    await storeEncryptedGitHubToken(userData.id, tokenData.access_token);
+
     // Store user info in the session
     (req.session as any).userId = userData.id;
     (req.session as any).githubUsername = userData.login;
-    (req.session as any).accessToken = tokenData.access_token;
 
     // TODO: Upsert user in PostgreSQL via Prisma
     // await prisma.user.upsert({
     //   where: { githubId: userData.id },
-    //   update: { accessToken: tokenData.access_token },
+    //   update: { accessToken: encryptAccessToken(tokenData.access_token, config.encryptionKey) },
     //   create: { githubId: userData.id, username: userData.login, ... },
     // });
 
@@ -683,6 +951,30 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
     console.error('GitHub OAuth error:', error);
     res.status(500).json({ error: 'Authentication failed' });
   }
+});
+
+app.post('/auth/logout', async (req: Request, res: Response): Promise<void> => {
+  const userId = (req.session as any)?.userId as number | string | undefined;
+
+  req.session.destroy(async (err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      res.status(500).json({ error: 'Logout failed' });
+      return;
+    }
+
+    if (userId !== undefined && userId !== null) {
+      await removeGitHubToken(userId);
+    }
+
+    res.clearCookie(config.session.cookieName, {
+      httpOnly: true,
+      secure: config.session.secureCookies,
+      sameSite: config.session.sameSite,
+    });
+
+    res.status(200).json({ success: true });
+  });
 });
 
 
@@ -745,3 +1037,4 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); // Docker/Render/Railw
 
 // Export the app for testing purposes
 export { app, server };
+export { getDecryptedGitHubToken };

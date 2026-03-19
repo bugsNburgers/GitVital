@@ -1,8 +1,20 @@
 // src/config/index.ts — Central configuration, reads from environment variables
 
-// We use process.env to read environment variables.
-// These are set in a .env file (which is gitignored) or by the hosting platform.
-// The "|| 'fallback'" pattern provides a default value for local development.
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || !value.trim()) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function getBooleanEnv(name: string, defaultValue: boolean): boolean {
+  const value = process.env[name];
+  if (!value) {
+    return defaultValue;
+  }
+  return value.toLowerCase() === 'true';
+}
 
 export const config = {
   // ──────────────────────────────────────────────
@@ -22,7 +34,15 @@ export const config = {
   // ──────────────────────────────────────────────
   // Session — the secret key used to encrypt session cookies
   // ──────────────────────────────────────────────
-  sessionSecret: process.env.SESSION_SECRET || 'gitvital-dev-secret-change-me',
+  sessionSecret: getRequiredEnv('SESSION_SECRET'),
+  encryptionKey: getRequiredEnv('ENCRYPTION_KEY'),
+
+  session: {
+    cookieName: process.env.SESSION_COOKIE_NAME || 'gitvital.sid',
+    sameSite: 'strict' as const,
+    secureCookies: getBooleanEnv('SESSION_SECURE_COOKIES', process.env.NODE_ENV === 'production'),
+    ttlMs: 1000 * 60 * 60 * 24 * 7,
+  },
 
   // ──────────────────────────────────────────────
   // GitHub OAuth — credentials from your GitHub Developer Settings

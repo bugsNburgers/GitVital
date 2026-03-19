@@ -228,7 +228,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
       });
 
       aiAdvice = await Promise.race([
-        generateAIAdvice(metrics, owner, repo),
+        generateAIAdvice(metrics, owner, repo, { jobId: String(job.id) }),
         timeoutPromise,
       ]);
 
