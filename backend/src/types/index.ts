@@ -88,4 +88,8 @@ export interface JobData {
   userId?: string;
 }
 
+export interface UserJobData {
+  username: string;
+}
+
 export type JobStatus = 'queued' | 'processing' | 'done' | 'failed';

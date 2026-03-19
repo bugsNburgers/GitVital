@@ -10,6 +10,13 @@ import { redis } from '../config/redis';
 import { config } from '../config';
 import { JobData, CommitNode, PRNode, IssueNode, AllMetrics } from '../types';
 
+interface TimelineEntry {
+  period: string;
+  healthScore: number;
+  commitCount: number;
+  prCount: number;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // SECTION 1: STUB IMPORTS
 // ═══════════════════════════════════════════════════════════════
@@ -63,6 +70,32 @@ async function generateAIAdvice(_metrics: AllMetrics, _owner: string, _repo: str
   return null;
 }
 
+// TODO: Replace with real timeline builder (Prompt 8.x)
+function computeQuarterlyTimeline(commits: CommitNode[], prs: PRNode[], healthScore: number): TimelineEntry[] {
+  const now = new Date();
+  const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
+  return [{
+    period: `${now.getUTCFullYear()}-Q${quarter}`,
+    healthScore,
+    commitCount: commits.length,
+    prCount: prs.length,
+  }];
+}
+
+// TODO: Replace with dedicated risk flag module (Prompt 8.3)
+function generateRiskFlags(metrics: AllMetrics): AllMetrics['riskFlags'] {
+  return metrics.riskFlags;
+}
+
+async function setJobState(jobId: string, status: 'queued' | 'processing' | 'done' | 'failed', error?: string): Promise<void> {
+  await redis.set(`jobstatus:${jobId}`, status, 'EX', 3600);
+  if (error) {
+    await redis.set(`joberror:${jobId}`, error, 'EX', 3600);
+  } else {
+    await redis.del(`joberror:${jobId}`);
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 2: HELPER — GitHub Error Classifier
@@ -99,7 +132,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // We track status in Redis (for fast polling) and will also
     // update the database once Prisma is set up.
-    await redis.set(`jobstatus:${job.id}`, 'processing', 'EX', 3600);
+    await setJobState(job.id!, 'processing');
     await job.updateProgress(5);
     console.log(`   ${logPrefix} — Step 1: Status → processing`);
 
@@ -156,14 +189,33 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
 
 
     // ──────────────────────────────────────────────
-    // Steps 6–9: Run Metrics Engine (pure functions, in-memory)
+    // Step 6: Run Metrics Engine (pure functions, in-memory)
     // ──────────────────────────────────────────────
     // The Metrics Engine takes raw data and returns computed results.
     // It does NOT touch the database or network — it's pure math.
-    console.log(`   ${logPrefix} — Steps 6-9: Computing metrics...`);
+    console.log(`   ${logPrefix} — Step 6: Computing metrics...`);
     const metrics = computeAllMetrics(commits, prs, issues);
+    await job.updateProgress(70);
+    console.log(`   ${logPrefix} — Step 6: Health score = ${metrics.healthScore} ✓`);
+
+    // ──────────────────────────────────────────────
+    // Step 7: Health score already computed by metrics engine
+    // ──────────────────────────────────────────────
+    await job.updateProgress(72);
+
+    // ──────────────────────────────────────────────
+    // Step 8: Compute quarterly timeline
+    // ──────────────────────────────────────────────
+    const timeline = computeQuarterlyTimeline(commits, prs, metrics.healthScore);
     await job.updateProgress(75);
-    console.log(`   ${logPrefix} — Steps 6-9: Health score = ${metrics.healthScore} ✓`);
+    console.log(`   ${logPrefix} — Step 8: Timeline points = ${timeline.length} ✓`);
+
+    // ──────────────────────────────────────────────
+    // Step 9: Generate risk flags
+    // ──────────────────────────────────────────────
+    metrics.riskFlags = generateRiskFlags(metrics);
+    await job.updateProgress(78);
+    console.log(`   ${logPrefix} — Step 9: Risk flags = ${metrics.riskFlags.length} ✓`);
 
 
     // ──────────────────────────────────────────────
@@ -219,7 +271,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     console.log(`   ${logPrefix} — Step 12: Storing timeline...`);
 
-    // TODO: Store timeline via Prisma
+    // TODO: Store timeline via Prisma (using computed timeline entries)
     // await prisma.healthTimeline.create({
     //   data: {
     //     owner, repo,
@@ -248,7 +300,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // Step 14: Update job status to "done"
     // ──────────────────────────────────────────────
-    await redis.set(`jobstatus:${job.id}`, 'done', 'EX', 3600);
+    await setJobState(job.id!, 'done');
     await job.updateProgress(100);
     console.log(`   ${logPrefix} — Step 14: Status → done ✓`);
 
@@ -284,7 +336,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         // This is unrecoverable — retrying won't help.
         case 401:
           console.error(`❌ ${logPrefix} — OAuth token expired or invalid`);
-          await redis.set(`jobstatus:${job.id}`, 'failed', 'EX', 3600);
+          await setJobState(job.id!, 'failed', 'OAuth token expired');
           // UnrecoverableError tells BullMQ: "Don't retry this job."
           throw new UnrecoverableError('OAuth token expired. Please re-authenticate.');
 
@@ -311,7 +363,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         // This is unrecoverable — the repo simply doesn't exist.
         case 404:
           console.error(`❌ ${logPrefix} — Repository not found or is private`);
-          await redis.set(`jobstatus:${job.id}`, 'failed', 'EX', 3600);
+          await setJobState(job.id!, 'failed', 'Repository not found or is private');
           throw new UnrecoverableError('Repository not found or is private.');
 
         default:
@@ -323,7 +375,6 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ── Any other error ──
     // Log it and let BullMQ retry (up to 3 times with exponential backoff)
     console.error(`❌ ${logPrefix} — Unexpected error:`, error);
-    await redis.set(`jobstatus:${job.id}`, 'failed', 'EX', 3600);
     throw error;
   }
 }
@@ -374,6 +425,12 @@ worker.on('failed', (job, err) => {
   if (job) {
     console.error(`❌ Job ${job.id} (${job.data.owner}/${job.data.repo}) failed:`, err.message);
     console.error(`   Attempts: ${job.attemptsMade}/${job.opts.attempts || 3}`);
+
+    const maxAttempts = job.opts.attempts || 3;
+    if (job.attemptsMade >= maxAttempts) {
+      // Mark failed only on terminal failure to match Prompt 2.2 semantics.
+      void setJobState(job.id!, 'failed', err.message || 'Analysis failed after retries');
+    }
   } else {
     console.error('❌ A job failed (no job reference):', err.message);
   }

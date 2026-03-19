@@ -18,7 +18,7 @@ import { RedisStore } from 'connect-redis';
 // Our own files
 import { config } from '../config';
 import { redis } from '../config/redis';
-import { JobData, JobStatus } from '../types';
+import { JobData, JobStatus, UserJobData } from '../types';
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 2: CREATE THE EXPRESS APP
@@ -66,7 +66,7 @@ app.use(session({
     secure: config.nodeEnv === 'production', // HTTPS only in production
     httpOnly: true,                          // JavaScript can't read this cookie (prevents XSS)
     maxAge: 1000 * 60 * 60 * 24 * 7,       // Session lasts 7 days
-    sameSite: 'lax',                         // Basic CSRF protection
+    sameSite: 'strict',                      // Strong CSRF protection for session cookie
   },
 }));
 
@@ -93,6 +93,13 @@ const analysisQueue = new Queue<JobData>('repo-analysis', {
   },
 });
 
+const userAnalysisQueue = new Queue<UserJobData>('user-analysis', {
+  connection: {
+    host: new URL(config.redisUrl).hostname || 'localhost',
+    port: parseInt(new URL(config.redisUrl).port || '6379', 10),
+  },
+});
+
 // ═══════════════════════════════════════════════════════════════
 // SECTION 5: HELPER — Validation Error Handler
 // ═══════════════════════════════════════════════════════════════
@@ -106,6 +113,63 @@ function handleValidationErrors(req: Request, res: Response, next: NextFunction)
     return;
   }
   next();
+}
+
+const GITHUB_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
+
+function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }): { owner: string; repo: string } | null {
+  if (typeof payload.owner === 'string' && typeof payload.repo === 'string') {
+    const owner = payload.owner.trim();
+    const repo = payload.repo.trim();
+    if (owner && repo && GITHUB_NAME_REGEX.test(owner) && GITHUB_NAME_REGEX.test(repo)) {
+      return { owner, repo };
+    }
+  }
+
+  if (typeof payload.url !== 'string') {
+    return null;
+  }
+
+  const raw = payload.url.trim().replace(/\/+$/, '');
+
+  // Supports: https://github.com/owner/repo, github.com/owner/repo, owner/repo
+  const normalized = raw.startsWith('http://') || raw.startsWith('https://')
+    ? raw
+    : raw.startsWith('github.com/')
+      ? `https://${raw}`
+      : `https://github.com/${raw}`;
+
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.hostname !== 'github.com') {
+      return null;
+    }
+
+    const [owner, repo] = parsed.pathname.split('/').filter(Boolean);
+    if (!owner || !repo || !GITHUB_NAME_REGEX.test(owner) || !GITHUB_NAME_REGEX.test(repo)) {
+      return null;
+    }
+
+    return { owner, repo };
+  } catch {
+    return null;
+  }
+}
+
+function mapQueueStateToJobStatus(state: string): JobStatus {
+  switch (state) {
+    case 'waiting':
+    case 'delayed':
+      return 'queued';
+    case 'active':
+      return 'processing';
+    case 'completed':
+      return 'done';
+    case 'failed':
+      return 'failed';
+    default:
+      return 'queued';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -123,35 +187,40 @@ app.post(
   '/api/analyze',
   analyzeLimiter,  // Rate limit this route specifically
   [
-    // Validate that "owner" and "repo" are non-empty strings with only safe characters
-    body('owner')
-      .isString().trim().notEmpty()
-      .matches(/^[a-zA-Z0-9_.-]+$/)
-      .withMessage('owner must be a valid GitHub username'),
-    body('repo')
-      .isString().trim().notEmpty()
-      .matches(/^[a-zA-Z0-9_.-]+$/)
-      .withMessage('repo must be a valid GitHub repo name'),
+    body('url').optional().isString().trim().notEmpty(),
+    body('owner').optional().isString().trim().matches(GITHUB_NAME_REGEX),
+    body('repo').optional().isString().trim().matches(GITHUB_NAME_REGEX),
+    body().custom((value) => {
+      if (!parseRepoInput(value as { url?: string; owner?: string; repo?: string })) {
+        throw new Error('Provide a valid GitHub repo using url or owner/repo');
+      }
+      return true;
+    }),
   ],
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { owner, repo } = req.body as { owner: string; repo: string };
-      const jobKey = `job:${owner}/${repo}`;
+      const parsed = parseRepoInput(req.body as { url?: string; owner?: string; repo?: string });
+      if (!parsed) {
+        res.status(400).json({ error: 'Invalid repository input' });
+        return;
+      }
 
-      // ── IDEMPOTENCY CHECK ──
-      // Before creating a new job, check if one already exists for this repo.
-      // This prevents queue spam (e.g., user clicks "Analyze" 10 times).
-      const existingJobId = await redis.get(jobKey);
+      const owner = parsed.owner;
+      const repo = parsed.repo;
+      const normalizedOwner = owner.toLowerCase();
+      const normalizedRepo = repo.toLowerCase();
+      const jobId = `analyze:${normalizedOwner}:${normalizedRepo}`;
 
-      if (existingJobId) {
-        // A job already exists — return the existing jobId instead of creating a duplicate
-        const existingStatus = await redis.get(`jobstatus:${existingJobId}`);
+      // Idempotency: reuse in-flight job for the same repo.
+      const existingJob = await analysisQueue.getJob(jobId);
+      if (existingJob) {
+        const existingState = await existingJob.getState();
+        const existingStatus = mapQueueStateToJobStatus(existingState);
         if (existingStatus === 'queued' || existingStatus === 'processing') {
-          res.json({ jobId: existingJobId, status: existingStatus, deduplicated: true });
+          res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
           return;
         }
-        // If the old job is "done" or "failed", we allow re-analysis
       }
 
       // ── CREATE NEW JOB ──
@@ -159,6 +228,7 @@ app.post(
         'analyze-repo',                           // Job name (for logging/filtering)
         { owner, repo, userId: (req.session as any)?.userId },  // Job data
         {
+          jobId,
           attempts: 3,                            // Retry up to 3 times on failure
           backoff: { type: 'exponential', delay: 5000 }, // Wait longer between each retry
           removeOnComplete: { age: 3600 },       // Clean up completed jobs after 1 hour
@@ -166,8 +236,6 @@ app.post(
         },
       );
 
-      // Store the job mapping in Redis so we can do idempotency checks later
-      await redis.set(jobKey, job.id!, 'EX', 3600); // Expires after 1 hour
       await redis.set(`jobstatus:${job.id}`, 'queued', 'EX', 3600);
 
       res.status(202).json({ jobId: job.id, status: 'queued' });
@@ -201,32 +269,13 @@ app.get(
 
       const state = await job.getState();
       const progress = job.progress;
-
-      // Map BullMQ states to our simpler JobStatus type
-      let status: JobStatus;
-      switch (state) {
-        case 'waiting':
-        case 'delayed':
-          status = 'queued';
-          break;
-        case 'active':
-          status = 'processing';
-          break;
-        case 'completed':
-          status = 'done';
-          break;
-        case 'failed':
-          status = 'failed';
-          break;
-        default:
-          status = 'queued';
-      }
+      const status = mapQueueStateToJobStatus(state);
 
       res.json({
         jobId,
         status,
         progress,
-        error: state === 'failed' ? job.failedReason : undefined,
+        error: state === 'failed' ? job.failedReason : null,
       });
     } catch (error) {
       console.error('Error checking job status:', error);
@@ -293,6 +342,21 @@ app.get(
     query('repos')
       .isString().trim().notEmpty()
       .withMessage('repos query parameter is required (comma-separated owner/repo pairs)'),
+    query('repos').custom((value) => {
+      if (typeof value !== 'string') {
+        throw new Error('repos must be a string');
+      }
+
+      const allValid = value
+        .split(',')
+        .map((entry) => entry.trim())
+        .every((entry) => /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/.test(entry));
+
+      if (!allValid) {
+        throw new Error('repos must be comma-separated owner/repo values');
+      }
+      return true;
+    }),
   ],
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
@@ -338,7 +402,51 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6e. GET /api/user/:username — Get a developer's profile/score
+// 6e. POST /api/user/analyze — Queue a user-level contribution analysis
+// ─────────────────────────────────────────────────────────────
+
+app.post(
+  '/api/user/analyze',
+  [body('username').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_-]+$/)],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const username = String(req.body.username).trim();
+      const jobId = `analyze-user:${username.toLowerCase()}`;
+
+      const existingJob = await userAnalysisQueue.getJob(jobId);
+      if (existingJob) {
+        const existingState = await existingJob.getState();
+        const existingStatus = mapQueueStateToJobStatus(existingState);
+        if (existingStatus === 'queued' || existingStatus === 'processing') {
+          res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
+          return;
+        }
+      }
+
+      const job = await userAnalysisQueue.add(
+        'analyzeUser',
+        { username },
+        {
+          jobId,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: { age: 3600 },
+          removeOnFail: { age: 86400 },
+        },
+      );
+
+      res.status(202).json({ jobId: job.id, status: 'queued' });
+    } catch (error) {
+      console.error('Error queuing user analysis job:', error);
+      res.status(500).json({ error: 'Failed to queue user analysis' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6f. GET /api/user/:username — Get a developer's profile/score
 // ─────────────────────────────────────────────────────────────
 // Returns: developer score, badges, percentile ranking
 
@@ -367,7 +475,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6f. GET /api/leaderboard — Get top developers
+// 6g. GET /api/leaderboard — Get top developers
 // ─────────────────────────────────────────────────────────────
 // Optional filter: ?lang=typescript (filter by primary language)
 // Returns: top 100 developers sorted by their developer score
@@ -397,7 +505,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6g. GET /badge/:owner/:repo — Generate an embeddable SVG badge
+// 6h. GET /badge/:owner/:repo — Generate an embeddable SVG badge
 // ─────────────────────────────────────────────────────────────
 // Returns an SVG image that can be embedded in a README.md:
 // ![GitVital Score](https://gitvital.com/badge/facebook/react)
@@ -451,7 +559,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6h. GET /badge/user/:username — Generate a developer SVG badge
+// 6i. GET /badge/user/:username — Generate a developer SVG badge
 // ─────────────────────────────────────────────────────────────
 
 app.get(
@@ -499,7 +607,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6i. GET /auth/github — Start GitHub OAuth login flow
+// 6j. GET /auth/github — Start GitHub OAuth login flow
 // ─────────────────────────────────────────────────────────────
 // Redirects the user to GitHub's authorization page
 
@@ -515,12 +623,12 @@ app.get('/auth/github', (_req: Request, res: Response) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// 6j. GET /auth/github/callback — Handle GitHub OAuth callback
+// 6k. GET /auth/github/callback — Handle GitHub OAuth callback
 // ─────────────────────────────────────────────────────────────
 // After the user approves on GitHub, GitHub redirects here with a ?code=
 // We exchange that code for an access_token, create a session, and redirect.
 
-app.get('/auth/github/callback', async (req: Request, res: Response): Promise<void> => {
+app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], handleValidationErrors, async (req: Request, res: Response): Promise<void> => {
   try {
     const { code } = req.query;
 
@@ -614,11 +722,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
   await analysisQueue.close();
   console.log('   ✅ BullMQ queue closed');
 
-  // 3. Close the Redis connection
+  // 3. Close user-analysis queue connection
+  await userAnalysisQueue.close();
+  console.log('   ✅ User analysis queue closed');
+
+  // 4. Close the Redis connection
   redis.disconnect();
   console.log('   ✅ Redis disconnected');
 
-  // 4. Close Prisma (database) connection
+  // 5. Close Prisma (database) connection
   // TODO: Uncomment when Prisma is set up
   // await prisma.$disconnect();
   // console.log('   ✅ Prisma disconnected');
