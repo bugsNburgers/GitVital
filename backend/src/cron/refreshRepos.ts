@@ -3,6 +3,11 @@ import { Queue } from 'bullmq';
 import { config } from '../config';
 import { JobData } from '../types';
 import { getGeminiQuotaCooldownInfo } from '../ai/quotaTelemetry';
+import {
+    computeDeveloperScoreFromVerifiedRepoMetrics,
+    shouldFlagScoreChangeForManualReview,
+    type LeaderboardUserScoreInput,
+} from '../leaderboard/protection';
 
 interface RepoRefreshCandidate {
     owner: string;
@@ -119,13 +124,59 @@ async function recomputeDeveloperScoresAndBadges(): Promise<void> {
     const startedAt = new Date();
     console.log(`[CRON 03:00] Starting developer score + rank recomputation at ${startedAt.toISOString()}`);
 
-    // TODO: Replace with Prisma/SQL update workflow once DB wiring is available.
-    // Required behavior:
-    // - Recompute users.developer_score
-    // - Recompute users.global_rank and users.percentile via PERCENT_RANK window function
-    // - Recompute achievements/badges for all users
-    //
-    // Example percentile SQL shape:
+    // Leaderboard anti-manipulation policy (Prompt 5.4):
+    // 1) Scores are computed server-side only.
+    // 2) Scores are derived from verified GitHub data and repo_metrics (never user-submitted scores).
+    // 3) Significant contributor rule: user_commit_count > 10.
+    // 4) Legitimacy weighting:
+    //    - stars < 5 and bus_factor = 1 => reduced weight
+    //    - forked repos => 50% weight
+    //    - archived repos => excluded
+    // 5) Runs only on cron (03:00), not on-demand endpoints.
+    // 6) Score jumps > 20 points in the same UTC day are logged for manual review.
+
+    // TODO: Replace with Prisma/SQL data load when DB wiring is active.
+    // Intended source shape for each user:
+    // - user id/username
+    // - current developer_score and updated_at
+    // - repo evidence rows from verified GitHub-derived tables:
+    //   health_score, stars, bus_factor, is_fork, is_archived, user_commit_count, verified flag
+    const candidates: LeaderboardUserScoreInput[] = [];
+
+    let recomputedUsers = 0;
+    let manualReviewAlerts = 0;
+
+    for (const candidate of candidates) {
+        const result = computeDeveloperScoreFromVerifiedRepoMetrics(candidate);
+
+        if (shouldFlagScoreChangeForManualReview(
+            candidate.previousDeveloperScore,
+            result.developerScore,
+            candidate.previousScoreUpdatedAt,
+            startedAt,
+        )) {
+            manualReviewAlerts += 1;
+            console.warn('[CRON 03:00][ALERT] Developer score jump exceeds 20 points in one day', {
+                userId: candidate.userId,
+                username: candidate.username,
+                previousScore: candidate.previousDeveloperScore,
+                nextScore: result.developerScore,
+                consideredRepos: result.breakdown.consideredRepos,
+                ignoredRepos: result.breakdown.ignoredRepos,
+            });
+        }
+
+        // TODO: Persist computed server-side score (never from user input)
+        // await prisma.user.update({
+        //   where: { id: candidate.userId },
+        //   data: { developerScore: result.developerScore },
+        // });
+
+        recomputedUsers += 1;
+    }
+
+    // TODO: Recompute ranks/percentiles after score updates.
+    // Example SQL shape:
     // WITH ranked AS (
     //   SELECT id,
     //          PERCENT_RANK() OVER (ORDER BY developer_score ASC) * 100 AS percentile,
@@ -138,7 +189,9 @@ async function recomputeDeveloperScoresAndBadges(): Promise<void> {
     // FROM ranked r
     // WHERE u.id = r.id;
 
-    console.log('[CRON 03:00] Recompute job is currently scaffolded (DB wiring pending).');
+    console.log(
+        `[CRON 03:00] Score recompute finished. users=${recomputedUsers}, reviewAlerts=${manualReviewAlerts}. DB persistence/rank refresh pending wiring.`,
+    );
 }
 
 const refreshTask = cron.schedule('0 2 * * *', () => {
