@@ -2,6 +2,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config';
 import type { AllMetrics } from '../types';
 import { generateRuleBasedAdvice } from './ruleBasedAdvice';
+import {
+    getGeminiQuotaCooldownInfo,
+    markGeminiQuotaLimited,
+} from './quotaTelemetry';
 
 const GEMINI_MODEL = 'gemini-1.5-flash';
 const MAX_ADVICE_CHARS = 500;
@@ -43,6 +47,13 @@ export async function generateAIAdvice(metrics: AllMetrics, _owner: string, _rep
         return generateRuleBasedAdvice(metrics);
     }
 
+    const cooldown = await getGeminiQuotaCooldownInfo();
+    if (cooldown.active) {
+        const remainingMins = Math.ceil(cooldown.remainingMs / 60_000);
+        console.warn(`[AI] Gemini cooldown active (~${remainingMins}m remaining); using local rule-based fallback advice.`);
+        return generateRuleBasedAdvice(metrics);
+    }
+
     try {
         const ai = new GoogleGenerativeAI(config.geminiApiKey);
         const model = ai.getGenerativeModel({ model: GEMINI_MODEL });
@@ -69,6 +80,7 @@ export async function generateAIAdvice(metrics: AllMetrics, _owner: string, _rep
         return normalized;
     } catch (error) {
         if (isQuotaOrRateLimitError(error)) {
+            await markGeminiQuotaLimited();
             console.warn('[AI] Gemini free-tier limit reached; using local rule-based fallback advice.');
             return generateRuleBasedAdvice(metrics);
         }

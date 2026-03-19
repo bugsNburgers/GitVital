@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { Queue } from 'bullmq';
 import { config } from '../config';
 import { JobData } from '../types';
+import { getGeminiQuotaCooldownInfo } from '../ai/quotaTelemetry';
 
 interface RepoRefreshCandidate {
     owner: string;
@@ -10,6 +11,7 @@ interface RepoRefreshCandidate {
 }
 
 const REFRESH_CAP = 50;
+const REFRESH_CAP_UNDER_AI_LIMIT = 10;
 const REFRESH_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
 const analysisQueue = new Queue<JobData>('repo-analysis', {
@@ -58,6 +60,18 @@ async function queueRepoRefreshJobs(): Promise<void> {
     const startedAt = new Date();
     console.log(`[CRON 02:00] Starting repo refresh scan at ${startedAt.toISOString()}`);
 
+    let refreshCapForRun = REFRESH_CAP;
+    if (config.costBudget.degradeGracefullyOnLimit) {
+        const cooldown = await getGeminiQuotaCooldownInfo();
+        if (cooldown.active) {
+            refreshCapForRun = Math.min(REFRESH_CAP, REFRESH_CAP_UNDER_AI_LIMIT);
+            const remainingMins = Math.ceil(cooldown.remainingMs / 60_000);
+            console.log(
+                `[CRON 02:00] Gemini quota cooldown active (~${remainingMins}m remaining). Using reduced refresh cap=${refreshCapForRun}.`,
+            );
+        }
+    }
+
     const analyzedRepos = await getAnalyzedReposFromDb();
     const nowMs = Date.now();
 
@@ -66,7 +80,7 @@ async function queueRepoRefreshJobs(): Promise<void> {
     let queuedCount = 0;
     let skippedInFlight = 0;
 
-    for (const candidate of eligibleRepos.slice(0, REFRESH_CAP)) {
+    for (const candidate of eligibleRepos.slice(0, refreshCapForRun)) {
         const normalizedOwner = candidate.owner.toLowerCase();
         const normalizedRepo = candidate.repo.toLowerCase();
         const jobId = `analyze:${normalizedOwner}:${normalizedRepo}`;
@@ -97,7 +111,7 @@ async function queueRepoRefreshJobs(): Promise<void> {
     }
 
     console.log(
-        `[CRON 02:00] Refresh finished. scanned=${analyzedRepos.length}, eligible=${eligibleRepos.length}, queued=${queuedCount}, skippedInFlight=${skippedInFlight}, cap=${REFRESH_CAP}`,
+        `[CRON 02:00] Refresh finished. scanned=${analyzedRepos.length}, eligible=${eligibleRepos.length}, queued=${queuedCount}, skippedInFlight=${skippedInFlight}, cap=${refreshCapForRun}`,
     );
 }
 
