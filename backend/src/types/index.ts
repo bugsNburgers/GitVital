@@ -88,6 +88,21 @@ export interface JobData {
   userId?: string;
 }
 
+export interface UserMergedPRNode {
+  createdAt: string;
+  mergedAt: string | null;
+  author: { login: string } | null;
+  repository: {
+    owner: { login: string } | null;
+  };
+}
+
+export interface UserContributionMetrics {
+  externalPRCount: number;
+  externalMergedPRCount: number;
+  contributionAcceptanceRate: number;
+}
+
 export interface UserJobData {
   username: string;
 }
