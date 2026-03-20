@@ -66,7 +66,7 @@ export async function fetchCommits(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data = await client.query<CommitsQueryResponse>(COMMITS_QUERY, {
+        const data: CommitsQueryResponse = await client.query<CommitsQueryResponse>(COMMITS_QUERY, {
             owner,
             name: repo,
             first: PAGE_SIZE,

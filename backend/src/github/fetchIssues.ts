@@ -56,7 +56,7 @@ export async function fetchIssues(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data = await client.query<IssuesQueryResponse>(ISSUES_QUERY, {
+        const data: IssuesQueryResponse = await client.query<IssuesQueryResponse>(ISSUES_QUERY, {
             owner,
             name: repo,
             first: PAGE_SIZE,

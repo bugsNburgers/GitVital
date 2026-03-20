@@ -517,7 +517,7 @@ app.get(
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { jobId } = req.params;
+      const jobId = req.params.jobId as string;
       const job = await analysisQueue.getJob(jobId);
 
       if (!job) {
@@ -558,7 +558,8 @@ app.get(
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { owner, repo } = req.params;
+      const owner = req.params.owner as string;
+      const repo = req.params.repo as string;
 
       // Step 1: Check the Redis cache first (fast path)
       const cacheKey = `repo:metrics:${owner}:${repo}`;
@@ -714,7 +715,7 @@ app.get(
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { username } = req.params;
+      const username = req.params.username as string;
 
       // TODO: Fetch from Prisma when user profile schema is set up
       // const profile = await prisma.developerProfile.findUnique({
@@ -779,7 +780,8 @@ app.get(
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { owner, repo } = req.params;
+      const owner = req.params.owner as string;
+      const repo = req.params.repo as string;
 
       // TODO: Fetch actual score from DB
       const score = 0; // Placeholder
@@ -829,7 +831,7 @@ app.get(
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { username } = req.params;
+      const username = req.params.username as string;
 
       // TODO: Fetch actual developer score from DB
       const score = 0; // Placeholder

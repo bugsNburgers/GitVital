@@ -57,7 +57,7 @@ export async function fetchPRs(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data = await client.query<PullRequestsQueryResponse>(PULL_REQUESTS_QUERY, {
+        const data: PullRequestsQueryResponse = await client.query<PullRequestsQueryResponse>(PULL_REQUESTS_QUERY, {
             owner,
             name: repo,
             first: PAGE_SIZE,

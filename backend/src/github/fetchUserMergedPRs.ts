@@ -58,7 +58,7 @@ export async function fetchUserMergedPRs(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data = await client.query<UserMergedPullRequestsQueryResponse>(USER_MERGED_PRS_QUERY, {
+        const data: UserMergedPullRequestsQueryResponse = await client.query<UserMergedPullRequestsQueryResponse>(USER_MERGED_PRS_QUERY, {
             username,
             first: PAGE_SIZE,
             after: cursor,
