@@ -77,5 +77,5 @@ export const config = {
   // ──────────────────────────────────────────────
   // Cache TTL (Time To Live) — how long cached data stays valid
   // ──────────────────────────────────────────────
-  cacheTtlSeconds: parseInt(process.env.CACHE_TTL_SECONDS || '3600', 10), // 1 hour default
+  cacheTtlSeconds: parseInt(process.env.CACHE_TTL_SECONDS || '86400', 10), // 24 hours default (Guidesrc §9)
 };
