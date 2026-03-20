@@ -19,34 +19,49 @@ interface TimelineEntry {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 1: STUB IMPORTS
+// SECTION 1: IMPORTS — Real fetchers + remaining stubs
 // ═══════════════════════════════════════════════════════════════
-// These modules will be built in later prompts.
-// For now, we define placeholder functions so the worker's structure
-// is complete and TypeScript doesn't complain.
 
-// TODO: Replace with real GitHub GraphQL fetcher (Prompt 2.3)
-async function fetchRepoMetadata(owner: string, repo: string, _token?: string): Promise<{ exists: boolean; isPrivate: boolean; stars: number; language: string | null }> {
+import { GitHubClient } from '../github/client';
+import { fetchCommits as fetchCommitsFromGitHub } from '../github/fetchCommits';
+import { fetchPRs as fetchPRsFromGitHub } from '../github/fetchPRs';
+import { fetchIssues as fetchIssuesFromGitHub } from '../github/fetchIssues';
+import { decryptAccessToken } from '../security/tokenCrypto';
+
+// API constraints from Planscribble.md
+const MAX_COMMITS = 1000;
+const MAX_PRS = 500;
+const MAX_ISSUES = 500;
+
+// Resolve a GitHub access token for the worker.
+// Priority: user's OAuth token (encrypted in Redis) → service token env var.
+async function resolveAccessToken(userId?: string): Promise<string> {
+  if (userId) {
+    const encrypted = await redis.get(`oauth:github:token:user:${userId}`);
+    if (encrypted) {
+      try {
+        return decryptAccessToken(encrypted, config.encryptionKey);
+      } catch {
+        console.warn('[Worker] Failed to decrypt user token, falling back to service token.');
+      }
+    }
+  }
+
+  const serviceToken = process.env.GITHUB_TOKEN || process.env.GITHUB_ACCESS_TOKEN || '';
+  if (!serviceToken) {
+    throw new UnrecoverableError('No GitHub access token available. User must re-authenticate or set GITHUB_TOKEN.');
+  }
+  return serviceToken;
+}
+
+// TODO: Replace with real GraphQL query for repo metadata (no module exists yet)
+async function fetchRepoMetadata(client: GitHubClient, owner: string, repo: string): Promise<{ exists: boolean; isPrivate: boolean; stars: number; language: string | null }> {
   console.log(`   [STUB] fetchRepoMetadata(${owner}/${repo})`);
+  void client; // suppress unused warning until real implementation
   return { exists: true, isPrivate: false, stars: 0, language: null };
 }
 
-async function fetchCommits(owner: string, repo: string, _token?: string): Promise<CommitNode[]> {
-  console.log(`   [STUB] fetchCommits(${owner}/${repo})`);
-  return [];
-}
-
-async function fetchPullRequests(owner: string, repo: string, _token?: string): Promise<PRNode[]> {
-  console.log(`   [STUB] fetchPullRequests(${owner}/${repo})`);
-  return [];
-}
-
-async function fetchIssues(owner: string, repo: string, _token?: string): Promise<IssueNode[]> {
-  console.log(`   [STUB] fetchIssues(${owner}/${repo})`);
-  return [];
-}
-
-// TODO: Replace with real Metrics Engine (Prompt 3.x)
+// TODO: Replace with real Metrics Engine (Prompt 8.x)
 function computeAllMetrics(
   _commits: CommitNode[],
   _prs: PRNode[],
@@ -137,11 +152,17 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     //   data: { status: 'processing', startedAt: new Date() },
     // });
 
+    // ──────────────────────────────────────────────
+    // Step 1.5: Resolve access token and create GitHub client
+    // ──────────────────────────────────────────────
+    const accessToken = await resolveAccessToken(userId);
+    const client = new GitHubClient(accessToken);
+
 
     // ──────────────────────────────────────────────
     // Step 2: Validate repo exists and is public
     // ──────────────────────────────────────────────
-    const metadata = await fetchRepoMetadata(owner, repo);
+    const metadata = await fetchRepoMetadata(client, owner, repo);
     await job.updateProgress(10);
 
     if (!metadata.exists) {
@@ -160,7 +181,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // Raw commit data stays in memory ONLY — never written to DB.
     console.log(`   ${logPrefix} — Step 3: Fetching commits...`);
-    const commits = await fetchCommits(owner, repo);
+    const commits = await fetchCommitsFromGitHub(client, owner, repo, MAX_COMMITS);
     await job.updateProgress(30);
     console.log(`   ${logPrefix} — Step 3: Fetched ${commits.length} commits ✓`);
 
@@ -169,7 +190,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // Step 4: Fetch PRs (paginated, max 500, MERGED, last 12 months)
     // ──────────────────────────────────────────────
     console.log(`   ${logPrefix} — Step 4: Fetching pull requests...`);
-    const prs = await fetchPullRequests(owner, repo);
+    const prs = await fetchPRsFromGitHub(client, owner, repo, MAX_PRS);
     await job.updateProgress(50);
     console.log(`   ${logPrefix} — Step 4: Fetched ${prs.length} PRs ✓`);
 
@@ -178,7 +199,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // Step 5: Fetch issues (paginated, max 500, OPEN)
     // ──────────────────────────────────────────────
     console.log(`   ${logPrefix} — Step 5: Fetching issues...`);
-    const issues = await fetchIssues(owner, repo);
+    const issues = await fetchIssuesFromGitHub(client, owner, repo, MAX_ISSUES);
     await job.updateProgress(60);
     console.log(`   ${logPrefix} — Step 5: Fetched ${issues.length} issues ✓`);
 
