@@ -2,43 +2,10 @@ import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis } from '../config/redis';
 import { config } from '../config';
 import { UserJobData, UserMergedPRNode, UserContributionMetrics } from '../types';
+import { GitHubClient, AuthExpiredError, RateLimitError } from '../github/client';
+import { fetchUserMergedPRs as fetchUserMergedPRsFromGitHub } from '../github/fetchUserMergedPRs';
 
-const MAX_PRS = 500;
-const PAGE_SIZE = 100;
-const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
-const RETRY_BACKOFF_MS = [1000, 3000, 9000];
-
-interface RateLimitInfo {
-    remaining: number;
-    resetAt: string;
-}
-
-interface GraphQLPage {
-    user: {
-        pullRequests: {
-            pageInfo: {
-                hasNextPage: boolean;
-                endCursor: string | null;
-            };
-            nodes: UserMergedPRNode[];
-        };
-    } | null;
-    rateLimit: RateLimitInfo;
-}
-
-interface HttpError {
-    status: number;
-    message: string;
-    rateLimitResetAt?: string;
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isHttpError(error: unknown): error is HttpError {
-    return typeof error === 'object' && error !== null && 'status' in error;
-}
+const MAX_USER_PRS = 500;
 
 async function setUserJobState(jobId: string, status: 'processing' | 'done' | 'failed', error?: string): Promise<void> {
     await redis.set(`userjobstatus:${jobId}`, status, 'EX', 3600);
@@ -55,151 +22,6 @@ function getServiceToken(): string {
         throw new UnrecoverableError('Missing GitHub service token for user analysis worker');
     }
     return token;
-}
-
-async function queryGitHubGraphQL(token: string, query: string, variables: Record<string, unknown>): Promise<GraphQLPage> {
-    for (let attempt = 0; attempt <= RETRY_BACKOFF_MS.length; attempt += 1) {
-        const response = await fetch('https://api.github.com/graphql', {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ query, variables }),
-        });
-
-        if (response.status >= 500) {
-            if (attempt < RETRY_BACKOFF_MS.length) {
-                await sleep(RETRY_BACKOFF_MS[attempt]);
-                continue;
-            }
-            throw { status: response.status, message: `GitHub 5xx after retries (${response.status})` } as HttpError;
-        }
-
-        const payload = await response.json() as {
-            data?: GraphQLPage;
-            errors?: Array<{ message?: string; type?: string; extensions?: { code?: string } }>;
-        };
-
-        if (response.status === 401) {
-            throw { status: 401, message: 'OAuth token expired' } as HttpError;
-        }
-
-        if (response.status === 403) {
-            const resetAt = payload.data?.rateLimit?.resetAt;
-            throw { status: 403, message: 'Rate limit exceeded', rateLimitResetAt: resetAt } as HttpError;
-        }
-
-        if (payload.errors && payload.errors.length > 0) {
-            const combined = payload.errors.map((e) => e.message || e.extensions?.code || e.type || 'GraphQL error').join('; ');
-            const looksLikeRateLimit = payload.errors.some((e) =>
-                (e.extensions?.code || '').toUpperCase().includes('RATE_LIMITED') ||
-                (e.message || '').toLowerCase().includes('rate limit')
-            );
-
-            if (looksLikeRateLimit) {
-                throw {
-                    status: 403,
-                    message: combined || 'Rate limit exceeded',
-                    rateLimitResetAt: payload.data?.rateLimit?.resetAt,
-                } as HttpError;
-            }
-
-            throw { status: 400, message: combined } as HttpError;
-        }
-
-        if (!payload.data) {
-            throw { status: 502, message: 'Missing GraphQL response data' } as HttpError;
-        }
-
-        return payload.data;
-    }
-
-    throw { status: 500, message: 'Unexpected retry loop exit' } as HttpError;
-}
-
-async function fetchUserMergedPRs(username: string): Promise<UserMergedPRNode[]> {
-    const token = getServiceToken();
-    const query = `
-    query UserMergedPRs($username: String!, $first: Int!, $after: String) {
-      user(login: $username) {
-        pullRequests(first: $first, after: $after, states: MERGED, orderBy: { field: CREATED_AT, direction: DESC }) {
-          pageInfo { hasNextPage endCursor }
-          nodes {
-            createdAt
-            mergedAt
-            author { login }
-            repository { owner { login } }
-          }
-        }
-      }
-      rateLimit { remaining resetAt }
-    }
-  `;
-
-    const results: UserMergedPRNode[] = [];
-    let cursor: string | null = null;
-    let lastCursor: string | null = null;
-    const cutoff = Date.now() - ONE_YEAR_MS;
-
-    while (results.length < MAX_PRS) {
-        const data = await queryGitHubGraphQL(token, query, {
-            username,
-            first: PAGE_SIZE,
-            after: cursor,
-        });
-
-        if (data.rateLimit.remaining < 200) {
-            const reset = new Date(data.rateLimit.resetAt).getTime();
-            const waitMs = Math.max(reset - Date.now() + 5000, 1000);
-            await sleep(waitMs);
-        }
-
-        const prConnection = data.user?.pullRequests;
-        if (!prConnection) {
-            break;
-        }
-
-        const nodes = prConnection.nodes || [];
-
-        // Required safety guard: empty page means stop.
-        if (nodes.length === 0) {
-            break;
-        }
-
-        let reachedOlderThanCutoff = false;
-        for (const node of nodes) {
-            const createdAtMs = new Date(node.createdAt).getTime();
-            if (!Number.isFinite(createdAtMs) || createdAtMs < cutoff) {
-                reachedOlderThanCutoff = true;
-                break;
-            }
-            results.push(node);
-            if (results.length >= MAX_PRS) {
-                break;
-            }
-        }
-
-        if (reachedOlderThanCutoff || results.length >= MAX_PRS) {
-            break;
-        }
-
-        if (!prConnection.pageInfo.hasNextPage) {
-            break;
-        }
-
-        const nextCursor = prConnection.pageInfo.endCursor;
-
-        // Required safety guard: unchanged cursor protection.
-        if (!nextCursor || nextCursor === cursor || nextCursor === lastCursor) {
-            break;
-        }
-
-        lastCursor = cursor;
-        cursor = nextCursor;
-    }
-
-    return results.slice(0, MAX_PRS);
 }
 
 function computeUserContributionMetrics(username: string, mergedPRs: UserMergedPRNode[]): UserContributionMetrics {
@@ -238,11 +60,15 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         await setUserJobState(job.id!, 'processing');
         await job.updateProgress(5);
 
-        // Step 1/2/3 with safeguards happens inside the fetcher.
-        const mergedPRs = await fetchUserMergedPRs(username);
+        // Create GitHub client with service token
+        const token = getServiceToken();
+        const client = new GitHubClient(token);
+
+        // Fetch user's merged PRs using the shared module
+        const mergedPRs = await fetchUserMergedPRsFromGitHub(client, username, MAX_USER_PRS);
         await job.updateProgress(55);
 
-        // Step 4/5
+        // Compute contribution metrics
         const metrics = computeUserContributionMetrics(username, mergedPRs);
         await job.updateProgress(80);
 
@@ -269,19 +95,18 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
             throw error;
         }
 
-        if (isHttpError(error)) {
-            if (error.status === 401) {
-                await setUserJobState(job.id!, 'failed', 'OAuth token expired');
-                throw new UnrecoverableError('OAuth token expired');
-            }
+        // Use shared typed errors from GitHubClient instead of inline HttpError
+        if (error instanceof AuthExpiredError) {
+            await setUserJobState(job.id!, 'failed', 'OAuth token expired');
+            throw new UnrecoverableError('OAuth token expired');
+        }
 
-            if (error.status === 403 && error.rateLimitResetAt) {
-                const waitMs = Math.max(new Date(error.rateLimitResetAt).getTime() - Date.now() + 5000, 1000);
+        if (error instanceof RateLimitError) {
+            if (error.resetAt) {
+                const waitMs = Math.max(new Date(error.resetAt).getTime() - Date.now() + 5000, 1000);
                 await job.moveToDelayed(Date.now() + waitMs, job.token);
                 return;
             }
-
-            throw error;
         }
 
         throw error;
