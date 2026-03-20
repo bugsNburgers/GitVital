@@ -41,6 +41,10 @@ function computeUserContributionMetrics(username: string, mergedPRs: UserMergedP
 
     const externalPRCount = strictExternal.length;
     const externalMergedPRCount = strictExternal.length;
+    // TODO: contributionAcceptanceRate is always 0% or 100% because the GraphQL query
+    // only fetches MERGED PRs. To compute a meaningful rate, also fetch CLOSED (non-merged)
+    // external PRs and use: mergedCount / (mergedCount + closedCount) * 100.
+    // This requires a second GraphQL query which doubles API point usage.
     const contributionAcceptanceRate = externalPRCount === 0
         ? 0
         : Number(((externalMergedPRCount / externalPRCount) * 100).toFixed(2));
