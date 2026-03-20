@@ -237,6 +237,16 @@ const GITHUB_NAME_REGEX = /^[a-zA-Z0-9_.-]+$/;
 const STRICT_GITHUB_REPO_URL_REGEX = /^https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/;
 const MAX_GITHUB_NAME_LENGTH = 100;
 
+// Defense-in-depth: escape user-controlled values before interpolating into SVG XML.
+function escapeXml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 function isValidGitHubNameSegment(input: string): boolean {
   if (!input || input.length > MAX_GITHUB_NAME_LENGTH) {
     return false;
@@ -827,7 +837,7 @@ app.get(
 
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="200" height="28" role="img" aria-label="Dev Score: ${score}">
-          <title>${username} Dev Score: ${score}</title>
+          <title>${escapeXml(username)} Dev Score: ${score}</title>
           <linearGradient id="s" x2="0" y2="100%">
             <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
             <stop offset="1" stop-opacity=".1"/>
@@ -839,8 +849,8 @@ app.get(
             <rect width="200" height="28" fill="url(#s)"/>
           </g>
           <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-            <text x="65" y="19.5" fill="#010101" fill-opacity=".3">${username}</text>
-            <text x="65" y="18.5">${username}</text>
+            <text x="65" y="19.5" fill="#010101" fill-opacity=".3">${escapeXml(username)}</text>
+            <text x="65" y="18.5">${escapeXml(username)}</text>
             <text x="165" y="19.5" fill="#010101" fill-opacity=".3">${score}/100</text>
             <text x="165" y="18.5">${score}/100</text>
           </g>
