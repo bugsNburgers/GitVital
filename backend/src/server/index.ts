@@ -551,7 +551,7 @@ app.get(
       const { owner, repo } = req.params;
 
       // Step 1: Check the Redis cache first (fast path)
-      const cacheKey = `metrics:${owner}/${repo}`;
+      const cacheKey = `repo:metrics:${owner}:${repo}`;
       const cached = await redis.get(cacheKey);
 
       if (cached) {
@@ -630,7 +630,7 @@ app.get(
       // Fetch metrics for each repo from cache or DB
       const results = await Promise.all(
         repoPairs.map(async ({ owner, repo }) => {
-          const cacheKey = `metrics:${owner}/${repo}`;
+          const cacheKey = `repo:metrics:${owner}:${repo}`;
           const cached = await redis.get(cacheKey);
           if (cached) {
             return { owner, repo, metrics: JSON.parse(cached) };

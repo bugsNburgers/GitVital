@@ -282,7 +282,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // Step 13: Update Redis cache with fresh metrics
     // ──────────────────────────────────────────────
-    const cacheKey = `metrics:${owner}/${repo}`;
+    const cacheKey = `repo:metrics:${owner}:${repo}`;
     await redis.set(
       cacheKey,
       JSON.stringify(metrics),
