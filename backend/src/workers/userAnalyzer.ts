@@ -207,7 +207,7 @@ function computeUserContributionMetrics(username: string, mergedPRs: UserMergedP
 
     const strictExternal = mergedPRs.filter((pr) => {
         const authorLogin = pr.author?.login?.toLowerCase();
-        const ownerLogin = pr.repository.owner.login?.toLowerCase();
+        const ownerLogin = pr.repository.owner?.login?.toLowerCase();
 
         if (!authorLogin || !ownerLogin) {
             return false;
