@@ -153,8 +153,8 @@ app.use(session({
 
 // 3e. Global and route-specific abuse protection rate limiters
 const defaultLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 100,
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.maxRequests,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Slow down and try again shortly.' },
