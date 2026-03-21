@@ -1,4 +1,5 @@
 import { GitHubClient } from './client';
+import { PR_QUERY } from './queries';
 import type { PRNode, RateLimit } from '../types';
 
 const PAGE_SIZE = 100;
@@ -15,29 +16,6 @@ interface PullRequestsQueryResponse {
     } | null;
     rateLimit?: RateLimit;
 }
-
-const PULL_REQUESTS_QUERY = `
-query RepoPullRequests($owner: String!, $name: String!, $first: Int!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequests(
-      first: $first
-      after: $after
-      states: MERGED
-      orderBy: { field: CREATED_AT, direction: DESC }
-    ) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        createdAt
-        mergedAt
-        closedAt
-        author { login }
-        reviews { totalCount }
-      }
-    }
-  }
-  rateLimit { remaining resetAt }
-}
-`;
 
 export async function fetchPRs(
     client: GitHubClient,
@@ -57,7 +35,7 @@ export async function fetchPRs(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data: PullRequestsQueryResponse = await client.query<PullRequestsQueryResponse>(PULL_REQUESTS_QUERY, {
+        const data: PullRequestsQueryResponse = await client.query<PullRequestsQueryResponse>(PR_QUERY, {
             owner,
             name: repo,
             first: PAGE_SIZE,

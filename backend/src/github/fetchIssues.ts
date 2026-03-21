@@ -1,4 +1,5 @@
 import { GitHubClient } from './client';
+import { ISSUE_QUERY } from './queries';
 import type { IssueNode, RateLimit } from '../types';
 
 const PAGE_SIZE = 100;
@@ -15,28 +16,6 @@ interface IssuesQueryResponse {
     } | null;
     rateLimit?: RateLimit;
 }
-
-const ISSUES_QUERY = `
-query RepoIssues($owner: String!, $name: String!, $first: Int!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    issues(
-      first: $first
-      after: $after
-      states: OPEN
-      orderBy: { field: CREATED_AT, direction: DESC }
-    ) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        createdAt
-        closedAt
-        state
-        comments { totalCount }
-      }
-    }
-  }
-  rateLimit { remaining resetAt }
-}
-`;
 
 export async function fetchIssues(
     client: GitHubClient,
@@ -56,7 +35,7 @@ export async function fetchIssues(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data: IssuesQueryResponse = await client.query<IssuesQueryResponse>(ISSUES_QUERY, {
+        const data: IssuesQueryResponse = await client.query<IssuesQueryResponse>(ISSUE_QUERY, {
             owner,
             name: repo,
             first: PAGE_SIZE,

@@ -1,4 +1,5 @@
 import { GitHubClient } from './client';
+import { REPO_QUERY } from './queries';
 import type { CommitNode, RateLimit } from '../types';
 
 const PAGE_SIZE = 100;
@@ -21,32 +22,6 @@ interface CommitsQueryResponse {
     rateLimit?: RateLimit;
 }
 
-const COMMITS_QUERY = `
-query RepoCommits($owner: String!, $name: String!, $first: Int!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    defaultBranchRef {
-      target {
-        ... on Commit {
-          history(first: $first, after: $after) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              committedDate
-              additions
-              deletions
-              author {
-                user { login }
-                name
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  rateLimit { remaining resetAt }
-}
-`;
-
 export async function fetchCommits(
     client: GitHubClient,
     owner: string,
@@ -66,7 +41,7 @@ export async function fetchCommits(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data: CommitsQueryResponse = await client.query<CommitsQueryResponse>(COMMITS_QUERY, {
+        const data: CommitsQueryResponse = await client.query<CommitsQueryResponse>(REPO_QUERY, {
             owner,
             name: repo,
             first: PAGE_SIZE,

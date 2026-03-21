@@ -8,22 +8,18 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis } from '../config/redis';
 import { config } from '../config';
-import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag } from '../types';
+import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag, TimelineEntry } from '../types';
 import { generateAIAdvice } from '../ai/advice';
 
 // ── Real Metrics Engine imports (Prompt 8.1) ──
 import { computeBusFactor } from '../metrics/busFactor';
 import { computePRMetrics } from '../metrics/prMetrics';
 import { computeActivityMetrics } from '../metrics/activityMetrics';
+import { computeIssueMetrics } from '../metrics/issueMetrics';
+import { computeChurnMetrics } from '../metrics/churnMetrics';
 import { computeHealthScore } from '../metrics/healthScore';
 import { generateRiskFlags as generatePromptRiskFlags } from '../metrics/riskFlags';
-
-interface TimelineEntry {
-  period: string;
-  healthScore: number;
-  commitCount: number;
-  prCount: number;
-}
+import { computeTimeline } from '../metrics/timeline';
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 1: IMPORTS — Real fetchers + remaining stubs
@@ -33,6 +29,7 @@ import { GitHubClient } from '../github/client';
 import { fetchCommits as fetchCommitsFromGitHub } from '../github/fetchCommits';
 import { fetchPRs as fetchPRsFromGitHub } from '../github/fetchPRs';
 import { fetchIssues as fetchIssuesFromGitHub } from '../github/fetchIssues';
+import { fetchMetadata as fetchRepoMetadata } from '../github/fetchMetadata';
 import { decryptAccessToken } from '../security/tokenCrypto';
 
 // API constraints from Planscribble.md
@@ -61,30 +58,13 @@ async function resolveAccessToken(userId?: string): Promise<string> {
   return serviceToken;
 }
 
-// TODO: Replace with real GraphQL query for repo metadata (no module exists yet)
-async function fetchRepoMetadata(client: GitHubClient, owner: string, repo: string): Promise<RepoMetadata> {
-  console.log(`   [STUB] fetchRepoMetadata(${owner}/${repo})`);
-  void client; // suppress unused warning until real implementation
-  return {
-    exists: true,
-    isPrivate: false,
-    isArchived: false,
-    isFork: false,
-    hasDefaultBranch: true,
-    stars: 0,
-    forks: 0,
-    language: null,
-    totalCommitCount: 0,
-  };
-}
-
 // ── Real Metrics Engine (Prompt 8.1 + 6.1 edge cases) ──
 // Each metrics function is pure: no DB, no API, no side effects — just math.
 // Prompt 6.1: This function now handles metadata-driven suppression and data integrity.
 function computeAllMetrics(
   commits: CommitNode[],
   prs: PRNode[],
-  _issues: IssueNode[],
+  issues: IssueNode[],
   metadata: RepoMetadata,
 ): AllMetrics {
   const riskFlags: RiskFlag[] = [];
@@ -117,9 +97,9 @@ function computeAllMetrics(
     });
   }
 
-  // ── Issue & Churn Metrics — Prompt 8.2 (not yet implemented) ──
-  const issueMetrics = null;
-  const churnMetrics = null;
+  // ── Issue & Churn Metrics — Prompt 8.2 ──
+  const issueMetrics = computeIssueMetrics(issues);
+  const churnMetrics = computeChurnMetrics(commits);
 
   // ── Prompt 6.1: Unusual commit patterns ──
   if (commits.length > 0) {
@@ -194,16 +174,20 @@ function computeAllMetrics(
   };
 }
 
-// TODO: Replace with real timeline builder (Prompt 8.x)
 function computeQuarterlyTimeline(commits: CommitNode[], prs: PRNode[], healthScore: number): TimelineEntry[] {
-  const now = new Date();
-  const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
-  return [{
-    period: `${now.getUTCFullYear()}-Q${quarter}`,
-    healthScore,
-    commitCount: commits.length,
-    prCount: prs.length,
-  }];
+  const timeline = computeTimeline(commits, prs);
+  if (timeline.length === 0) {
+    const now = new Date();
+    const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
+    return [{
+      period: `${now.getUTCFullYear()}-Q${quarter}`,
+      healthScore,
+      commitCount: commits.length,
+      prCount: prs.length,
+    }];
+  }
+
+  return timeline.map((entry) => ({ ...entry, healthScore }));
 }
 
 function generateRiskFlags(metrics: AllMetrics): AllMetrics['riskFlags'] {
