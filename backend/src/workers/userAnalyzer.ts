@@ -69,10 +69,22 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         const client = new GitHubClient(token);
 
         // Fetch user's merged PRs using the shared module
-        const mergedPRs = await fetchUserMergedPRsFromGitHub(client, username, MAX_USER_PRS);
+        // Prompt 6.1: Deleted/inaccessible repository references in PR history → skip safely
+        // The GraphQL response naturally omits nodes with deleted repos, but network errors
+        // or partial failures are caught here to return 0 metrics instead of crashing.
+        let mergedPRs: UserMergedPRNode[] = [];
+        try {
+            mergedPRs = await fetchUserMergedPRsFromGitHub(client, username, MAX_USER_PRS);
+        } catch (fetchError) {
+            console.warn(`   ${logPrefix} — PR fetch failed, returning zero metrics:`, fetchError);
+            // Continue with empty array — all metrics will be 0
+        }
         await job.updateProgress(55);
 
         // Compute contribution metrics
+        // Prompt 6.1: 0 merged PRs → all metrics as 0 (handled naturally by computeUserContributionMetrics)
+        // Prompt 6.1: Only own-repo PRs → external counts = 0 (handled by strictExternal filter)
+        // Prompt 6.1: Missing author/owner login → skip safely (handled by null checks in filter)
         const metrics = computeUserContributionMetrics(username, mergedPRs);
         await job.updateProgress(80);
 
