@@ -109,5 +109,11 @@ Together, these features turn GitVital from a passive analytics dashboard into a
 
 *(Instructions for cloning, installing dependencies, setting up `.env` files for GitHub OAuth, PostgreSQL, and Redis, and running locally will be added here as the project is developed.)*
 
+## Security Reporting
+
+If you discover a security vulnerability, do **not** open a public issue.
+
+Please follow the private reporting process documented in `.github/SECURITY.md`.
+
 ---
 *Built with Next.js, Node.js, PostgreSQL, Redis, BullMQ, and the GitHub GraphQL API.*
