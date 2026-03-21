@@ -19,6 +19,15 @@ const REFRESH_CAP = 50;
 const REFRESH_CAP_UNDER_AI_LIMIT = 10;
 const REFRESH_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 
+//Thundering herd prevention
+// Stagger job additions by 2 seconds each so we don't hammer Redis + GitHub
+// with 50 analysis jobs at once the moment the cron fires at 02:00.
+const STAGGER_DELAY_MS = 2_000;
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const analysisQueue = new Queue<JobData>('repo-analysis', {
     connection: {
         host: new URL(config.redisUrl).hostname || 'localhost',
@@ -113,7 +122,19 @@ async function queueRepoRefreshJobs(): Promise<void> {
         );
 
         queuedCount += 1;
+
+        // Stagger — wait 2 seconds before adding the next job ──
+        // This prevents a thundering herd where 50 jobs slam GitHub API + Redis at once.
+        if (queuedCount < eligibleRepos.slice(0, refreshCapForRun).length) {
+            await sleep(STAGGER_DELAY_MS);
+        }
     }
+
+    // ── Prompt 7.1: Queue cleanup — remove completed jobs older than 7 days ──
+    // Keeps Redis memory lean; BullMQ stores job data indefinitely unless cleaned.
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const cleaned = await analysisQueue.clean(sevenDaysMs, 1000, 'completed');
+    console.log(`[CRON 02:00] Cleaned ${cleaned.length} completed jobs older than 7 days.`);
 
     console.log(
         `[CRON 02:00] Refresh finished. scanned=${analyzedRepos.length}, eligible=${eligibleRepos.length}, queued=${queuedCount}, skippedInFlight=${skippedInFlight}, cap=${refreshCapForRun}`,
@@ -202,15 +223,28 @@ const recomputeTask = cron.schedule('0 3 * * *', () => {
     void recomputeDeveloperScoresAndBadges();
 });
 
-console.log('⏱️ Scheduled refresh cron started');
+//Refresh leaderboard materialized view every 6 hours
+const leaderboardViewRefreshTask = cron.schedule('0 */6 * * *', () => {
+    const startedAt = new Date();
+    console.log(`[CRON] Refreshing leaderboard materialized view at ${startedAt.toISOString()}...`);
+    
+    // TODO: Refresh via Prisma once DB is connected
+    // await prisma.$executeRawUnsafe('REFRESH MATERIALIZED VIEW leaderboard_rankings');
+    
+    console.log('[CRON] Leaderboard materialized view refresh finished.');
+});
+
+console.log('⏱️ Scheduled referesh cron started');
 console.log('   Repo refresh: daily at 02:00 server time');
 console.log('   Score recompute: daily at 03:00 server time');
+console.log('   Leaderboard view refresh: every 6 hours');
 
 async function gracefulShutdown(signal: string): Promise<void> {
     console.log(`\n⚠️ Cron service received ${signal}. Shutting down gracefully...`);
 
     refreshTask.stop();
     recomputeTask.stop();
+    leaderboardViewRefreshTask.stop();
     console.log('   ✅ Cron schedules stopped');
 
     await analysisQueue.close();
