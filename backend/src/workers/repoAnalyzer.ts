@@ -8,7 +8,7 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis } from '../config/redis';
 import { config } from '../config';
-import { JobData, CommitNode, PRNode, IssueNode, AllMetrics } from '../types';
+import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag } from '../types';
 import { generateAIAdvice } from '../ai/advice';
 
 // ── Real Metrics Engine imports (Prompt 8.1) ──
@@ -61,41 +61,124 @@ async function resolveAccessToken(userId?: string): Promise<string> {
 }
 
 // TODO: Replace with real GraphQL query for repo metadata (no module exists yet)
-async function fetchRepoMetadata(client: GitHubClient, owner: string, repo: string): Promise<{ exists: boolean; isPrivate: boolean; stars: number; language: string | null }> {
+async function fetchRepoMetadata(client: GitHubClient, owner: string, repo: string): Promise<RepoMetadata> {
   console.log(`   [STUB] fetchRepoMetadata(${owner}/${repo})`);
   void client; // suppress unused warning until real implementation
-  return { exists: true, isPrivate: false, stars: 0, language: null };
+  return {
+    exists: true,
+    isPrivate: false,
+    isArchived: false,
+    isFork: false,
+    hasDefaultBranch: true,
+    stars: 0,
+    forks: 0,
+    language: null,
+    totalCommitCount: 0,
+  };
 }
 
-// ── Real Metrics Engine (Prompt 8.1) ──
-// Replaces the computeAllMetrics() stub with actual pure-function calls.
+// ── Real Metrics Engine (Prompt 8.1 + 6.1 edge cases) ──
 // Each metrics function is pure: no DB, no API, no side effects — just math.
+// Prompt 6.1: This function now handles metadata-driven suppression and data integrity.
 function computeAllMetrics(
   commits: CommitNode[],
   prs: PRNode[],
   _issues: IssueNode[],
+  metadata: RepoMetadata,
 ): AllMetrics {
-  // 1. Bus Factor (contributor concentration)
-  const busFactor = computeBusFactor(commits);
+  const riskFlags: RiskFlag[] = [];
 
-  // 2. PR Metrics (merge time statistics)
+  // ── Prompt 6.1: < 50 commits → suppress bus factor & velocity ──
+  let busFactor = null;
+  let activityMetrics = null;
+  if (commits.length < 50) {
+    riskFlags.push({
+      level: 'info',
+      title: 'LIMITED COMMIT HISTORY',
+      detail: 'Not enough commit history for full analysis.',
+    });
+    // Still compute activity for commits_last_30_days, but suppress velocity
+    activityMetrics = computeActivityMetrics(commits);
+    // busFactor stays null (suppressed)
+  } else {
+    busFactor = computeBusFactor(commits);
+    activityMetrics = computeActivityMetrics(commits);
+  }
+
+  // ── PR Metrics ──
   const prMetrics = computePRMetrics(prs);
+  // Prompt 6.1: < 10 merged PRs → add info flag (prMetrics already returns null)
+  if (prMetrics === null) {
+    riskFlags.push({
+      level: 'info',
+      title: 'NO PR WORKFLOW',
+      detail: 'This repo doesn\'t use a PR workflow.',
+    });
+  }
 
-  // 3. Activity Metrics (velocity, weekly breakdown)
-  const activityMetrics = computeActivityMetrics(commits);
-
-  // 4. Issue Metrics & Churn Metrics — these are Prompt 8.2 (not yet implemented)
-  //    Pass null for now; healthScore handles null sub-metrics via weight redistribution.
+  // ── Issue & Churn Metrics — Prompt 8.2 (not yet implemented) ──
   const issueMetrics = null;
   const churnMetrics = null;
 
-  // 5. Health Score (weighted composite, 0-100)
+  // ── Prompt 6.1: Unusual commit patterns ──
+  if (commits.length > 0) {
+    // All commits in a single day → IRREGULAR COMMIT PATTERN
+    const commitDates = new Set(commits.map((c) => c.committedDate.substring(0, 10)));
+    if (commitDates.size === 1 && commits.length > 5) {
+      riskFlags.push({
+        level: 'warning',
+        title: 'IRREGULAR COMMIT PATTERN',
+        detail: `All ${commits.length} commits were made on a single day. This may indicate a code dump.`,
+      });
+    }
+
+    // 100% merge commits → MERGE-ONLY HISTORY
+    // Merge commits typically have 0 additions and 0 deletions
+    const mergeCommits = commits.filter((c) => c.additions === 0 && c.deletions === 0);
+    if (mergeCommits.length === commits.length && commits.length > 5) {
+      riskFlags.push({
+        level: 'warning',
+        title: 'MERGE-ONLY HISTORY',
+        detail: 'All commits appear to be merge commits. This may indicate unusual repository usage.',
+      });
+    }
+  }
+
+  // ── Prompt 6.1: > 50K commits → info flag ──
+  if (metadata.totalCommitCount > 50000) {
+    riskFlags.push({
+      level: 'info',
+      title: 'LARGE REPOSITORY',
+      detail: `Analyzed last ${MAX_COMMITS} of ${metadata.totalCommitCount.toLocaleString()}+ commits`,
+    });
+  }
+
+  // ── Prompt 6.1: Archived repo → banner flag ──
+  if (metadata.isArchived) {
+    riskFlags.push({
+      level: 'warning',
+      title: 'ARCHIVED REPOSITORY',
+      detail: 'This repository is archived and no longer maintained.',
+    });
+  }
+
+  // ── Prompt 6.1: Forked repo → warning flag ──
+  if (metadata.isFork) {
+    riskFlags.push({
+      level: 'warning',
+      title: 'FORKED REPOSITORY',
+      detail: 'This is a fork. Metrics reflect fork activity only.',
+    });
+  }
+
+  // ── Health Score (weighted composite, 0-100) ──
   const healthScore = computeHealthScore({
     activityMetrics,
     contributorMetrics: busFactor,
     prMetrics,
     issueMetrics,
     churnMetrics,
+    isArchived: metadata.isArchived, // Prompt 6.1: cap at 30 for archived
   });
 
   return {
@@ -105,8 +188,8 @@ function computeAllMetrics(
     issueMetrics,
     churnMetrics,
     healthScore,
-    riskFlags: [],   // Populated in Step 9 by generateRiskFlags()
-    aiAdvice: null,   // Populated in Step 10 by generateAIAdvice()
+    riskFlags,      // Pre-populated with 6.1 edge case flags
+    aiAdvice: null,  // Populated in Step 10 by generateAIAdvice()
   };
 }
 
@@ -203,6 +286,24 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
       throw { status: 404, message: 'Repository not found or is private' } as GitHubApiError;
     }
 
+    // ── Prompt 6.1: No default branch → empty repo, early return ──
+    if (!metadata.hasDefaultBranch) {
+      console.log(`   ${logPrefix} — Step 2: Empty repo (no default branch)`);
+      const emptyResult: AllMetrics = {
+        busFactor: null, prMetrics: null, activityMetrics: null,
+        issueMetrics: null, churnMetrics: null, healthScore: 0,
+        riskFlags: [{ level: 'info', title: 'EMPTY REPOSITORY', detail: 'This repository has no commits.' }],
+        aiAdvice: null,
+      };
+      // Cache the empty result and mark job done
+      const cacheKey = `repo:metrics:${owner}:${repo}`;
+      await redis.set(cacheKey, JSON.stringify(emptyResult), 'EX', config.cacheTtlSeconds);
+      await setJobState(job.id!, 'done');
+      await job.updateProgress(100);
+      console.log(`   ${logPrefix} — Empty repo, analysis skipped ✓`);
+      return;
+    }
+
     console.log(`   ${logPrefix} — Step 2: Repo validated ✓`);
 
 
@@ -219,28 +320,81 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // Step 4: Fetch PRs (paginated, max 500, MERGED, last 12 months)
     // ──────────────────────────────────────────────
-    console.log(`   ${logPrefix} — Step 4: Fetching pull requests...`);
-    const prs = await fetchPRsFromGitHub(client, owner, repo, MAX_PRS);
+    // Prompt 6.1: Partial failure — if PR fetch fails, continue with empty array
+    let prs: PRNode[] = [];
+    try {
+      console.log(`   ${logPrefix} — Step 4: Fetching pull requests...`);
+      prs = await fetchPRsFromGitHub(client, owner, repo, MAX_PRS);
+      console.log(`   ${logPrefix} — Step 4: Fetched ${prs.length} PRs ✓`);
+    } catch (prError) {
+      console.warn(`   ${logPrefix} — Step 4: PR fetch failed (partial failure, proceeding):`, prError);
+      // PR metrics will be null / "unavailable" — still save partial results
+    }
     await job.updateProgress(50);
-    console.log(`   ${logPrefix} — Step 4: Fetched ${prs.length} PRs ✓`);
 
 
     // ──────────────────────────────────────────────
     // Step 5: Fetch issues (paginated, max 500, OPEN)
     // ──────────────────────────────────────────────
-    console.log(`   ${logPrefix} — Step 5: Fetching issues...`);
-    const issues = await fetchIssuesFromGitHub(client, owner, repo, MAX_ISSUES);
+    // Prompt 6.1: Partial failure — if issue fetch fails, continue with empty array
+    let issues: IssueNode[] = [];
+    try {
+      console.log(`   ${logPrefix} — Step 5: Fetching issues...`);
+      issues = await fetchIssuesFromGitHub(client, owner, repo, MAX_ISSUES);
+      console.log(`   ${logPrefix} — Step 5: Fetched ${issues.length} issues ✓`);
+    } catch (issueError) {
+      console.warn(`   ${logPrefix} — Step 5: Issue fetch failed (partial failure, proceeding):`, issueError);
+      // Issue metrics will be null — still save partial results
+    }
     await job.updateProgress(60);
-    console.log(`   ${logPrefix} — Step 5: Fetched ${issues.length} issues ✓`);
 
 
     // ──────────────────────────────────────────────
     // Step 6: Run Metrics Engine (pure functions, in-memory)
     // ──────────────────────────────────────────────
-    // The Metrics Engine takes raw data and returns computed results.
-    // It does NOT touch the database or network — it's pure math.
+    // Prompt 6.1: Wrap entire metrics computation in try/catch → on error, save partial results
     console.log(`   ${logPrefix} — Step 6: Computing metrics...`);
-    const metrics = computeAllMetrics(commits, prs, issues);
+    let metrics: AllMetrics;
+    try {
+      metrics = computeAllMetrics(commits, prs, issues, metadata);
+
+      // ── Prompt 6.1: Data integrity — scrub NaN/Infinity ──
+      if (!Number.isFinite(metrics.healthScore)) {
+        console.warn(`[Data Integrity] healthScore was ${metrics.healthScore}, replacing with 0`);
+        metrics.healthScore = 0;
+      }
+      // Assert: 0 <= score <= 100
+      if (metrics.healthScore < 0 || metrics.healthScore > 100) {
+        console.warn(`[Data Integrity] healthScore ${metrics.healthScore} out of range, clamping`);
+        metrics.healthScore = Math.max(0, Math.min(100, metrics.healthScore));
+      }
+      // Scrub sub-metrics for NaN/Infinity
+      if (metrics.prMetrics) {
+        for (const key of Object.keys(metrics.prMetrics) as Array<keyof typeof metrics.prMetrics>) {
+          if (!Number.isFinite(metrics.prMetrics[key])) {
+            console.warn(`[Data Integrity] prMetrics.${key} was ${metrics.prMetrics[key]}, setting prMetrics to null`);
+            metrics.prMetrics = null;
+            break;
+          }
+        }
+      }
+      if (metrics.activityMetrics) {
+        if (!Number.isFinite(metrics.activityMetrics.velocityChange) ||
+            !Number.isFinite(metrics.activityMetrics.commitsLast30Days)) {
+          console.warn(`[Data Integrity] activityMetrics contains NaN/Infinity, setting to null`);
+          metrics.activityMetrics = null;
+        }
+      }
+    } catch (metricsError) {
+      // Prompt 6.1: On metrics computation error, save partial results
+      console.error(`   ${logPrefix} — Step 6: Metrics computation failed (saving partial):`, metricsError);
+      metrics = {
+        busFactor: null, prMetrics: null, activityMetrics: null,
+        issueMetrics: null, churnMetrics: null, healthScore: 0,
+        riskFlags: [{ level: 'danger', title: 'COMPUTATION ERROR', detail: 'Metrics computation failed. Partial results may be available.' }],
+        aiAdvice: null,
+      };
+    }
     await job.updateProgress(70);
     console.log(`   ${logPrefix} — Step 6: Health score = ${metrics.healthScore} ✓`);
 
@@ -438,11 +592,17 @@ const worker = new Worker<JobData>(
       host: new URL(config.redisUrl).hostname || 'localhost',
       port: parseInt(new URL(config.redisUrl).port || '6379', 10),
     },
-    concurrency: 2,  // Process 2 jobs at the same time
+    concurrency: 2,           // Process 2 jobs at the same time
+    lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1
+    stalledInterval: 120_000, // Check for stalled jobs every 2 minutes — Prompt 7.1
+    maxStalledCount: 2,       // Restart stalled jobs up to 2 times — Prompt 7.1
     limiter: {
       max: 5,            // Max 5 jobs started...
       duration: 60_000,  // ...per 60 seconds (1 minute)
     },
+    // NOTE: Retry attempts (3x with exponential backoff) are set at enqueue time
+    // in the API server (POST /api/analyze), not at the worker level.
+    // BullMQ's default behavior + the 'failed' event handler handles terminal failures.
   },
 );
 
