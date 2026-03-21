@@ -11,6 +11,12 @@ import { config } from '../config';
 import { JobData, CommitNode, PRNode, IssueNode, AllMetrics } from '../types';
 import { generateAIAdvice } from '../ai/advice';
 
+// ── Real Metrics Engine imports (Prompt 8.1) ──
+import { computeBusFactor } from '../metrics/busFactor';
+import { computePRMetrics } from '../metrics/prMetrics';
+import { computeActivityMetrics } from '../metrics/activityMetrics';
+import { computeHealthScore } from '../metrics/healthScore';
+
 interface TimelineEntry {
   period: string;
   healthScore: number;
@@ -61,22 +67,46 @@ async function fetchRepoMetadata(client: GitHubClient, owner: string, repo: stri
   return { exists: true, isPrivate: false, stars: 0, language: null };
 }
 
-// TODO: Replace with real Metrics Engine (Prompt 8.x)
+// ── Real Metrics Engine (Prompt 8.1) ──
+// Replaces the computeAllMetrics() stub with actual pure-function calls.
+// Each metrics function is pure: no DB, no API, no side effects — just math.
 function computeAllMetrics(
-  _commits: CommitNode[],
-  _prs: PRNode[],
+  commits: CommitNode[],
+  prs: PRNode[],
   _issues: IssueNode[],
 ): AllMetrics {
-  console.log('   [STUB] computeAllMetrics()');
+  // 1. Bus Factor (contributor concentration)
+  const busFactor = computeBusFactor(commits);
+
+  // 2. PR Metrics (merge time statistics)
+  const prMetrics = computePRMetrics(prs);
+
+  // 3. Activity Metrics (velocity, weekly breakdown)
+  const activityMetrics = computeActivityMetrics(commits);
+
+  // 4. Issue Metrics & Churn Metrics — these are Prompt 8.2 (not yet implemented)
+  //    Pass null for now; healthScore handles null sub-metrics via weight redistribution.
+  const issueMetrics = null;
+  const churnMetrics = null;
+
+  // 5. Health Score (weighted composite, 0-100)
+  const healthScore = computeHealthScore({
+    activityMetrics,
+    contributorMetrics: busFactor,
+    prMetrics,
+    issueMetrics,
+    churnMetrics,
+  });
+
   return {
-    busFactor: null,
-    prMetrics: null,
-    activityMetrics: null,
-    issueMetrics: null,
-    churnMetrics: null,
-    healthScore: 0,
-    riskFlags: [],
-    aiAdvice: null,
+    busFactor,
+    prMetrics,
+    activityMetrics,
+    issueMetrics,
+    churnMetrics,
+    healthScore,
+    riskFlags: [],   // Populated in Step 9 by generateRiskFlags()
+    aiAdvice: null,   // Populated in Step 10 by generateAIAdvice()
   };
 }
 
