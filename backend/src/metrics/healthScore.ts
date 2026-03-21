@@ -21,6 +21,7 @@ export interface HealthScoreInput {
   prMetrics: PRMetricsResult | null;
   issueMetrics: IssueMetricsResult | null;
   churnMetrics: ChurnMetricsResult | null;
+  isArchived?: boolean; // Prompt 6.1: cap health score at 30 for archived repos
 }
 
 /**
@@ -108,9 +109,14 @@ function computeChurnScore(metrics: ChurnMetricsResult): number {
  * Final score: clamp to [0, 100], round to 1 decimal place.
  */
 export function computeHealthScore(input: HealthScoreInput): number {
-  // Build pairs of [score, baseWeight] for each non-null sub-metric
+  // Build pairs of [score, baseWeight] for each sub-metric.
+  // Prompt 6.1 overrides:
+  //   - PR null → fixed score of 50 (neutral, do NOT penalize)
+  //   - Issue null → fixed score of 75 (slightly positive — clean tracker)
+  //   - All other nulls → redistribute weight proportionally
   const scorePairs: Array<{ score: number; baseWeight: number }> = [];
 
+  // ── Activity ──
   if (input.activityMetrics !== null) {
     scorePairs.push({
       score: computeActivityScore(input.activityMetrics),
@@ -118,6 +124,7 @@ export function computeHealthScore(input: HealthScoreInput): number {
     });
   }
 
+  // ── Contributor ──
   if (input.contributorMetrics !== null) {
     scorePairs.push({
       score: computeContributorScore(input.contributorMetrics),
@@ -125,20 +132,35 @@ export function computeHealthScore(input: HealthScoreInput): number {
     });
   }
 
+  // ── PR: null → force score 50 (Prompt 6.1: "Do NOT penalize") ──
   if (input.prMetrics !== null) {
     scorePairs.push({
       score: computePRScore(input.prMetrics),
       baseWeight: BASE_WEIGHTS.pr,
     });
+  } else {
+    // Prompt 6.1: Repos with no PRs (< 10 merged PRs) → set PR sub-score to 50 (neutral)
+    scorePairs.push({
+      score: 50,
+      baseWeight: BASE_WEIGHTS.pr,
+    });
   }
 
+  // ── Issue: null → force score 75 (Prompt 6.1: "slightly positive") ──
   if (input.issueMetrics !== null) {
     scorePairs.push({
       score: computeIssueScore(input.issueMetrics),
       baseWeight: BASE_WEIGHTS.issue,
     });
+  } else {
+    // Prompt 6.1: Repos with no issues → set issue sub-score to 75
+    scorePairs.push({
+      score: 75,
+      baseWeight: BASE_WEIGHTS.issue,
+    });
   }
 
+  // ── Churn ──
   if (input.churnMetrics !== null) {
     scorePairs.push({
       score: computeChurnScore(input.churnMetrics),
@@ -146,18 +168,16 @@ export function computeHealthScore(input: HealthScoreInput): number {
     });
   }
 
-  // Edge case: all sub-metrics are null → return 0
+  // Edge case: all sub-metrics are null (only PR=50 and Issue=75 remain) → still compute
   if (scorePairs.length === 0) {
     return 0;
   }
 
-  // Redistribute weights proportionally among non-null metrics.
-  // Sum of base weights for available metrics:
+  // Redistribute weights proportionally among available metrics.
+  // PR and Issue always have entries (fixed scores when null),
+  // so only Activity, Contributor, and Churn can be missing.
   const availableWeightSum = scorePairs.reduce((sum, p) => sum + p.baseWeight, 0);
 
-  // Compute the weighted health score with redistributed weights.
-  // Each metric's effective weight = baseWeight / availableWeightSum
-  // (This proportionally distributes the missing weight.)
   let health = 0;
   for (const pair of scorePairs) {
     const effectiveWeight = pair.baseWeight / availableWeightSum;
@@ -167,6 +187,11 @@ export function computeHealthScore(input: HealthScoreInput): number {
   // Clamp to [0, 100] and round to 1 decimal place
   health = Math.max(0, Math.min(100, health));
   health = parseFloat(health.toFixed(1));
+
+  // Prompt 6.1: Archived repos → health score capped at 30
+  if (input.isArchived) {
+    health = Math.min(health, 30);
+  }
 
   return health;
 }

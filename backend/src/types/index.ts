@@ -30,6 +30,18 @@ export interface RateLimit {
   resetAt: string;
 }
 
+export interface RepoMetadata {
+  exists: boolean;
+  isPrivate: boolean;
+  isArchived: boolean;
+  isFork: boolean;
+  hasDefaultBranch: boolean;
+  stars: number;
+  forks: number;
+  language: string | null;
+  totalCommitCount: number;
+}
+
 export type RiskLevel = 'danger' | 'warning' | 'success' | 'info';
 
 export interface RiskFlag {

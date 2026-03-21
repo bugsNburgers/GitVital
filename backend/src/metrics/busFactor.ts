@@ -43,6 +43,12 @@ export function computeBusFactor(commits: CommitNode[]): BusFactorResult | null 
     return !isBot(login);
   });
 
+  // Prompt 6.1: Log how many bots were filtered
+  const filteredCount = commits.length - humanCommits.length;
+  if (filteredCount > 0) {
+    console.log(`[busFactor] Filtered ${filteredCount} bot commits out of ${commits.length} total`);
+  }
+
   // Edge case: zero commits after bot filtering → return null
   if (humanCommits.length === 0) {
     return null;
