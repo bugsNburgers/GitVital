@@ -16,6 +16,7 @@ import { computeBusFactor } from '../metrics/busFactor';
 import { computePRMetrics } from '../metrics/prMetrics';
 import { computeActivityMetrics } from '../metrics/activityMetrics';
 import { computeHealthScore } from '../metrics/healthScore';
+import { generateRiskFlags as generatePromptRiskFlags } from '../metrics/riskFlags';
 
 interface TimelineEntry {
   period: string;
@@ -205,9 +206,18 @@ function computeQuarterlyTimeline(commits: CommitNode[], prs: PRNode[], healthSc
   }];
 }
 
-// TODO: Replace with dedicated risk flag module (Prompt 8.3)
 function generateRiskFlags(metrics: AllMetrics): AllMetrics['riskFlags'] {
-  return metrics.riskFlags;
+  const promptFlags = generatePromptRiskFlags(metrics);
+  const merged = [...metrics.riskFlags];
+
+  for (const flag of promptFlags) {
+    const exists = merged.some((existing) => existing.level === flag.level && existing.title === flag.title);
+    if (!exists) {
+      merged.push(flag);
+    }
+  }
+
+  return merged;
 }
 
 async function setJobState(jobId: string, status: 'queued' | 'processing' | 'done' | 'failed', error?: string): Promise<void> {
@@ -380,7 +390,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
       }
       if (metrics.activityMetrics) {
         if (!Number.isFinite(metrics.activityMetrics.velocityChange) ||
-            !Number.isFinite(metrics.activityMetrics.commitsLast30Days)) {
+          !Number.isFinite(metrics.activityMetrics.commitsLast30Days)) {
           console.warn(`[Data Integrity] activityMetrics contains NaN/Infinity, setting to null`);
           metrics.activityMetrics = null;
         }
