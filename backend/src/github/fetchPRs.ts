@@ -38,8 +38,7 @@ export async function fetchPRs(
         const data: PullRequestsQueryResponse = await client.query<PullRequestsQueryResponse>(PR_QUERY, {
             owner,
             name: repo,
-            first: PAGE_SIZE,
-            after: cursor,
+            cursor,
         });
 
         if (data.rateLimit) {

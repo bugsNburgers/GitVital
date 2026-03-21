@@ -1,5 +1,5 @@
-export const REPO_QUERY = `
-query RepoData($owner: String!, $name: String!, $first: Int!, $after: String) {
+export const REPO_METADATA_QUERY = `
+query RepoData($owner: String!, $name: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     name
     stargazerCount
@@ -12,37 +12,32 @@ query RepoData($owner: String!, $name: String!, $first: Int!, $after: String) {
     defaultBranchRef {
       target {
         ... on Commit {
-          history(first: $first, after: $after) {
-            totalCount
-            pageInfo { hasNextPage endCursor }
+          history(first: 100, after: $cursor) {
+            pageInfo { hasNextPage, endCursor }
             nodes {
               committedDate
-              additions
-              deletions
               author {
                 user { login }
                 name
               }
+              additions
+              deletions
             }
           }
         }
       }
     }
   }
-  rateLimit { remaining resetAt }
+  rateLimit { remaining, resetAt }
 }
 `;
 
 export const PR_QUERY = `
-query RepoPRs($owner: String!, $name: String!, $first: Int!, $after: String) {
+query RepoPRs($owner: String!, $name: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
-    pullRequests(
-      first: $first
-      after: $after
-      states: MERGED
-      orderBy: { field: CREATED_AT, direction: DESC }
-    ) {
-      pageInfo { hasNextPage endCursor }
+    pullRequests(first: 100, after: $cursor, states: MERGED,
+                 orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage, endCursor }
       nodes {
         createdAt
         mergedAt
@@ -52,20 +47,16 @@ query RepoPRs($owner: String!, $name: String!, $first: Int!, $after: String) {
       }
     }
   }
-  rateLimit { remaining resetAt }
+  rateLimit { remaining, resetAt }
 }
 `;
 
 export const ISSUE_QUERY = `
-query RepoIssues($owner: String!, $name: String!, $first: Int!, $after: String) {
+query RepoIssues($owner: String!, $name: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
-    issues(
-      first: $first
-      after: $after
-      states: OPEN
-      orderBy: { field: CREATED_AT, direction: DESC }
-    ) {
-      pageInfo { hasNextPage endCursor }
+    issues(first: 100, after: $cursor, states: OPEN,
+           orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage, endCursor }
       nodes {
         createdAt
         closedAt
@@ -74,6 +65,9 @@ query RepoIssues($owner: String!, $name: String!, $first: Int!, $after: String) 
       }
     }
   }
-  rateLimit { remaining resetAt }
+  rateLimit { remaining, resetAt }
 }
 `;
+
+// Backward-compatible alias used by existing fetchers/wiring.
+export const REPO_QUERY = REPO_METADATA_QUERY;

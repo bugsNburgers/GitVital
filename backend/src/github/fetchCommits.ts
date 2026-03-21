@@ -1,5 +1,5 @@
 import { GitHubClient } from './client';
-import { REPO_QUERY } from './queries';
+import { REPO_METADATA_QUERY } from './queries';
 import type { CommitNode, RateLimit } from '../types';
 
 const PAGE_SIZE = 100;
@@ -41,11 +41,10 @@ export async function fetchCommits(
     let apiPointsConsumed = 0;
 
     while (results.length < effectiveLimit) {
-        const data: CommitsQueryResponse = await client.query<CommitsQueryResponse>(REPO_QUERY, {
+        const data: CommitsQueryResponse = await client.query<CommitsQueryResponse>(REPO_METADATA_QUERY, {
             owner,
             name: repo,
-            first: PAGE_SIZE,
-            after: cursor,
+            cursor,
         });
 
         if (data.rateLimit) {

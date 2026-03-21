@@ -38,8 +38,7 @@ export async function fetchIssues(
         const data: IssuesQueryResponse = await client.query<IssuesQueryResponse>(ISSUE_QUERY, {
             owner,
             name: repo,
-            first: PAGE_SIZE,
-            after: cursor,
+            cursor,
         });
 
         if (data.rateLimit) {

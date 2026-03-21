@@ -1,5 +1,5 @@
 import { GitHubClient, RepoNotFoundError } from './client';
-import { REPO_QUERY } from './queries';
+import { REPO_METADATA_QUERY } from './queries';
 import type { RateLimit, RepoMetadata } from '../types';
 
 interface RepoQueryResponse {
@@ -12,7 +12,19 @@ interface RepoQueryResponse {
         defaultBranchRef: {
             target: {
                 history: {
-                    totalCount: number;
+                    pageInfo: {
+                        hasNextPage: boolean;
+                        endCursor: string | null;
+                    };
+                    nodes: Array<{
+                        committedDate: string;
+                        additions: number;
+                        deletions: number;
+                        author: {
+                            user: { login: string } | null;
+                            name: string;
+                        };
+                    }>;
                 };
             } | null;
         } | null;
@@ -29,11 +41,10 @@ export async function fetchMetadata(
     repo: string,
 ): Promise<RepoMetadata> {
     try {
-        const data = await client.query<RepoQueryResponse>(REPO_QUERY, {
+        const data = await client.query<RepoQueryResponse>(REPO_METADATA_QUERY, {
             owner,
             name: repo,
-            first: 1,
-            after: null,
+            cursor: null,
         });
 
         const repository = data.repository;
@@ -62,7 +73,7 @@ export async function fetchMetadata(
             stars: repository.stargazerCount,
             forks: repository.forkCount,
             language: repository.primaryLanguage?.name ?? null,
-            totalCommitCount: history?.totalCount ?? 0,
+            totalCommitCount: history?.nodes?.length ?? 0,
         };
     } catch (error) {
         if (error instanceof RepoNotFoundError) {
