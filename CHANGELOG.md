@@ -40,3 +40,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - **`66e4608` (Issue 13.11) — Mitigated Cross-Site Scripting (XSS) within SVG Endpoints:** Discovered and intercepted an unescaped input validation flaw when outputting dynamic external content via raw XML documents. Coded a robust custom `escapeXml()` utility arrayed within `server/index.ts`. Wrapped all untrusted string interpolations (such as GitHub usernames) to neutralize maliciously crafted HTML entities or `<script>` injections before the browser is allowed to render the badge data over the DOM.
+
+- **`4f5ce2b`, `ea70936`, `dc765c4` Edge Cases & Failure Scenarios:** Substantially hardened the BullMQ worker pipelines against volatile GitHub API edge states. Implemented deep try/catch blocks allowing partial data ingestion (e.g., successful commits but failed PR fetches), zero-commit repository early-exits, and deleted-repository fallback handling for users. Forced strict mathematical overrides (`PR=50`, `Issue=75`) for missing sub-metrics and hard-capped archived repos at a max health score of 30.
