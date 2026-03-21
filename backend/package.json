@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@prisma/client": "^6.19.2",
+    "@prisma/client": "^7.5.0",
     "bullmq": "^5.71.0",
     "connect-redis": "^9.0.0",
     "cors": "^2.8.6",
