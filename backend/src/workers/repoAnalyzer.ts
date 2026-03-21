@@ -30,6 +30,7 @@ import { fetchCommits as fetchCommitsFromGitHub } from '../github/fetchCommits';
 import { fetchPRs as fetchPRsFromGitHub } from '../github/fetchPRs';
 import { fetchIssues as fetchIssuesFromGitHub } from '../github/fetchIssues';
 import { fetchMetadata as fetchRepoMetadata } from '../github/fetchMetadata';
+import { setRepoMetricsCache } from '../cache/repoCache';
 import { decryptAccessToken } from '../security/tokenCrypto';
 
 // API constraints from Planscribble.md
@@ -290,8 +291,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         aiAdvice: null,
       };
       // Cache the empty result and mark job done
-      const cacheKey = `repo:metrics:${owner}:${repo}`;
-      await redis.set(cacheKey, JSON.stringify(emptyResult), 'EX', config.cacheTtlSeconds);
+      await setRepoMetricsCache(owner, repo, emptyResult, config.cacheTtlSeconds);
       await setJobState(job.id!, 'done');
       await job.updateProgress(100);
       console.log(`   ${logPrefix} — Empty repo, analysis skipped ✓`);
@@ -481,13 +481,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // Step 13: Update Redis cache with fresh metrics
     // ──────────────────────────────────────────────
-    const cacheKey = `repo:metrics:${owner}:${repo}`;
-    await redis.set(
-      cacheKey,
-      JSON.stringify(metrics),
-      'EX',
-      config.cacheTtlSeconds, // Expires after 1 hour by default
-    );
+    await setRepoMetricsCache(owner, repo, metrics, config.cacheTtlSeconds);
     console.log(`   ${logPrefix} — Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
 
 

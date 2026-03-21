@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Unreleased` — Redis Cache Layer Module:** Added `backend/src/cache/repoCache.ts` to centralize repository metrics cache key creation (`repo:metrics:{owner}:{repo}`), TTL-aware fresh reads, stale/corrupt cache eviction, and 24-hour cache writes.
 - **`50a63d8` — Issue Metrics & Code Churn Engine:** Added pure metrics modules `backend/src/metrics/issueMetrics.ts` and `backend/src/metrics/churnMetrics.ts` to compute open issue backlog indicators (`openIssueCount`, `avgIssueAgeDays`, `unrespondedIssuePct`) and repo-level weekly churn (`avgWeeklyChurn`, `totalChurn`, `churnScore`) directly from paginated GitHub datasets.
 - **`c6cb2bf` — Deterministic Risk Flags Generator:** Added `backend/src/metrics/riskFlags.ts` implementing the full threshold ruleset for danger/warning/success/info signals (contributor concentration, PR slowdown, activity decline, issue neglect, positive health signals) and wired output merging behavior into the analysis pipeline.
 - **`ffa2ba5` — Metrics/GitHub Structure Completion:** Added the missing architecture-map modules `backend/src/metrics/timeline.ts`, `backend/src/github/queries.ts`, and `backend/src/github/fetchMetadata.ts`, and introduced `TimelineEntry` in shared typing to complete the required file-structure contract.
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`12a37a2` — PostgreSQL Relational Schema:** Orchestrated the complete database structure via Prisma. Established relational mappings across `users`, `repos`, `analysis_jobs`, `repo_metrics`, and `health_timeline`. Deployed highly optimized B-Tree indexing strategies and initialized a materialized view dedicated to offloading the heavy computational weight of the global Leaderboard leader generation.
 
 ### Changed
+- **`Unreleased` (Prompt 8.6) — Analyze/Worker Cache Flow Wiring:** Updated `POST /api/analyze` in `backend/src/server/index.ts` to check cache first and return cached JSON immediately on fresh hit, clear stale keys before queueing, and updated worker cache writes in `backend/src/workers/repoAnalyzer.ts` to use shared cache helpers for consistent key normalization and TTL handling.
 - **`7537339` (Prompt 8.5) — GraphQL Template Contract Alignment:** Refined shared query templates in `backend/src/github/queries.ts` to strict cursor-based signatures and explicit `rateLimit { remaining, resetAt }` fields, then aligned `fetchCommits.ts`, `fetchPRs.ts`, `fetchIssues.ts`, and `fetchMetadata.ts` call-sites to the unified variable contract.
 - **`ffa2ba5` (Prompt 8.4) — Worker/Fetcher Orchestration Refactor:** Rewired `backend/src/workers/repoAnalyzer.ts` and GitHub fetchers to consume the new metadata, timeline, and centralized query modules, reducing inline query duplication and tightening separation between API ingestion and pure metrics computation.
 - **`b0efb37` — Global Rebranding:** Executed a comprehensive namespace swap, renaming the project identity from "RepoPulse" to "GitVital" across all codebase references and configuration targets.

@@ -18,6 +18,7 @@ import { RedisStore } from 'connect-redis';
 // Our own files
 import { config } from '../config';
 import { redis } from '../config/redis';
+import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
 
@@ -470,6 +471,22 @@ app.post(
         }
       }
 
+      // Prompt 8.6: Check cache first and skip queue entirely on fresh hit.
+      const cachedMetrics = await getFreshRepoMetricsCache<unknown>(normalizedOwner, normalizedRepo);
+      if (cachedMetrics) {
+        res.status(200).json({
+          status: 'done',
+          source: 'cache',
+          cached: true,
+          cacheTtlSeconds: cachedMetrics.ttlSeconds,
+          metrics: cachedMetrics.value,
+        });
+        return;
+      }
+
+      // Prompt 8.6: Stale/missing cache path clears any old key before queueing.
+      await clearRepoMetricsCache(normalizedOwner, normalizedRepo);
+
       // Idempotency: reuse in-flight job for the same repo.
       const existingJob = await analysisQueue.getJob(jobId);
       if (existingJob) {
@@ -562,11 +579,10 @@ app.get(
       const repo = req.params.repo as string;
 
       // Step 1: Check the Redis cache first (fast path)
-      const cacheKey = `repo:metrics:${owner}:${repo}`;
-      const cached = await redis.get(cacheKey);
+      const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
 
       if (cached) {
-        res.json(JSON.parse(cached));
+        res.json(cached.value);
         return;
       }
 
@@ -641,10 +657,9 @@ app.get(
       // Fetch metrics for each repo from cache or DB
       const results = await Promise.all(
         repoPairs.map(async ({ owner, repo }) => {
-          const cacheKey = `repo:metrics:${owner}:${repo}`;
-          const cached = await redis.get(cacheKey);
+          const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
           if (cached) {
-            return { owner, repo, metrics: JSON.parse(cached) };
+            return { owner, repo, metrics: cached.value };
           }
           // TODO: Fetch from Prisma when schema is set up
           return { owner, repo, metrics: null };
