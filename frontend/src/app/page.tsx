@@ -59,6 +59,9 @@ export default function LandingPage() {
           <h1 className="text-5xl lg:text-7xl font-black tracking-tight mb-6 bg-gradient-to-b from-white to-slate-400 bg-clip-text text-transparent">
             Know Your Repo&apos;s <span className="text-primary">Real Vitality</span>
           </h1>
+           <p className="text-lg lg:text-xl text-slate-400 max-w-2xl mx-auto mb-12">
+           ThIs fronend is not functional yet, please visit back later !
+          </p>
           <p className="text-lg lg:text-xl text-slate-400 max-w-2xl mx-auto mb-12">
             AI-powered health scores and deep repository insights for engineering teams. Monitor codebase vitality, contributor dynamics, and merge velocity in real-time.
           </p>
