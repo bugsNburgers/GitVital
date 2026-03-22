@@ -1,26 +1,96 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ── Shared glass / glow utilities from all stitch pages ── */
+
+/* Landing page & Repo Dashboard */
+.glass {
+  background: rgba(76, 202, 240, 0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(76, 202, 240, 0.1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(76, 202, 240, 0.15);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Repo Dashboard darker glass variant */
+.glass-dark {
+  background: rgba(35, 63, 72, 0.4);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(76, 202, 240, 0.1);
 }
 
+/* Developer Leaderboard */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.gold-glow {
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.05) 0%, transparent 100%);
+}
+
+.silver-glow {
+  box-shadow: 0 0 20px rgba(192, 192, 192, 0.1);
+  background: linear-gradient(90deg, rgba(192, 192, 192, 0.05) 0%, transparent 100%);
+}
+
+.bronze-glow {
+  box-shadow: 0 0 20px rgba(205, 127, 50, 0.1);
+  background: linear-gradient(90deg, rgba(205, 127, 50, 0.05) 0%, transparent 100%);
+}
+
+/* Repo Comparison */
+.glass-compare {
+  background: rgba(25, 45, 51, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(76, 202, 240, 0.1);
+}
+
+.radar-grid {
+  background-image:
+    linear-gradient(rgba(76, 202, 240, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76, 202, 240, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+@keyframes scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  50%  { opacity: 0.5; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+.scanner-line {
+  height: 40%;
+  width: 100%;
+  background: linear-gradient(to bottom, transparent, rgba(76, 202, 240, 0.2), transparent);
+  position: absolute;
+  animation: scan 4s linear infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px #4ccaf0); }
+  50%       { filter: drop-shadow(0 0 10px #4ccaf0); }
+}
+
+.glow-point {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.cyber-axis {
+  stroke-dasharray: 4 2;
+}
+
+/* User Profile */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Font setup */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', sans-serif;
 }
