@@ -1,10 +1,21 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* ── Tailwind v4 theme tokens to match stitch Tailwind config ── */
+@theme {
+  --color-primary: #4ccaf0;
+  --color-background-light: #f6f8f8;
+  --color-background-dark: #101e22;
+  --color-secondary: #7209b7;
+  --font-display: "Inter", sans-serif;
+  --font-sans: "Inter", sans-serif;
+  --radius-DEFAULT: 0.5rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 9999px;
+}
 
 /* ── Shared glass / glow utilities from all stitch pages ── */
 
-/* Landing page & Repo Dashboard */
 .glass {
   background: rgba(76, 202, 240, 0.05);
   backdrop-filter: blur(12px);
@@ -15,7 +26,6 @@
   box-shadow: 0 0 20px rgba(76, 202, 240, 0.15);
 }
 
-/* Repo Dashboard darker glass variant */
 .glass-dark {
   background: rgba(35, 63, 72, 0.4);
   backdrop-filter: blur(12px);
@@ -93,4 +103,6 @@
 /* Font setup */
 body {
   font-family: 'Inter', sans-serif;
+  background-color: #101e22;
+  color: #f1f5f9;
 }
