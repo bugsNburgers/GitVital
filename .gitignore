@@ -29,7 +29,3 @@ coverage/
 /backend/prisma/migrations/*
 !/backend/prisma/migrations/migration_lock.toml
 
-# Project Docs (Optional - keeping the ones you had)
-# Guidesrc.md
-# Planscribble.md
-# xplain.md
