@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { StatsGrid } from "../components/StatsGrid";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -59,8 +60,8 @@ export default function LandingPage() {
           <h1 className="text-5xl lg:text-7xl font-black tracking-tight mb-6 bg-gradient-to-b from-white to-slate-400 bg-clip-text text-transparent">
             Know Your Repo&apos;s <span className="text-primary">Real Vitality</span>
           </h1>
-           <p className="text-lg lg:text-xl text-slate-400 max-w-2xl mx-auto mb-12">
-           ThIs fronend is not functional yet, please visit back later !
+          <p className="text-lg lg:text-xl text-slate-400 max-w-2xl mx-auto mb-12">
+            ThIs fronend is not functional yet, please visit back later !
           </p>
           <p className="text-lg lg:text-xl text-slate-400 max-w-2xl mx-auto mb-12">
             AI-powered health scores and deep repository insights for engineering teams. Monitor codebase vitality, contributor dynamics, and merge velocity in real-time.
@@ -96,38 +97,8 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-          {/* Metrics Row */}
-          <div id="metrics" className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-20">
-            {/* Metric 1 */}
-            <div className="glass p-8 rounded-2xl flex flex-col items-center text-center group hover:border-primary/30 transition-all">
-              <div className="relative size-24 mb-4 flex items-center justify-center">
-                <svg className="size-full -rotate-90" viewBox="0 0 36 36">
-                  <circle className="stroke-slate-800" cx="18" cy="18" fill="none" r="16" strokeWidth="3"></circle>
-                  <circle className="stroke-primary" cx="18" cy="18" fill="none" r="16" strokeDasharray="87, 100" strokeLinecap="round" strokeWidth="3"></circle>
-                </svg>
-                <span className="absolute text-xl font-bold">87</span>
-              </div>
-              <h3 className="text-slate-400 font-medium mb-1">Health Score</h3>
-              <p className="text-slate-100 text-sm opacity-60">Excellent repository status</p>
-            </div>
-            {/* Metric 2 */}
-            <div className="glass p-8 rounded-2xl flex flex-col items-center text-center group hover:border-primary/30 transition-all">
-              <div className="size-24 mb-4 bg-primary/10 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-4xl text-primary">groups</span>
-              </div>
-              <h3 className="text-4xl font-bold text-white mb-1">12</h3>
-              <p className="text-slate-400 font-medium">Bus Factor</p>
-              <p className="text-slate-100 text-sm opacity-60">Low risk knowledge distribution</p>
-            </div>
-            {/* Metric 3 */}
-            <div className="glass p-8 rounded-2xl flex flex-col items-center text-center group hover:border-primary/30 transition-all">
-              <div className="size-24 mb-4 bg-primary/10 rounded-full flex items-center justify-center">
-                <span className="material-symbols-outlined text-4xl text-primary">speed</span>
-              </div>
-              <h3 className="text-4xl font-bold text-white mb-1">4.2h</h3>
-              <p className="text-slate-400 font-medium">Avg PR Merge</p>
-              <p className="text-slate-100 text-sm opacity-60">Top 5% of similar projects</p>
-            </div>
+          <div id="metrics" className="mb-20">
+            <StatsGrid />
           </div>
           {/* Social Proof */}
           <div className="flex flex-col items-center gap-6">
