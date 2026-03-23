@@ -1,749 +1,1610 @@
 "use client";
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-
-// -----------------------------------------------------------------------------
-// INLINED STATS GRID COMPONENT
-// -----------------------------------------------------------------------------
-interface StatItem {
-  label: string;
-  targetValue: string;
-}
-
-const TOTAL_BOXES = 32;
-const TOP_GRID_ROWS = 1;
-const BOTTOM_GRID_ROWS = 1;
-
-function StatsGrid() {
-  const stats: StatItem[] = [
-    { label: "PROFILES", targetValue: "2,568,376" },
-    { label: "REPOSITORIES", targetValue: "8,046,382" },
-    { label: "ANALYSES", targetValue: "44,682,649" },
-    { label: "ACTIVE USERS", targetValue: "116,802,629,281" },
-    { label: "LOG EVENTS", targetValue: "464,421,007,363" },
-  ];
-
-  const [displayValues, setDisplayValues] = useState<string[]>(
-    stats.map(() => "0")
-  );
-  const [isVisible, setIsVisible] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const GRID_ROWS = TOP_GRID_ROWS + stats.length + BOTTOM_GRID_ROWS;
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-          }
-        });
-      },
-      { threshold: 0.3 }
-    );
-
-    if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!isVisible) return;
-
-    const duration = 2000;
-    const steps = 60;
-    const stepDuration = duration / steps;
-    let currentStep = 0;
-
-    const interval = setInterval(() => {
-      currentStep++;
-      const progress = currentStep / steps;
-
-      setDisplayValues(
-        stats.map((stat) => {
-          const targetNum = parseInt(stat.targetValue.replace(/,/g, ""));
-          const currentNum = Math.floor(targetNum * progress);
-          return currentNum.toLocaleString();
-        })
-      );
-
-      if (currentStep >= steps) {
-        clearInterval(interval);
-        setDisplayValues(stats.map((stat) => stat.targetValue));
-      }
-    }, stepDuration);
-
-    return () => clearInterval(interval);
-  }, [isVisible]);
-
-  const renderRow = (label: string, value: string, index: number) => {
-    const boxes = [];
-    const labelChars = label.split("");
-    const valueChars = value.split("");
-
-    const labelStart = 2;
-    const labelEnd = labelStart + labelChars.length;
-    const valueEnd = TOTAL_BOXES - 2;
-    const valueStart = valueEnd - valueChars.length;
-
-    for (let i = 0; i < TOTAL_BOXES; i++) {
-      let char = "";
-      let isLabel = false;
-      let isValue = false;
-
-      if (i >= labelStart && i < labelEnd) {
-        char = labelChars[i - labelStart];
-        isLabel = true;
-      } else if (i >= valueStart && i < valueEnd) {
-        char = valueChars[i - valueStart];
-        isValue = true;
-      }
-
-      boxes.push(
-        <div
-          key={i}
-          className={`
-            h-12 sm:h-16 min-w-0
-            flex items-center justify-center
-            transition-all duration-500
-            ${isVisible ? "bg-white/5 border border-white/10" : "bg-transparent border border-transparent"}
-            rounded-sm font-mono
-            ${isValue ? "text-white text-base sm:text-xl font-semibold" : isLabel ? "text-slate-400 text-sm sm:text-base" : ""}
-            ${!char ? "opacity-20" : ""}
-          `}
-          style={{ transitionDelay: isVisible ? `${index * 50 + i * 10}ms` : "0ms" }}
-        >
-          {char}
-        </div>
-      );
-    }
-    return boxes;
-  };
-
-  const renderEmptyRow = (rowKey: string) => {
-    return (
-      <div
-        key={rowKey}
-        className="relative z-10 grid gap-0.5"
-        style={{ gridTemplateColumns: `repeat(${TOTAL_BOXES}, minmax(0, 1fr))` }}
-      >
-        {Array.from({ length: TOTAL_BOXES }).map((_, i) => (
-          <div
-            key={`${rowKey}-${i}`}
-            className={`
-              h-12 sm:h-16 min-w-0 flex items-center justify-center transition-all duration-500
-              ${isVisible ? "bg-white/5 border border-white/10" : "bg-transparent border border-transparent"}
-              rounded-sm opacity-20
-            `}
-          ></div>
-        ))}
-      </div>
-    );
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      className="relative w-full min-h-[400px] sm:min-h-[560px] bg-transparent overflow-hidden flex items-center py-14"
-    >
-      <div className="relative z-10 space-y-0.5 flex w-full flex-col">
-        <div className="absolute inset-0 pointer-events-none z-0">
-          <div className="h-full w-full grid gap-0.5"
-            style={{ gridTemplateColumns: `repeat(${TOTAL_BOXES}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${GRID_ROWS}, minmax(0, 1fr))` }}
-          >
-            {Array.from({ length: TOTAL_BOXES * GRID_ROWS }).map((_, idx) => (
-              <span key={`guide-${idx}`} className="rounded-sm border border-white/5 bg-transparent"></span>
-            ))}
-          </div>
-        </div>
-        {Array.from({ length: TOP_GRID_ROWS }).map((_, idx) => renderEmptyRow(`top-row-${idx}`))}
-        {stats.map((stat, index) => (
-          <div key={index} className="relative z-10 grid gap-0.5" style={{ gridTemplateColumns: `repeat(${TOTAL_BOXES}, minmax(0, 1fr))` }}>
-            {renderRow(stat.label, displayValues[index], index)}
-          </div>
-        ))}
-        {Array.from({ length: BOTTOM_GRID_ROWS }).map((_, idx) => renderEmptyRow(`bottom-row-${idx}`))}
-      </div>
-    </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// HELPER COMPONENTS
-// -----------------------------------------------------------------------------
-function FadeIn({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
-  const [isVisible, setIsVisible] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.unobserve(entry.target);
-        }
-      },
-      { threshold: 0.1, rootMargin: "0px 0px -50px 0px" }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      className={`transition-all duration-[800ms] ease-out w-full ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"} ${className}`}
-      style={{ transitionDelay: `${delay}ms` }}
-    >
-      {children}
-    </div>
-  );
-}
-
-const GreenCheck = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-);
-
-// -----------------------------------------------------------------------------
-// MAIN PAGE COMPONENT
-// -----------------------------------------------------------------------------
-export default function GitVitalLanding() {
+export default function GitvitalLanding() {
   const router = useRouter();
-  const [repoQuery, setRepoQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("Analyze");
 
-  const handleAnalyze = () => {
-    if (!repoQuery) return;
-    const raw = repoQuery.trim().replace(/^https?:\/\/(www\.)?github\.com\//, "");
-    router.push(`/analyze?repo=${encodeURIComponent(raw)}`);
+  useEffect(() => {
+    // IntersectionObservers equivalent
+    const fadeEls = document.querySelectorAll('.fade-in');
+    const fadeObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); } });
+    }, { threshold: 0.12 });
+    fadeEls.forEach(el => fadeObserver.observe(el));
+
+    // Hero trigger
+    setTimeout(() => {
+      const el = document.getElementById('heroCard');
+      if (el) el.classList.add('visible');
+    }, 300);
+
+    // Counter animations
+    const counterEls = document.querySelectorAll('.stat-num[data-target]');
+    const counterObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const el = entry.target as HTMLElement;
+        const target = parseInt(el.dataset.target || '0');
+        const suffix = el.dataset.suffix || '';
+        const prefix = el.dataset.prefix || '';
+        const divisor = parseFloat(el.dataset.divisor || '1');
+        const duration = 1800;
+        const steps = 60;
+        const stepTime = duration / steps;
+        let current = 0;
+        const increment = target / steps;
+        const timer = setInterval(() => {
+          current += increment;
+          if (current >= target) {
+            current = target;
+            clearInterval(timer);
+          }
+          const display = divisor > 1 ? Math.floor(current / divisor) : Math.floor(current);
+          el.textContent = prefix + display + suffix;
+        }, stepTime);
+        counterObserver.unobserve(el);
+      });
+    }, { threshold: 0.5 });
+    counterEls.forEach(el => counterObserver.observe(el));
+    
+    // Marquee duplications
+    const tracks = document.querySelectorAll('.marquee-track, .testimonials-scroll-track');
+    tracks.forEach(t => {
+      const track = t as HTMLElement;
+      if (!track.dataset.copied) {
+        track.innerHTML += track.innerHTML;
+        track.dataset.copied = "true";
+      }
+    });
+
+    return () => {
+      fadeObserver.disconnect();
+      counterObserver.disconnect();
+    };
+  }, []);
+
+  const switchTab = (id: string, btn: HTMLElement) => {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id)?.classList.add('active');
+    btn.classList.add('active');
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleAnalyze();
+  const analyzeRepo = () => {
+    const el = document.getElementById('heroInput') as HTMLInputElement;
+    const val = el ? el.value.trim() : "";
+    if (val) {
+      router.push('/analyze?repo=' + encodeURIComponent(val));
+    }
   };
 
-  const featureTabs = [
-    {
-      id: "Analyze",
-      title: "Instant Repository Analysis",
-      desc: "GitVital scans deep commit history to measure bus factor, PR turnaround, commit velocity, and issue backlog.",
-      bullets: ["Bus factor detection", "PR turnaround times", "Activity trends"],
-      mockup: (
-        <div className="font-mono text-xs w-full">
-          <div className="text-zinc-500 mb-2">$ gitvital analyze facebook/react</div>
-          <div className="text-green-500 mb-1 flex gap-2"><GreenCheck /> Bus factor: 12 (Healthy)</div>
-          <div className="text-green-500 mb-1 flex gap-2"><GreenCheck /> PR Turnaround: 1.2d avg</div>
-          <div className="text-yellow-500 mb-1 flex gap-2"><span>⚠️</span> Issue Backlog: 642 open</div>
-          <div className="text-green-500 mb-1 flex gap-2"><GreenCheck /> Commit Velocity: +5%</div>
-          <div className="mt-4 text-violet-400">Analysis complete in 420ms</div>
-        </div>
-      )
-    },
-    {
-      id: "Score",
-      title: "Single Unified Score",
-      desc: "Get a single metric that represents the overall health and maintainability of your repository. Stop guessing from stars.",
-      bullets: ["0-100 objective score", "Benchmarked against top 1%", "Historical context"],
-      mockup: (
-        <div className="flex items-center justify-center w-full h-full pb-4">
-          <div className="relative flex items-center justify-center w-36 h-36 rounded-full border border-white/[0.06] shadow-[0_0_30px_rgba(34,197,94,0.1)]">
-            <svg className="absolute inset-0 w-full h-full transform -rotate-90">
-              <circle cx="72" cy="72" r="66" stroke="rgba(34,197,94,0.15)" strokeWidth="6" fill="transparent" />
-              <circle cx="72" cy="72" r="66" stroke="#22C55E" strokeWidth="6" fill="transparent" strokeDasharray="414" strokeDashoffset="49" className="transition-all duration-1000 ease-out" />
-            </svg>
-            <span className="text-5xl font-mono font-bold text-green-500">88</span>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: "Compare",
-      title: "Side-by-Side Comparison",
-      desc: "Weighing framework options? Instantly compare two repos based on pure maintenance health.",
-      bullets: ["Cross-repo ranking", "Component-level breakdown", "Winner identification"],
-      mockup: (
-        <div className="w-full text-xs sm:text-sm font-mono space-y-3">
-          <div className="flex justify-between border-b border-white/[0.06] pb-2 text-zinc-500 font-sans tracking-widest uppercase">
-            <span>Metric</span><span>React</span><span>Vue</span>
-          </div>
-          <div className="flex justify-between py-1 border-b border-white/[0.03]">
-             <span className="text-zinc-400">Health</span><span className="text-green-400">88</span><span className="text-green-400">85</span>
-          </div>
-          <div className="flex justify-between py-1 border-b border-white/[0.03]">
-             <span className="text-zinc-400">PR Speed</span><span className="text-green-400">1.2d</span><span className="text-yellow-400">3.4d</span>
-          </div>
-          <div className="flex justify-between py-1">
-             <span className="text-zinc-400">Bus Factor</span><span className="text-green-400">12</span><span className="text-red-400">2</span>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: "Timeline",
-      title: "Health Over Time",
-      desc: "Track how repo maintenance has evolved over the last year. Spot dying projects before you adopt them.",
-      bullets: ["Quarterly trends", "Velocity drops", "Contributor churn"],
-      mockup: (
-        <div className="w-full h-full flex flex-col justify-end pt-8">
-          <div className="flex items-end justify-between h-32 gap-3 px-2 border-b border-white/[0.06] pb-2 relative">
-            <div className="absolute top-10 left-0 w-full border-t border-white/[0.06] border-dashed"></div>
-            <div className="w-1/4 bg-violet-600/30 rounded-t h-[60%] hover:brightness-125 transition-all"></div>
-            <div className="w-1/4 bg-violet-600/50 rounded-t h-[75%] hover:brightness-125 transition-all"></div>
-            <div className="w-1/4 bg-violet-600/70 rounded-t h-[85%] hover:brightness-125 transition-all"></div>
-            <div className="w-1/4 bg-violet-600 rounded-t h-[95%] shadow-[0_0_15px_rgba(124,58,237,0.3)] hover:brightness-125 transition-all"></div>
-          </div>
-          <div className="flex justify-between text-[10px] text-zinc-500 px-2 mt-2 tracking-widest uppercase">
-            <span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: "Advise",
-      title: "AI-Powered Action Items",
-      desc: "Don't just stare at numbers. Get actionable AI advice on how to improve your repo's specific weaknesses.",
-      bullets: ["Context-aware tips", "Maintainer onboarding check", "Burnout risk alerts"],
-      mockup: (
-        <div className="w-full border border-violet-500/30 bg-violet-500/5 p-5 rounded-xl shadow-[0_0_30px_rgba(124,58,237,0.1)]">
-          <div className="flex items-center gap-2 text-violet-400 mb-3">
-             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z"/></svg>
-             <span className="text-xs font-semibold uppercase tracking-widest">AI Advice</span>
-          </div>
-          <p className="text-sm text-zinc-300 leading-relaxed italic">"Consider recruiting dedicated code-reviewers. PR velocity has dropped 24% despite a steady commit rate over the past two months."</p>
-          <button className="mt-4 text-xs font-medium bg-violet-600/20 text-violet-300 px-3 py-1 rounded-full border border-violet-500/30 hover:bg-violet-600/30 transition-colors">Apply Fixes →</button>
-        </div>
-      )
-    },
-  ];
-
-  const activeFeature = featureTabs.find(t => t.id === activeTab) || featureTabs[0];
+  const handleKeydown = (e: any) => {
+    if (e.key === 'Enter') analyzeRepo();
+  };
 
   return (
-    <div className="min-h-screen bg-[#0B0D0E] text-white selection:bg-violet-500/30 selection:text-white font-sans">
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes scroll {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .animate-scroll {
-          animation: scroll 35s linear infinite;
-        }
-        .animate-scroll:hover {
-          animation-play-state: paused;
-        }
-      `}} />
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-      {/* 1. NAVBAR */}
-      <nav className="fixed top-0 z-50 w-full h-[60px] backdrop-blur-md bg-[#0B0D0E]/80 border-b border-white/[0.05] transition-all">
-        <div className="max-w-6xl mx-auto px-6 h-full flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-green-500">
-              <path d="M22 12H18L15 21L9 3L6 12H2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="font-bold text-base tracking-tight text-white">GitVital</span>
-          </div>
-          <div className="hidden md:flex items-center gap-6">
-            <a href="#features" className="text-sm text-zinc-400 hover:text-white transition-colors duration-200">Features</a>
-            <a href="#compare" className="text-sm text-zinc-400 hover:text-white transition-colors duration-200">Compare</a>
-            <a href="#leaderboard" className="text-sm text-zinc-400 hover:text-white transition-colors duration-200">Leaderboard</a>
-            <a href="#docs" className="text-sm text-zinc-400 hover:text-white transition-colors duration-200">Docs</a>
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="hidden sm:block border border-white/10 rounded-full px-4 py-1.5 text-sm text-white hover:border-white/30 transition-colors duration-200">Login with GitHub</button>
-            <button className="bg-gradient-to-b from-violet-500 to-violet-600 hover:brightness-110 shadow-[0_0_20px_rgba(124,58,237,0.2)] rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-150 text-white">Try Free →</button>
-          </div>
-        </div>
-      </nav>
+  :root {
+    --bg: #080909;
+    --bg-surface: #0f1011;
+    --bg-card: #111314;
+    --bg-card-hover: #161819;
+    --border: rgba(255,255,255,0.055);
+    --border-hover: rgba(255,255,255,0.12);
+    --text: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --text-muted: #52525b;
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --yellow: #eab308;
+    --yellow-dim: rgba(234,179,8,0.12);
+    --violet: #7c3aed;
+    --violet-light: #a855f7;
+    --violet-dim: rgba(124,58,237,0.15);
+    --font: 'Geist', system-ui, sans-serif;
+    --mono: 'Geist Mono', monospace;
+  }
 
-      {/* 2. HERO SECTION */}
-      <section className="relative min-h-screen flex flex-col justify-center pt-24 pb-16 overflow-hidden">
-        {/* Subtle Radial Glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] opacity-60 pointer-events-none" style={{ backgroundImage: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,58,237,0.15), transparent)" }} />
-        
-        <FadeIn className="max-w-6xl mx-auto px-6 w-full text-center relative z-10 flex flex-col items-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 mb-6">
-            <span className="text-xs font-medium text-violet-400 tracking-wide">✦ Now with AI-Powered Advice</span>
-          </div>
-          
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.05] mb-6">
-            <span className="block text-white">Is your GitHub repo</span>
-            <span className="block">healthy or slowly <span className="bg-gradient-to-r from-violet-400 to-purple-400 bg-clip-text text-transparent">dying?</span></span>
-          </h1>
-          
-          <p className="text-zinc-400 text-base md:text-lg max-w-xl mx-auto mb-10 leading-relaxed font-normal">
-            GitVital scores any public GitHub repository across 6 health metrics — bus factor, PR speed, issue backlog, activity trend, contributor spread, and code churn — in under 60 seconds.
-          </p>
+  html { scroll-behavior: smooth; }
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8 w-full">
-            <button onClick={handleAnalyze} className="w-full sm:w-auto bg-gradient-to-b from-violet-500 to-violet-600 text-white rounded-lg px-6 py-3 font-medium shadow-[0_0_40px_rgba(124,58,237,0.3)] hover:brightness-110 transition-all duration-150">
-              Analyze a Repo →
-            </button>
-            <button className="w-full sm:w-auto border border-white/10 rounded-lg px-6 py-3 text-zinc-300 hover:bg-white/[0.03] transition-colors duration-200">
-              See Live Demo
-            </button>
-          </div>
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
 
-          <div className="w-full max-w-xl mx-auto relative group">
-            <input 
-              type="text" 
-              placeholder="github.com/facebook/react" 
-              className="w-full bg-[#111315] border border-white/10 rounded-lg px-4 py-4 pr-32 text-white placeholder:text-zinc-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 transition-all"
-              value={repoQuery}
-              onChange={(e) => setRepoQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <button 
-              onClick={handleAnalyze}
-              className="absolute right-2 top-2 bottom-2 bg-white/10 hover:bg-white/20 text-white rounded-md px-4 text-sm font-medium transition-colors"
-            >
-              Analyze →
-            </button>
-          </div>
-          <p className="text-xs text-zinc-600 mt-3 font-mono">Analyzes last 1,000 commits · 500 PRs · 500 Issues · Public repos only</p>
+  /* ─── NOISE TEXTURE OVERLAY ─── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.35;
+  }
 
-          {/* Hero mockup */}
-          <div className="mt-16 w-full max-w-2xl mx-auto bg-[#111315] border border-white/[0.06] rounded-xl p-4 sm:p-6 shadow-2xl relative">
-            {/* Mockup header */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/[0.06]">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded bg-white/5 border border-white/10 flex items-center justify-center">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.477 2 2 6.477 2 12C2 16.42 4.87 20.17 8.84 21.5C9.34 21.58 9.5 21.27 9.5 21C9.5 20.77 9.5 20.14 9.5 19.31C6.73 19.91 6.14 17.97 6.14 17.97C5.68 16.81 5.03 16.5 5.03 16.5C4.12 15.88 5.1 15.9 5.1 15.9C6.1 15.97 6.63 16.93 6.63 16.93C7.5 18.45 8.97 18.02 9.54 17.76C9.63 17.11 9.89 16.67 10.17 16.42C7.95 16.17 5.62 15.31 5.62 11.5C5.62 10.39 6.01 9.5 6.65 8.79C6.55 8.54 6.2 7.5 6.75 6.15C6.75 6.15 7.59 5.88 9.5 7.17C10.29 6.95 11.15 6.84 12 6.84C12.85 6.84 13.71 6.95 14.5 7.17C16.4 5.88 17.25 6.15 17.25 6.15C17.8 7.5 17.45 8.54 17.35 8.79C17.99 9.5 18.38 10.39 18.38 11.5C18.38 15.32 16.04 16.16 13.81 16.41C14.17 16.72 14.5 17.33 14.5 18.26C14.5 19.6 14.5 20.68 14.5 21C14.5 21.28 14.66 21.59 15.17 21.5C19.14 20.16 22 16.42 22 12C22 6.477 17.52 2 12 2Z"/></svg>
-                </div>
-                <span className="font-mono text-sm sm:text-base font-medium">facebook/react</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-zinc-500 text-xs sm:text-sm">Health Score</span>
-                <span className="text-green-500 font-mono text-xl sm:text-2xl font-bold">88<span className="text-sm text-green-500/50">/100</span></span>
-              </div>
-            </div>
-            {/* Metric Pills */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-left">
-              <div className="bg-[#0B0D0E] border border-white/[0.04] rounded-lg p-3">
-                 <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Bus Factor</div>
-                 <div className="text-sm font-mono text-white flex items-center justify-between">12 <span className="text-green-500">✅</span></div>
-              </div>
-              <div className="bg-[#0B0D0E] border border-white/[0.04] rounded-lg p-3">
-                 <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">PR Speed</div>
-                 <div className="text-sm font-mono text-white flex items-center justify-between">1.2d <span className="text-green-500">✅</span></div>
-              </div>
-              <div className="bg-[#0B0D0E] border border-white/[0.04] rounded-lg p-3">
-                 <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Activity</div>
-                 <div className="text-sm font-mono text-white flex items-center justify-between">+5% <span className="text-green-500">✅</span></div>
-              </div>
-              <div className="bg-[#0B0D0E] border border-white/[0.04] rounded-lg p-3">
-                 <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Issues</div>
-                 <div className="text-sm font-mono text-white flex items-center justify-between">642 <span className="text-yellow-500">⚠️</span></div>
-              </div>
-            </div>
-          </div>
-        </FadeIn>
-      </section>
+  /* ─── NAVBAR ─── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    height: 58px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    background: rgba(8,9,9,0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .logo-icon {
+    width: 26px;
+    height: 26px;
+    background: linear-gradient(135deg, var(--violet), var(--violet-light));
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    list-style: none;
+  }
+  .nav-links a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 450;
+    padding: 5px 11px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .nav-right { display: flex; align-items: center; gap: 8px; }
+  .btn-ghost {
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+  .btn-primary {
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--violet);
+    border: 1px solid rgba(124,58,237,0.5);
+    border-radius: 20px;
+    padding: 5px 16px;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary:hover { background: #6d28d9; box-shadow: 0 0 20px rgba(124,58,237,0.35); }
 
-      {/* 3. SOCIAL PROOF LOGOS MARQUEE */}
-      <section className="py-12 relative border-y border-white/[0.02] bg-[#0B0D0E]/50">
-        <div className="max-w-6xl mx-auto px-6 mb-6">
-          <h3 className="text-xs text-zinc-600 uppercase tracking-widest text-center">Trusted by developers at</h3>
-        </div>
-        
-        <div className="w-full overflow-hidden flex" style={{ maskImage: "linear-gradient(to right, transparent, black 10%, black 90%, transparent)", WebkitMaskImage: "linear-gradient(to right, transparent, black 10%, black 90%, transparent)" }}>
-          <div className="flex animate-scroll whitespace-nowrap items-center w-max">
-            {/* Logo Group */}
-            {['Google', 'Meta', 'Stripe', 'Vercel', 'Shopify', 'Linear', 'Notion', 'Figma', 'Supabase', 'PlanetScale'].map((logo, i) => (
-              <div key={`l1-${i}`} className="mx-8 text-zinc-500 font-medium text-lg tracking-tight select-none">{logo}</div>
-            ))}
-            {/* Duplicated for seamless loop */}
-            {['Google', 'Meta', 'Stripe', 'Vercel', 'Shopify', 'Linear', 'Notion', 'Figma', 'Supabase', 'PlanetScale'].map((logo, i) => (
-              <div key={`l2-${i}`} className="mx-8 text-zinc-500 font-medium text-lg tracking-tight select-none">{logo}</div>
-            ))}
-          </div>
-        </div>
-      </section>
+  /* ─── HERO ─── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 100px 24px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-glow {
+    position: absolute;
+    top: -20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 900px;
+    height: 600px;
+    background: radial-gradient(ellipse at center, rgba(124,58,237,0.13) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-glow-2 {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 700px;
+    height: 300px;
+    background: radial-gradient(ellipse at center, rgba(124,58,237,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-inner {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    max-width: 780px;
+    width: 100%;
+  }
+  .pill-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #a78bfa;
+    background: rgba(124,58,237,0.1);
+    border: 1px solid rgba(124,58,237,0.25);
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin-bottom: 28px;
+    letter-spacing: 0.01em;
+  }
+  .pill-badge span { width:5px; height:5px; border-radius:50%; background: var(--violet-light); display:inline-block; }
+  .hero h1 {
+    font-size: clamp(40px, 6.5vw, 76px);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.0;
+    color: var(--text);
+    margin-bottom: 22px;
+  }
+  .hero h1 .accent {
+    background: linear-gradient(135deg, #a78bfa 0%, #c084fc 50%, #e879f9 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero-sub {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    max-width: 520px;
+    margin: 0 auto 36px;
+    font-weight: 400;
+  }
+  .hero-input-wrap {
+    display: flex;
+    align-items: center;
+    max-width: 540px;
+    margin: 0 auto 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .hero-input-wrap:focus-within {
+    border-color: rgba(124,58,237,0.5);
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+  }
+  .hero-input-wrap input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    padding: 13px 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    min-width: 0;
+  }
+  .hero-input-wrap input::placeholder { color: var(--text-muted); }
+  .hero-input-wrap button {
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--violet);
+    border: none;
+    padding: 10px 18px;
+    margin: 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .hero-input-wrap button:hover { background: #6d28d9; }
+  .hero-limit-note {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    margin-bottom: 52px;
+  }
 
-      {/* 4. FEATURES SECTION */}
-      <section id="features" className="py-24 md:py-32">
-        <FadeIn className="max-w-6xl mx-auto px-6 flex flex-col items-center">
-          <div className="rounded-full border border-white/10 text-zinc-500 text-xs px-3 py-1 mb-8 uppercase tracking-widest font-medium">
-            WHAT GITVITAL MEASURES
-          </div>
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-center max-w-2xl mb-12 text-white">
-            Every signal that tells you if a repo is worth your time
-          </h2>
+  /* ─── HERO MOCKUP CARD ─── */
+  .hero-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 0;
+    max-width: 560px;
+    margin: 0 auto;
+    overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px var(--border);
+    position: relative;
+  }
+  .hero-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(124,58,237,0.4), transparent);
+  }
+  .card-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-dots { display:flex; gap:6px; }
+  .card-dots span { width:10px; height:10px; border-radius:50%; }
+  .dot-r { background: #ff5f57; }
+  .dot-y { background: #febc2e; }
+  .dot-g { background: #28c840; }
+  .card-title { font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+  .card-body { padding: 20px 20px 8px; }
+  .repo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .repo-name { font-family: var(--mono); font-size: 13px; color: var(--text); font-weight: 500; }
+  .score-badge {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--green);
+    line-height: 1;
+  }
+  .score-label { font-size: 11px; color: var(--text-muted); font-weight: 500; text-align: right; margin-top: 2px; }
+  .score-bar-wrap { margin-bottom: 18px; }
+  .score-bar-track { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+  .score-bar-fill {
+    height: 100%;
+    width: 88%;
+    background: linear-gradient(90deg, #22c55e, #86efac);
+    border-radius: 2px;
+    animation: barGrow 1.2s ease-out 0.5s both;
+  }
+  @keyframes barGrow { from { width: 0 } to { width: 88% } }
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .metric-pill {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+  }
+  .metric-pill .mp-val { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text); }
+  .metric-pill .mp-label { font-size: 9.5px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .metric-pill.green { border-color: rgba(34,197,94,0.2); }
+  .metric-pill.green .mp-val { color: var(--green); }
+  .metric-pill.yellow { border-color: rgba(234,179,8,0.2); }
+  .metric-pill.yellow .mp-val { color: var(--yellow); }
+  .flags-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px 18px; border-top: 1px solid var(--border); }
+  .flag {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .flag.success { background: var(--green-dim); color: var(--green); }
+  .flag.warn { background: var(--yellow-dim); color: var(--yellow); }
+  .flag.danger { background: var(--red-dim); color: var(--red); }
 
-          {/* Tab Switcher */}
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-full p-1 inline-flex gap-1 mb-10 overflow-x-auto max-w-full no-scrollbar">
-            {featureTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap ${
-                  activeTab === tab.id ? "bg-[#27272A] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                {tab.id}
-              </button>
-            ))}
-          </div>
+  /* ─── SECTION SHARED ─── */
+  section { padding: 96px 24px; }
+  .section-inner { max-width: 1120px; margin: 0 auto; }
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin-bottom: 20px;
+  }
+  .section-h2 {
+    font-size: clamp(28px, 3.5vw, 42px);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+    color: var(--text);
+    margin-bottom: 14px;
+  }
+  .section-sub {
+    font-size: 15px;
+    color: var(--text-secondary);
+    line-height: 1.65;
+    max-width: 480px;
+  }
 
-          {/* Tab Content Panel */}
-          <div className="w-full rounded-2xl border border-white/[0.06] bg-[#111315] p-6 md:p-10 flex flex-col md:flex-row gap-10 md:items-center min-h-[400px]">
-            <div key={activeFeature.id} className="w-full md:w-3/5 animate-[fadeIn_0.3s_ease-out]">
-              <h3 className="text-2xl font-bold text-white mb-4 tracking-tight">{activeFeature.title}</h3>
-              <p className="text-zinc-400 text-base leading-relaxed mb-8">{activeFeature.desc}</p>
-              
-              <ul className="space-y-4 mb-8">
-                {activeFeature.bullets.map((bullet, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm text-zinc-300">
-                    <GreenCheck />
-                    {bullet}
-                  </li>
-                ))}
-              </ul>
-              <button className="text-violet-400 text-sm font-medium hover:text-violet-300 transition-colors flex items-center gap-1 group">
-                Learn more 
-                <span className="transform group-hover:translate-x-1 transition-transform">→</span>
-              </button>
-            </div>
-            
-            <div key={activeFeature.id + "-mockup"} className="w-full md:w-2/5 h-64 md:h-80 bg-[#0B0D0E] rounded-xl border border-white/[0.06] p-6 flex flex-col relative overflow-hidden animate-[fadeIn_0.3s_ease-out] shadow-inner">
-              {activeFeature.mockup}
-            </div>
-          </div>
+  /* ─── MARQUEE LOGOS ─── */
+  .logos-section {
+    padding: 48px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .logos-label {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 28px;
+  }
+  .marquee-track {
+    display: flex;
+    gap: 0;
+    width: max-content;
+    animation: marquee 28s linear infinite;
+  }
+  .marquee-wrap {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+    mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  }
+  @keyframes marquee { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+  .logo-item {
+    padding: 0 32px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-item:hover { color: var(--text-secondary); }
 
-          {/* "Better than reading:" Strip */}
-          <div className="mt-12 w-full flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-6">
-            <span className="text-xs text-zinc-500 uppercase tracking-widest mr-2">Better than reading:</span>
-            <div className="flex flex-wrap justify-center gap-4">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-600 bg-white/5 px-2 py-1 rounded">⭐ Stars Count</span>
-              <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-600 bg-white/5 px-2 py-1 rounded">📅 Last Commit</span>
-              <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-600 bg-white/5 px-2 py-1 rounded">👁️ Manual Scanning</span>
-              <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-600 bg-white/5 px-2 py-1 rounded">🤞 Hoping for defaults</span>
-            </div>
-          </div>
-        </FadeIn>
-      </section>
+  /* ─── FEATURES TABS ─── */
+  .features-section {}
+  .tabs-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 40px;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+  }
+  .tabs-nav {
+    display: flex;
+    gap: 2px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+    flex-wrap: wrap;
+    align-self: flex-start;
+    margin-top: 8px;
+  }
+  .tab-btn {
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    padding: 7px 16px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: var(--text-secondary); }
+  .tab-btn.active { color: var(--text); background: rgba(255,255,255,0.07); }
+  .tab-panel {
+    display: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    animation: fadeIn 0.25s ease;
+  }
+  .tab-panel.active { display: grid; grid-template-columns: 1fr 1fr; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:translateY(0) } }
+  .tab-content { padding: 36px 36px; }
+  .tab-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--violet-light);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+  .tab-content h3 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+  .tab-content p { font-size: 14px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 20px; }
+  .tab-bullets { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px; }
+  .tab-bullets li {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tab-bullets li::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--violet-light);
+    flex-shrink: 0;
+  }
+  .tab-visual {
+    border-left: 1px solid var(--border);
+    background: var(--bg-surface);
+    padding: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 
-      {/* 5. BENTO GRID SECTION */}
-      <section className="py-24 md:py-32 border-t border-white/[0.02]">
-        <FadeIn className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-4">Everything you need to evaluate a repo</h2>
-            <p className="text-zinc-400 text-base">Integrated into your workflow. Instantly accessible.</p>
-          </div>
+  /* Tab visuals */
+  .terminal {
+    background: #0a0a0b;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .t-prompt { color: #3f3f46; }
+  .t-cmd { color: #e879f9; }
+  .t-key { color: #a78bfa; }
+  .t-val { color: #34d399; }
+  .t-warn { color: var(--yellow); }
+  .t-dim { color: #3f3f46; }
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-[250px]">
-            {/* Card 1: Embeddable Badge (span 2) */}
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 md:p-8 flex flex-col justify-between md:col-span-2 group hover:border-white/[0.12] transition-colors duration-300">
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2 tracking-tight">Embeddable Badges</h3>
-                <p className="text-sm text-zinc-400 max-w-sm">Show off your repo's health directly in your README. Auto-updates.</p>
-              </div>
-              <div className="bg-[#0B0D0E] border border-white/[0.06] rounded-lg p-4 font-mono text-xs flex items-center justify-between">
-                <span className="text-zinc-500 select-all">![GitVital](https://gitvital.com/badge/facebook/react)</span>
-                {/* Visual badge mockup */}
-                <div className="hidden sm:flex rounded overflow-hidden border border-[#52525B]">
-                  <div className="bg-[#52525B] px-2 py-1 text-white font-sans font-medium text-[10px]">GitVital</div>
-                  <div className="bg-green-600 px-2 py-1 text-white font-sans font-medium text-[10px]">Health: 88 ✅</div>
-                </div>
-              </div>
-            </div>
+  .score-display {
+    text-align: center;
+    width: 100%;
+  }
+  .big-score {
+    font-size: 72px;
+    font-weight: 900;
+    letter-spacing: -0.05em;
+    color: var(--green);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .big-score-label { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  .score-breakdown { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 220px; margin: 0 auto; }
+  .sb-row { display: flex; align-items: center; gap: 8px; }
+  .sb-label { font-size: 11px; color: var(--text-muted); width: 80px; text-align: right; flex-shrink: 0; font-family: var(--mono); }
+  .sb-track { flex: 1; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+  .sb-fill { height: 100%; border-radius: 3px; background: var(--green); }
 
-            {/* Card 2: Risk Flags (span 1) */}
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 md:p-8 flex flex-col overflow-hidden group hover:border-white/[0.12] transition-colors duration-300">
-              <h3 className="text-lg font-semibold text-white mb-2 tracking-tight">Risk Flags</h3>
-              <p className="text-sm text-zinc-400 mb-6">Spot single points of failure instantly.</p>
-              <div className="space-y-2 mt-auto">
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-md text-[11px] font-medium flex items-center gap-2 w-max">
-                  <span className="text-red-500">⚠️</span> Contributor Concentration
-                </div>
-                <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-3 py-1.5 rounded-md text-[11px] font-medium flex items-center gap-2 w-max translate-x-4">
-                  <span className="text-green-500">✅</span> Fast PR Reviews
-                </div>
-              </div>
-            </div>
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .compare-table th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; font-weight: 600; }
+  .compare-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-family: var(--mono); }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table .winner { color: var(--green); }
+  .compare-table .loser { color: var(--text-muted); }
+  .w-badge { font-size: 9px; color: var(--green); background: var(--green-dim); border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
 
-            {/* Card 3: Leaderboard (span 1) */}
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 md:p-8 flex flex-col group hover:border-white/[0.12] transition-colors duration-300">
-              <h3 className="text-lg font-semibold text-white mb-2 tracking-tight">Global Leaderboard</h3>
-              <p className="text-sm text-zinc-400">See where you stand.</p>
-              <div className="mt-auto bg-[#0B0D0E] border border-white/[0.06] rounded-xl p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-yellow-500 to-amber-200 flex items-center justify-center shadow-[0_0_15px_rgba(234,179,8,0.3)]">
-                  <span className="text-black font-bold text-sm">#142</span>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-white">Global Rank</div>
-                  <div className="text-[10px] text-zinc-500">Top 7% of repos</div>
-                </div>
-              </div>
-            </div>
+  .timeline-chart { width: 100%; }
+  .tl-header { font-size: 11px; color: var(--text-muted); margin-bottom: 12px; text-align: center; font-family: var(--mono); }
+  .tl-bars { display: flex; align-items: flex-end; gap: 8px; height: 80px; justify-content: center; }
+  .tl-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .tl-bar {
+    width: 28px;
+    border-radius: 4px 4px 0 0;
+    transition: opacity 0.2s;
+    cursor: default;
+    position: relative;
+  }
+  .tl-bar:hover { opacity: 0.8; }
+  .tl-qlabel { font-size: 9.5px; color: var(--text-muted); font-family: var(--mono); }
+  .tl-score { font-size: 10px; color: var(--text-secondary); font-family: var(--mono); }
 
-            {/* Card 5: Dev Health Score (span 2) */}
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 md:p-8 flex flex-col md:col-span-2 relative overflow-hidden group hover:border-white/[0.12] transition-colors duration-300">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-violet-500/10 blur-[60px] pointer-events-none rounded-full" />
-              <div className="relative z-10 flex flex-col h-full justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2 tracking-tight">Developer Health Score</h3>
-                  <p className="text-sm text-zinc-400 max-w-sm">Login with GitHub to analyze your own repos and track your personal maintainer score across all projects.</p>
-                </div>
-                <div className="flex gap-4 mt-6">
-                  <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs flex items-center gap-2">
-                    <span>🏃</span> <span className="font-medium">The Speedster</span>
-                  </div>
-                  <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs flex items-center gap-2 z-10">
-                    <span>🔒</span> <span className="font-medium">The Closer</span>
-                  </div>
-                  <div className="hidden sm:flex bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs items-center gap-2">
-                    <span className="text-amber-400">⭐</span> <span className="font-medium">OSS Hero</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* Card 6: API Limits (span 1 - implicitly placed, but let's make it explicitly span 1 full width or just a card) */}
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 md:p-8 flex flex-col group hover:border-white/[0.12] transition-colors duration-300 md:col-span-3">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                 <div>
-                   <h3 className="text-lg font-semibold text-white mb-2 tracking-tight">Transparent Limits</h3>
-                   <p className="text-sm text-zinc-400">We analyze what matters, with deep context.</p>
-                 </div>
-                 <div className="bg-[#0B0D0E] border border-white/[0.06] rounded-lg p-4 font-mono text-[11px] sm:text-xs text-zinc-500 w-full md:w-auto text-center md:text-left">
-                   1,000 commits · 500 PRs · 500 issues per analysis
-                 </div>
-              </div>
-            </div>
-          </div>
-        </FadeIn>
-      </section>
+  .ai-card {
+    background: var(--bg);
+    border: 1px solid rgba(124,58,237,0.25);
+    border-radius: 12px;
+    padding: 18px;
+    width: 100%;
+    box-shadow: 0 0 30px rgba(124,58,237,0.08);
+  }
+  .ai-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .ai-icon {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--violet), var(--violet-light));
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .ai-model { font-size: 11px; color: var(--text-muted); }
+  .ai-model strong { color: #a78bfa; font-weight: 600; }
+  .ai-text { font-size: 13px; color: var(--text-secondary); line-height: 1.65; font-style: italic; }
+  .ai-text strong { color: var(--text); font-style: normal; }
 
-      {/* 6. TESTIMONIALS */}
-      <section className="py-24 md:py-32">
-        <FadeIn className="max-w-6xl mx-auto px-6">
-          <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-center text-white mb-16">Loved by developers who care about code</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 hover:border-white/[0.12] transition-colors duration-200">
-               <p className="text-sm text-zinc-300 mb-6 leading-relaxed">"Pasted facebook/react URL and instantly knew it was safe to use as a dependency. Bus factor of 12, PRs merging in 1 day. Sold."</p>
-               <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow-inner">DK</div>
-                  <div>
-                    <div className="text-xs font-medium text-white">Devansh K.</div>
-                    <div className="text-[10px] text-zinc-500">@devanshk</div>
-                  </div>
-               </div>
-            </div>
-            
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 hover:border-white/[0.12] transition-colors duration-200">
-               <p className="text-sm text-zinc-300 mb-6 leading-relaxed">"The repo comparison feature is insane. Compared next.js vs nuxt in 10 seconds before starting a new project. Saved me hours."</p>
-               <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-xs font-bold text-white shadow-inner">PT</div>
-                  <div>
-                    <div className="text-xs font-medium text-white">Priya Tiwari</div>
-                    <div className="text-[10px] text-zinc-500">@priyatiwari</div>
-                  </div>
-               </div>
-            </div>
-            
-            <div className="bg-[#111315] border border-white/[0.06] rounded-xl p-6 hover:border-white/[0.12] transition-colors duration-200">
-               <p className="text-sm text-zinc-300 mb-6 leading-relaxed">"GitVital showed my side project had a bus factor of 1 (just me 😂). Good reality check before I tried to open source it officially."</p>
-               <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-xs font-bold text-white shadow-inner">RB</div>
-                  <div>
-                    <div className="text-xs font-medium text-white">Rohit Builds</div>
-                    <div className="text-[10px] text-zinc-500">@roh_builds</div>
-                  </div>
-               </div>
-            </div>
-          </div>
-        </FadeIn>
-      </section>
+  /* ─── BENTO GRID ─── */
+  .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: auto auto;
+    gap: 10px;
+  }
+  .bento-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .bento-card:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+  .bento-card.col-2 { grid-column: span 2; }
+  .bento-card .bc-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+  .bento-card .bc-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .bento-card .bc-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
 
-      {/* 7. LIVE STATS COUNTER */}
-      <section className="relative border-y border-white/[0.02] bg-[#0B0D0E]">
-        <StatsGrid />
-      </section>
+  .badge-embed {
+    display: inline-flex;
+    align-items: center;
+    background: #18181b;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 12px;
+    margin-top: 14px;
+  }
+  .badge-left { background: #27272a; padding: 4px 10px; color: var(--text-muted); }
+  .badge-right { padding: 4px 10px; color: var(--green); font-weight: 600; }
 
-      {/* 8. FINAL CTA */}
-      <section className="relative py-32 overflow-hidden flex flex-col items-center justify-center text-center">
-        <div className="absolute inset-0 top-1/2 -translate-y-1/2 w-full h-[600px] opacity-40 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle 600px at center, rgba(124,58,237,0.3), transparent)" }} />
-        
-        <FadeIn className="max-w-3xl mx-auto px-6 relative z-10 flex flex-col items-center">
-          <div className="rounded-full border border-white/10 text-white text-[10px] sm:text-xs px-4 py-1.5 mb-8 uppercase tracking-widest font-medium bg-white/5 backdrop-blur-sm">
-            GET STARTED FREE
-          </div>
-          <h2 className="text-5xl md:text-6xl font-bold tracking-tight text-white mb-6">Stop guessing. Start knowing.</h2>
-          <p className="text-zinc-400 text-lg md:text-xl mb-10 max-w-2xl">
-            Paste any GitHub URL. Get a full health report in under 60 seconds. Free forever for public repos.
-          </p>
-          
-          <div className="w-full max-w-xl mx-auto relative mb-4">
-            <input 
-              type="text" 
-              placeholder="github.com/facebook/react" 
-              className="w-full bg-[#111315]/80 backdrop-blur-md border border-white/20 rounded-lg px-5 py-5 pr-36 text-white text-lg placeholder:text-zinc-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all shadow-2xl"
-              value={repoQuery}
-              onChange={(e) => setRepoQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <button 
-              onClick={handleAnalyze}
-              className="absolute right-2 top-2 bottom-2 bg-gradient-to-b from-violet-500 to-violet-600 hover:brightness-110 text-white rounded-md px-6 font-medium transition-all shadow-[0_0_20px_rgba(124,58,237,0.4)]"
-            >
-              Analyze Now →
-            </button>
-          </div>
-          <p className="text-xs text-zinc-600 font-mono tracking-wide">No signup required for public repos</p>
-        </FadeIn>
-      </section>
+  .rank-display {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .rank-number {
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    line-height: 1;
+  }
+  .rank-meta { font-size: 13px; color: var(--text-muted); line-height: 1.4; }
+  .rank-meta strong { color: var(--violet-light); font-weight: 600; }
 
-      {/* 9. FOOTER */}
-      <footer className="border-t border-white/[0.06] pt-16 pb-8 bg-[#0B0D0E]">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-16">
-            <div className="flex flex-col gap-4">
-              <h4 className="text-sm font-semibold text-white mb-2">Product</h4>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Features</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Health Score</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Repo Compare</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Timeline</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">AI Advice</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Badges</a>
-            </div>
-            <div className="flex flex-col gap-4">
-              <h4 className="text-sm font-semibold text-white mb-2">Developers</h4>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Docs</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">API</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">GitHub</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Changelog</a>
-            </div>
-            <div className="flex flex-col gap-4">
-              <h4 className="text-sm font-semibold text-white mb-2">Compare</h4>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">vs. deps.dev</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">vs. Snyk</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">vs. manual review</a>
-            </div>
-            <div className="flex flex-col gap-4">
-              <h4 className="text-sm font-semibold text-white mb-2">Community</h4>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Discord</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Twitter/X</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">GitHub Discussions</a>
-            </div>
-            <div className="flex flex-col gap-4">
-              <h4 className="text-sm font-semibold text-white mb-2">Legal</h4>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Terms</a>
-              <a href="#" className="text-sm text-zinc-500 hover:text-white transition-colors">Fair Use</a>
-            </div>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-between pt-8 border-t border-white/[0.06] text-xs text-zinc-600">
-            <p>© 2025 GitVital. All rights reserved.</p>
-            <div className="flex items-center gap-2 mt-4 sm:mt-0 pt-2 sm:pt-0">
-               <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-               <span>All systems operational ↗</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+  .dev-profile-card { margin-top: 14px; }
+  .dev-score-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .dev-score-big { font-size: 42px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; }
+  .dev-score-big.green { color: var(--green); }
+  .dev-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .dev-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .dev-badge.earned { background: rgba(124,58,237,0.1); border-color: rgba(124,58,237,0.25); color: #a78bfa; }
+
+  .limits-card { font-family: var(--mono); margin-top: 14px; }
+  .limit-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .limit-row:last-child { border-bottom: none; }
+  .limit-key { color: var(--text-muted); }
+  .limit-val { color: var(--text); font-weight: 500; }
+
+  /* ─── TESTIMONIALS ─── */
+  .testimonials-section {}
+  .testimonials-header { text-align: center; margin-bottom: 48px; }
+  .testimonials-header .section-label { margin: 0 auto 20px; }
+  .testimonials-header .section-sub { margin: 0 auto; text-align: center; }
+  .testimonials-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .testimonial-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+    transition: border-color 0.2s;
+  }
+  .testimonial-card:hover { border-color: var(--border-hover); }
+  .t-quote { font-size: 13.5px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 16px; }
+  .t-author { display: flex; align-items: center; gap: 10px; }
+  .t-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .t-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .t-handle { font-size: 11.5px; color: var(--text-muted); font-family: var(--mono); }
+
+  /* scrolling row */
+  .testimonials-scroll-row {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+  }
+  .testimonials-scroll-track {
+    display: flex;
+    gap: 10px;
+    width: max-content;
+    animation: marquee2 40s linear infinite;
+  }
+  @keyframes marquee2 { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+  .t-mini {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    width: 260px;
+    flex-shrink: 0;
+  }
+  .t-mini-quote { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; margin-bottom: 10px; }
+  .t-mini-author { font-size: 11.5px; color: var(--text-muted); font-family: var(--mono); }
+
+  /* ─── STATS ─── */
+  .stats-section {
+    padding: 80px 24px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  .stat-item {
+    text-align: center;
+    padding: 0 24px;
+    border-right: 1px solid var(--border);
+  }
+  .stat-item:last-child { border-right: none; }
+  .stat-num {
+    font-size: 40px;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 6px;
+    font-family: var(--mono);
+  }
+  .stat-label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+
+  /* ─── FINAL CTA ─── */
+  .cta-section {
+    padding: 120px 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-glow {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 800px;
+    height: 400px;
+    background: radial-gradient(ellipse at center, rgba(124,58,237,0.18) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .cta-inner { position: relative; z-index: 1; }
+  .cta-inner .section-label { margin: 0 auto 20px; }
+  .cta-inner h2 {
+    font-size: clamp(36px, 5vw, 60px);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    margin-bottom: 16px;
+  }
+  .cta-inner p { font-size: 16px; color: var(--text-secondary); max-width: 460px; margin: 0 auto 36px; line-height: 1.65; }
+  .cta-note { font-size: 11.5px; color: var(--text-muted); margin-top: 12px; font-family: var(--mono); }
+
+  /* ─── FOOTER ─── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 56px 24px 32px;
+  }
+  .footer-inner { max-width: 1120px; margin: 0 auto; }
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1.5fr repeat(4, 1fr);
+    gap: 32px;
+    margin-bottom: 48px;
+  }
+  .footer-brand .logo { margin-bottom: 10px; }
+  .footer-brand p { font-size: 13px; color: var(--text-muted); line-height: 1.55; max-width: 200px; }
+  .footer-col h4 { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 14px; letter-spacing: -0.01em; }
+  .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .footer-col ul li a { font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color 0.15s; }
+  .footer-col ul li a:hover { color: var(--text-secondary); }
+  .footer-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .status-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--green);
+    font-size: 12.5px;
+    text-decoration: none;
+    transition: opacity 0.15s;
+  }
+  .status-dot:hover { opacity: 0.75; }
+  .status-dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; box-shadow: 0 0 6px var(--green); }
+
+  /* ─── SCROLL ANIMATIONS ─── */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(22px);
+    transition: opacity 0.65s ease, transform 0.65s ease;
+  }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+  .fade-in-delay-1 { transition-delay: 0.1s; }
+  .fade-in-delay-2 { transition-delay: 0.2s; }
+  .fade-in-delay-3 { transition-delay: 0.3s; }
+
+  /* ─── BETTER THAN STRIP ─── */
+  .better-than {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .bt-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+  .bt-item {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-family: var(--mono);
+    line-height: 1.5;
+  }
+
+  /* ─── LEARN MORE LINK ─── */
+  .learn-more {
+    font-size: 13px;
+    color: var(--violet-light);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: gap 0.15s;
+    font-weight: 500;
+  }
+  .learn-more:hover { gap: 7px; }
+
+  @media (max-width: 900px) {
+    .tab-panel.active { grid-template-columns: 1fr; }
+    .tab-visual { border-left: none; border-top: 1px solid var(--border); }
+    .bento-grid { grid-template-columns: 1fr 1fr; }
+    .bento-card.col-2 { grid-column: span 1; }
+    .testimonials-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: 1fr 1fr; gap: 24px; }
+    .stat-item { border-right: none; }
+    .footer-grid { grid-template-columns: 1fr 1fr; }
+    .metrics-row { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 600px) {
+    nav { padding: 0 16px; }
+    .nav-links { display: none; }
+    section { padding: 72px 16px; }
+    .bento-grid { grid-template-columns: 1fr; }
+    .tabs-header { flex-direction: column; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .footer-grid { grid-template-columns: 1fr; }
+    .hero-card { max-width: 100%; }
+  }
+` }} />
+
+
+
+<nav>
+  <div className="nav-inner">
+    <a href="#" className="logo">
+      <div className="logo-icon">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6"/>
+        </svg>
+      </div>
+      GitVital
+    </a>
+    <ul className="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#compare">Compare</a></li>
+      <li><a href="#leaderboard">Leaderboard</a></li>
+      <li><a href="#docs">Docs</a></li>
+    </ul>
+    <div className="nav-right">
+      <a href="#" className="btn-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        Login with GitHub
+      </a>
+      <a href="#" className="btn-primary">Analyze a Repo →</a>
     </div>
+  </div>
+</nav>
+
+
+<section className="hero">
+  <div className="hero-glow"></div>
+  <div className="hero-glow-2"></div>
+  <div className="hero-inner">
+    <div className="pill-badge"><span></span> Now with AI-Powered Repo Coaching</div>
+    <h1>Is your GitHub repo<br /><span className="accent">healthy or dying?</span></h1>
+    <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics — bus factor, PR speed, issue backlog, activity trend, contributor spread, and code churn — in under 60 seconds.</p>
+
+    <div className="hero-input-wrap">
+      <input type="text" placeholder="github.com/facebook/react" id="heroInput" />
+      <button onClick={analyzeRepo}>Analyze →</button>
+    </div>
+    <p className="hero-limit-note">Analyzes last 1,000 commits · 500 PRs · 500 issues · Public repos only</p>
+
+    
+    <div className="hero-card fade-in" id="heroCard">
+      <div className="card-topbar">
+        <div className="card-dots">
+          <span className="dot-r"></span>
+          <span className="dot-y"></span>
+          <span className="dot-g"></span>
+        </div>
+        <div className="card-title">gitvital — repo analysis</div>
+        <div style={{ width: '52px' }}></div>
+      </div>
+      <div className="card-body">
+        <div className="repo-header">
+          <div>
+            <div className="repo-name">facebook/react</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', fontFamily: 'var(--mono)' }}>Analyzed 1,000 commits · last 12 months</div>
+          </div>
+          <div>
+            <div className="score-badge">88</div>
+            <div className="score-label">/ 100 health</div>
+          </div>
+        </div>
+        <div className="score-bar-wrap">
+          <div className="score-bar-track"><div className="score-bar-fill"></div></div>
+        </div>
+        <div className="metrics-row">
+          <div className="metric-pill green">
+            <div className="mp-val">12</div>
+            <div className="mp-label">Bus Factor</div>
+          </div>
+          <div className="metric-pill green">
+            <div className="mp-val">1.2d</div>
+            <div className="mp-label">PR Speed</div>
+          </div>
+          <div className="metric-pill green">
+            <div className="mp-val">+5%</div>
+            <div className="mp-label">Velocity</div>
+          </div>
+          <div className="metric-pill yellow">
+            <div className="mp-val">642</div>
+            <div className="mp-label">Open Issues</div>
+          </div>
+        </div>
+      </div>
+      <div className="flags-row">
+        <span className="flag success">✅ Healthy Contributor Base</span>
+        <span className="flag success">⚡ Fast PR Reviews</span>
+        <span className="flag warn">⚠️ Large Issue Backlog</span>
+        <span className="flag success">📈 Growing Activity</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<div className="logos-section">
+  <div className="logos-label">Trusted by developers at</div>
+  <div className="marquee-wrap">
+    <div className="marquee-track" id="marqueeTrack">
+      <div className="logo-item">⬡ Google</div>
+      <div className="logo-item">◈ Meta</div>
+      <div className="logo-item">▲ Vercel</div>
+      <div className="logo-item">⊕ Stripe</div>
+      <div className="logo-item">◉ Shopify</div>
+      <div className="logo-item">◆ Linear</div>
+      <div className="logo-item">● Supabase</div>
+      <div className="logo-item">○ Notion</div>
+      <div className="logo-item">◇ Figma</div>
+      <div className="logo-item">⬡ PlanetScale</div>
+      <div className="logo-item">▣ Prisma</div>
+      <div className="logo-item">◈ Resend</div>
+      <div className="logo-item">⊗ Railway</div>
+      <div className="logo-item">◉ Turso</div>
+      
+      <div className="logo-item">⬡ Google</div>
+      <div className="logo-item">◈ Meta</div>
+      <div className="logo-item">▲ Vercel</div>
+      <div className="logo-item">⊕ Stripe</div>
+      <div className="logo-item">◉ Shopify</div>
+      <div className="logo-item">◆ Linear</div>
+      <div className="logo-item">● Supabase</div>
+      <div className="logo-item">○ Notion</div>
+      <div className="logo-item">◇ Figma</div>
+      <div className="logo-item">⬡ PlanetScale</div>
+      <div className="logo-item">▣ Prisma</div>
+      <div className="logo-item">◈ Resend</div>
+      <div className="logo-item">⊗ Railway</div>
+      <div className="logo-item">◉ Turso</div>
+    </div>
+  </div>
+</div>
+
+
+<section className="features-section" id="features">
+  <div className="section-inner">
+    <div className="tabs-header fade-in">
+      <div>
+        <div className="section-label">What GitVital Measures</div>
+        <h2 className="section-h2">Every signal that tells you<br />if a repo is worth your time</h2>
+        <p className="section-sub">Stop manually checking last commit dates and star counts. GitVital runs a full diagnostic on any public repo.</p>
+        <div className="better-than">
+          <span className="bt-label">Better than:</span>
+          <span className="bt-item">⭐ Star counts</span>
+          <span className="bt-item">📅 Last commit date</span>
+          <span className="bt-item">👁️ Scanning READMEs</span>
+          <span className="bt-item">🤞 Hoping for the best</span>
+        </div>
+      </div>
+      <div className="tabs-nav">
+        <button className="tab-btn active" onClick={(e) => switchTab('analyze', e.currentTarget)}>Analyze</button>
+        <button className="tab-btn" onClick={(e) => switchTab('score', e.currentTarget)}>Score</button>
+        <button className="tab-btn" onClick={(e) => switchTab('compare', e.currentTarget)}>Compare</button>
+        <button className="tab-btn" onClick={(e) => switchTab('timeline', e.currentTarget)}>Timeline</button>
+        <button className="tab-btn" onClick={(e) => switchTab('advise', e.currentTarget)}>Advise</button>
+      </div>
+    </div>
+
+    
+    <div className="tab-panel active" id="tab-analyze">
+      <div className="tab-content">
+        <div className="tab-label">Core Metrics</div>
+        <h3>Run a full health check on any public repo</h3>
+        <p>Paste any GitHub URL. GitVital queues a background analysis job, fetches up to 1,000 commits and 500 PRs via GitHub GraphQL, and computes 6 core metrics in under a minute.</p>
+        <ul className="tab-bullets">
+          <li>Bus factor — contributor concentration risk</li>
+          <li>PR turnaround — median and p90 merge time</li>
+          <li>Commit velocity — weekly decay or growth trend</li>
+          <li>Issue backlog — age, response rate, open count</li>
+        </ul>
+        <a href="#" className="learn-more">View all metrics →</a>
+      </div>
+      <div className="tab-visual">
+        <div className="terminal">
+          <div><span className="t-prompt">$ </span><span className="t-cmd">gitvital analyze</span> facebook/react</div>
+          <div className="t-dim">────────────────────────────</div>
+          <div><span className="t-key">✓ commits</span>   <span className="t-val">1,000 fetched</span></div>
+          <div><span className="t-key">✓ pull_reqs</span> <span className="t-val">500 fetched</span></div>
+          <div><span className="t-key">✓ issues</span>    <span className="t-val">500 fetched</span></div>
+          <div className="t-dim">────────────────────────────</div>
+          <div><span className="t-key">bus_factor</span>         <span className="t-val">12</span></div>
+          <div><span className="t-key">top_contrib_pct</span>    <span className="t-val">18.4%</span></div>
+          <div><span className="t-key">avg_pr_merge_hrs</span>   <span className="t-val">28.8h</span></div>
+          <div><span className="t-key">velocity_change</span>    <span className="t-val">+5.2%</span></div>
+          <div><span className="t-key">open_issues</span>        <span className="t-warn">642</span></div>
+          <div className="t-dim">────────────────────────────</div>
+          <div><span className="t-key">health_score</span>       <span className="t-val" style={{ fontWeight: '700' }}>88 / 100</span></div>
+        </div>
+      </div>
+    </div>
+
+    
+    <div className="tab-panel" id="tab-score">
+      <div className="tab-content">
+        <div className="tab-label">Health Score</div>
+        <h3>A single number that tells the whole story</h3>
+        <p>Five weighted sub-scores combine into one 0–100 health rating. Each weight is documented and reasoned — not arbitrary. Activity is king at 30%, contributor diversity follows at 25%.</p>
+        <ul className="tab-bullets">
+          <li>Activity (30%) — most reliable signal of a living project</li>
+          <li>Contributor diversity (25%) — directly affects sustainability</li>
+          <li>PR responsiveness (20%) — shows team engagement</li>
+          <li>Issue backlog (15%) + Code churn (10%)</li>
+        </ul>
+        <a href="#" className="learn-more">See the formula →</a>
+      </div>
+      <div className="tab-visual">
+        <div className="score-display">
+          <div className="big-score">88</div>
+          <div className="big-score-label">Health Score · facebook/react</div>
+          <div className="score-breakdown">
+            <div className="sb-row"><span className="sb-label">Activity</span><div className="sb-track"><div className="sb-fill" style={{ width: '92%' }}></div></div></div>
+            <div className="sb-row"><span className="sb-label">Contributors</span><div className="sb-track"><div className="sb-fill" style={{ width: '82%', background: '#a78bfa' }}></div></div></div>
+            <div className="sb-row"><span className="sb-label">PR Speed</span><div className="sb-track"><div className="sb-fill" style={{ width: '88%' }}></div></div></div>
+            <div className="sb-row"><span className="sb-label">Issues</span><div className="sb-track"><div className="sb-fill" style={{ width: '60%', background: 'var(--yellow)' }}></div></div></div>
+            <div className="sb-row"><span className="sb-label">Churn</span><div className="sb-track"><div className="sb-fill" style={{ width: '78%' }}></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+    <div className="tab-panel" id="tab-compare">
+      <div className="tab-content">
+        <div className="tab-label">Repo Comparison</div>
+        <h3>Side-by-side. Pick the healthier dependency</h3>
+        <p>Input two repos. GitVital queues both analysis jobs simultaneously and renders a comparison table the moment both complete — winner highlighted per metric.</p>
+        <ul className="tab-bullets">
+          <li>Evaluate competing libraries before adding a dependency</li>
+          <li>Compare your fork vs the upstream repo</li>
+          <li>Interview demo: pull up react vs vue live</li>
+        </ul>
+        <a href="#" className="learn-more">Try a comparison →</a>
+      </div>
+      <div className="tab-visual">
+        <table className="compare-table" style={{ width: '100%' }}>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>facebook/react</th>
+              <th>vuejs/vue</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Health Score</td>
+              <td className="winner">88 <span className="w-badge">WIN</span></td>
+              <td className="loser">81</td>
+            </tr>
+            <tr>
+              <td>Bus Factor</td>
+              <td className="winner">12 <span className="w-badge">WIN</span></td>
+              <td className="loser">7</td>
+            </tr>
+            <tr>
+              <td>PR Merge Time</td>
+              <td className="winner">1.2d <span className="w-badge">WIN</span></td>
+              <td className="loser">2.4d</td>
+            </tr>
+            <tr>
+              <td>Velocity</td>
+              <td className="winner">+5% <span className="w-badge">WIN</span></td>
+              <td className="loser">−8%</td>
+            </tr>
+            <tr>
+              <td>Open Issues</td>
+              <td className="loser">642</td>
+              <td className="winner">312 <span className="w-badge">WIN</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    
+    <div className="tab-panel" id="tab-timeline">
+      <div className="tab-content">
+        <div className="tab-label">Health Timeline</div>
+        <h3>Watch a repo's health change over time</h3>
+        <p>GitVital splits your already-fetched data into quarterly windows and computes a partial health score per period — showing you if a project is gaining momentum or slowly dying.</p>
+        <ul className="tab-bullets">
+          <li>4-quarter trend computed from existing fetch data (zero extra API calls)</li>
+          <li>Catch declining projects before you depend on them</li>
+          <li>Spot the exact quarter a maintainer went quiet</li>
+        </ul>
+        <a href="#" className="learn-more">See timeline →</a>
+      </div>
+      <div className="tab-visual">
+        <div className="timeline-chart" style={{ width: '100%' }}>
+          <div className="tl-header">Health Score Over Time · kubernetes/kubernetes</div>
+          <div className="tl-bars">
+            <div className="tl-bar-wrap">
+              <div className="tl-score">84</div>
+              <div className="tl-bar" style={{ height: '64px', background: 'linear-gradient(to top, #22c55e, #86efac)' }}></div>
+              <div className="tl-qlabel">Q1</div>
+            </div>
+            <div className="tl-bar-wrap">
+              <div className="tl-score">79</div>
+              <div className="tl-bar" style={{ height: '58px', background: 'linear-gradient(to top, #22c55e, #86efac)' }}></div>
+              <div className="tl-qlabel">Q2</div>
+            </div>
+            <div className="tl-bar-wrap">
+              <div className="tl-score">71</div>
+              <div className="tl-bar" style={{ height: '52px', background: 'linear-gradient(to top, #eab308, #fde047)' }}></div>
+              <div className="tl-qlabel">Q3</div>
+            </div>
+            <div className="tl-bar-wrap">
+              <div className="tl-score">65</div>
+              <div className="tl-bar" style={{ height: '44px', background: 'linear-gradient(to top, #ef4444, #fca5a5)', opacity: '0.9' }}></div>
+              <div className="tl-qlabel">Q4 ↓</div>
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '12px', fontFamily: 'var(--mono)' }}>⚠️ Declining project detected — Q3→Q4 drop of 6pts</div>
+        </div>
+      </div>
+    </div>
+
+    
+    <div className="tab-panel" id="tab-advise">
+      <div className="tab-content">
+        <div className="tab-label">AI-Powered Advice</div>
+        <h3>Not just data. A personal coaching session</h3>
+        <p>GitVital feeds your computed metrics into Gemini and generates personalized, actionable advice — not generic tips. It reads your actual numbers and tells you exactly what to improve.</p>
+        <ul className="tab-bullets">
+          <li>Prompt-engineered for developer context, not marketing copy</li>
+          <li>Stored alongside metrics — re-reads with every refresh</li>
+          <li>Turns a dashboard into a feedback loop</li>
+        </ul>
+        <a href="#" className="learn-more">See AI advice →</a>
+      </div>
+      <div className="tab-visual">
+        <div className="ai-card">
+          <div className="ai-header">
+            <div className="ai-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text)', fontWeight: '600' }}>GitVital AI</div>
+              <div className="ai-model">Powered by <strong>Gemini</strong></div>
+            </div>
+          </div>
+          <p className="ai-text">
+            Your repo's <strong>PR merge time of 14 days</strong> is dragging your score down significantly. This is the single highest-impact thing you can fix right now — even 20 minutes of review time each morning could cut this to under 5 days and push your health score above <strong>90/100</strong>. Your commit velocity is solid, don't let slow reviews undo it.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<section style={{ paddingTop: '0' }} id="leaderboard">
+  <div className="section-inner">
+    <div className="fade-in" style={{ marginBottom: '32px' }}>
+      <div className="section-label">Everything in one place</div>
+      <h2 className="section-h2">Everything you need to evaluate<br />a repo or a developer</h2>
+    </div>
+    <div className="bento-grid fade-in fade-in-delay-1">
+
+      
+      <div className="bento-card col-2">
+        <div className="bc-label">Embeddable Badge</div>
+        <div className="bc-title">Embed a live health badge in any README</div>
+        <div className="bc-desc">A URL that returns an SVG badge — color-coded green, yellow, or red based on current health score. Auto-updates with every analysis.</div>
+        <div className="badge-embed">
+          <span className="badge-left">GitVital</span>
+          <span className="badge-right">Health: 88 ✅</span>
+        </div>
+        <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-muted)', marginTop: '10px' }}>![GitVital](https://gitvital.com/badge/facebook/react)</div>
+      </div>
+
+      
+      <div className="bento-card">
+        <div className="bc-label">Risk Flags</div>
+        <div className="bc-title">Plain English warnings</div>
+        <div className="bc-desc">Pure if/else logic that reads smart.</div>
+        <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <span className="flag danger" style={{ width: 'fit-content' }}>⚠️ Contributor Concentration Risk</span>
+          <span className="flag warn" style={{ width: 'fit-content' }}>⚠️ PR Response Slow</span>
+          <span className="flag success" style={{ width: 'fit-content' }}>✅ Fast PR Reviews</span>
+          <span className="flag success" style={{ width: 'fit-content' }}>📈 Growing Activity</span>
+        </div>
+      </div>
+
+      
+      <div className="bento-card">
+        <div className="bc-label">Leaderboard</div>
+        <div className="bc-title">Your global rank</div>
+        <div className="bc-desc">Percentile ranking via PostgreSQL window functions.</div>
+        <div className="rank-display">
+          <div className="rank-number">#142</div>
+          <div className="rank-meta">globally<br /><strong>Top 7%</strong> of all developers</div>
+        </div>
+      </div>
+
+      
+      <div className="bento-card">
+        <div className="bc-label">GitHub OAuth</div>
+        <div className="bc-title">Login to unlock more</div>
+        <div className="bc-desc">Authenticate to analyze your own repos, track your developer score, and get personalized AI advice.</div>
+        <a href="#" className="btn-ghost" style={{ marginTop: '16px', display: 'inline-flex', borderRadius: '8px' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+          Login with GitHub
+        </a>
+      </div>
+
+      
+      <div className="bento-card col-2">
+        <div className="bc-label">Developer Health Score</div>
+        <div className="bc-title">Your repos, aggregated into one developer score</div>
+        <div className="bc-desc">Aggregate metrics across all your repos. Earn badges. Get ranked globally. Spotify Wrapped, but for your GitHub.</div>
+        <div className="dev-profile-card">
+          <div className="dev-score-row">
+            <div className="dev-score-big green">74</div>
+            <div>
+              <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: '600' }}>@yourusername</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Better than 90% of developers</div>
+            </div>
+          </div>
+          <div className="dev-badges">
+            <span className="dev-badge earned">🏃 The Speedster</span>
+            <span className="dev-badge earned">🔒 The Closer</span>
+            <span className="dev-badge earned">⭐ OSS Contributor</span>
+            <span className="dev-badge">🌱 Consistent Committer</span>
+            <span className="dev-badge">🧹 Issue Resolver</span>
+          </div>
+        </div>
+      </div>
+
+      
+      <div className="bento-card">
+        <div className="bc-label">Transparent Limits</div>
+        <div className="bc-title">No hidden constraints</div>
+        <div className="bc-desc">Always shown. Never hidden.</div>
+        <div className="limits-card">
+          <div className="limit-row"><span className="limit-key">max commits</span><span className="limit-val">1,000</span></div>
+          <div className="limit-row"><span className="limit-key">max pull reqs</span><span className="limit-val">500</span></div>
+          <div className="limit-row"><span className="limit-key">max issues</span><span className="limit-val">500</span></div>
+          <div className="limit-row"><span className="limit-key">time window</span><span className="limit-val">12 months</span></div>
+          <div className="limit-row"><span className="limit-key">visibility</span><span className="limit-val">public only</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<section className="testimonials-section">
+  <div className="section-inner">
+    <div className="testimonials-header fade-in">
+      <div className="section-label">Loved by developers</div>
+      <h2 className="section-h2">Developers who care about code quality</h2>
+      <p className="section-sub">Join developers who've stopped guessing and started knowing.</p>
+    </div>
+
+    <div className="testimonials-grid fade-in fade-in-delay-1">
+      <div className="testimonial-card">
+        <p className="t-quote">"Pasted facebook/react URL and instantly knew it was safe to use as a dependency. Bus factor of 12, PRs merging in 1 day. Sold in under 60 seconds."</p>
+        <div className="t-author">
+          <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: 'white' }}>DK</div>
+          <div>
+            <div className="t-name">Devansh Kumar</div>
+            <div className="t-handle">@devanshk_dev</div>
+          </div>
+        </div>
+      </div>
+      <div className="testimonial-card">
+        <p className="t-quote">"The repo comparison feature is genuinely impressive. Compared next.js vs nuxt in 10 seconds before starting a new project. Should've existed years ago."</p>
+        <div className="t-author">
+          <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', color: 'white' }}>PT</div>
+          <div>
+            <div className="t-name">Priya Tiwari</div>
+            <div className="t-handle">@priyatiwari_io</div>
+          </div>
+        </div>
+      </div>
+      <div className="testimonial-card">
+        <p className="t-quote">"GitVital showed my side project had a bus factor of 1 (just me 😂). Great reality check before open sourcing. Fixed it, now at 4. The AI advice was actually spot on."</p>
+        <div className="t-author">
+          <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #22c55e, #86efac)', color: '#052e16' }}>RB</div>
+          <div>
+            <div className="t-name">Rohan Builds</div>
+            <div className="t-handle">@roh_builds</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style={{ height: '16px' }}></div>
+    <div className="testimonials-scroll-row">
+      <div className="testimonials-scroll-track">
+        
+        <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">@aditya_raj · Backend Eng at Swiggy</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">@sara_codes · Full Stack Dev</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">@techleadmike · Staff Eng</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">@oss_maintainer</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">@niteshv · SDE-2 at Flipkart</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">@campus_sde · IIT Bombay</div></div>
+        
+        <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">@aditya_raj · Backend Eng at Swiggy</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">@sara_codes · Full Stack Dev</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">@techleadmike · Staff Eng</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">@oss_maintainer</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">@niteshv · SDE-2 at Flipkart</div></div>
+        <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">@campus_sde · IIT Bombay</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<div className="stats-section">
+  <div className="stats-grid">
+    <div className="stat-item fade-in">
+      <div className="stat-num" data-target="2000000" data-suffix="M+" data-divisor="1000000">0</div>
+      <div className="stat-label">Developers</div>
+    </div>
+    <div className="stat-item fade-in fade-in-delay-1">
+      <div className="stat-num" data-target="50000" data-suffix="K+" data-divisor="1000">0</div>
+      <div className="stat-label">Repos Analyzed</div>
+    </div>
+    <div className="stat-item fade-in fade-in-delay-2">
+      <div className="stat-num" data-target="500" data-suffix="ms" data-divisor="1">0</div>
+      <div className="stat-label">Avg Analysis Time</div>
+    </div>
+    <div className="stat-item fade-in fade-in-delay-3">
+      <div className="stat-num" data-target="999" data-suffix="%" data-prefix="99.">0</div>
+      <div className="stat-label">Uptime</div>
+    </div>
+  </div>
+</div>
+
+
+<section className="cta-section">
+  <div className="cta-glow"></div>
+  <div className="cta-inner fade-in">
+    <div className="section-label">Get started free</div>
+    <h2>Stop guessing.<br />Start knowing.</h2>
+    <p>Paste any GitHub URL. Get a full health report in under 60 seconds. Free forever for public repos.</p>
+    <div className="hero-input-wrap" style={{ maxWidth: '480px', margin: '0 auto 12px' }}>
+      <input type="text" placeholder="github.com/your-org/your-repo" />
+      <button onClick={analyzeRepo}>Analyze Now →</button>
+    </div>
+    <p className="cta-note">No signup required for public repos · Free forever</p>
+  </div>
+</section>
+
+
+<footer>
+  <div className="footer-inner">
+    <div className="footer-grid">
+      <div className="footer-brand">
+        <a href="#" className="logo">
+          <div className="logo-icon">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6"/>
+            </svg>
+          </div>
+          GitVital
+        </a>
+        <p style={{ marginTop: '10px' }}>GitHub repository health analytics. Know before you depend.</p>
+      </div>
+      <div className="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#">Health Score</a></li>
+          <li><a href="#">Repo Compare</a></li>
+          <li><a href="#">Timeline</a></li>
+          <li><a href="#">AI Advice</a></li>
+          <li><a href="#">Badges</a></li>
+          <li><a href="#">Leaderboard</a></li>
+        </ul>
+      </div>
+      <div className="footer-col">
+        <h4>Developers</h4>
+        <ul>
+          <li><a href="#">Docs</a></li>
+          <li><a href="#">API Reference</a></li>
+          <li><a href="#">GitHub</a></li>
+          <li><a href="#">Changelog</a></li>
+        </ul>
+      </div>
+      <div className="footer-col">
+        <h4>Community</h4>
+        <ul>
+          <li><a href="#">Discord</a></li>
+          <li><a href="#">Twitter / X</a></li>
+          <li><a href="#">GitHub Discussions</a></li>
+        </ul>
+      </div>
+      <div className="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Service</a></li>
+          <li><a href="#">Fair Use</a></li>
+        </ul>
+      </div>
+    </div>
+    <div className="footer-bottom">
+      <span>© 2025 GitVital. All rights reserved.</span>
+      <a href="#" className="status-dot">All systems operational ↗</a>
+    </div>
+  </div>
+</footer>
+
+
+
+    </>
   );
 }
