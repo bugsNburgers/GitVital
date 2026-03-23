@@ -6,8 +6,8 @@
   --color-background-light: #f6f8f8;
   --color-background-dark: #101e22;
   --color-secondary: #7209b7;
-  --font-display: "Inter", sans-serif;
-  --font-sans: "Inter", sans-serif;
+  --font-display: var(--font-inter);
+  --font-sans: var(--font-inter);
   --radius-DEFAULT: 0.5rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
@@ -70,9 +70,19 @@
 }
 
 @keyframes scan {
-  0%   { transform: translateY(-100%); opacity: 0; }
-  50%  { opacity: 0.5; }
-  100% { transform: translateY(100%); opacity: 0; }
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
 }
 
 .scanner-line {
@@ -84,8 +94,15 @@
 }
 
 @keyframes pulse-glow {
-  0%, 100% { filter: drop-shadow(0 0 2px #4ccaf0); }
-  50%       { filter: drop-shadow(0 0 10px #4ccaf0); }
+
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px #4ccaf0);
+  }
+
+  50% {
+    filter: drop-shadow(0 0 10px #4ccaf0);
+  }
 }
 
 .glow-point {
@@ -97,12 +114,18 @@
 }
 
 /* User Profile */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
 /* Font setup */
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   background-color: #101e22;
   color: #f1f5f9;
 }

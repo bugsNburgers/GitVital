@@ -106,10 +106,10 @@ export function StatsGrid() {
             h-16 min-w-0
             flex items-center justify-center
             transition-all duration-500
-            ${isVisible ? "bg-card/20 border border-cyan-500/20" : "bg-transparent border border-transparent"}
+            ${isVisible ? "bg-white/5 border border-white/10" : "bg-transparent border border-transparent"}
             rounded-sm
             font-mono
-            ${isValue ? "text-cyan-400 text-[clamp(1.2rem,2.3vw,2.1rem)] font-semibold" : isLabel ? "text-muted-foreground text-[clamp(1rem,1.6vw,1.5rem)]" : ""}
+            ${isValue ? "text-white text-[clamp(1.2rem,2.3vw,2.1rem)] font-semibold" : isLabel ? "text-slate-400 text-[clamp(1rem,1.6vw,1.5rem)]" : ""}
             ${!char ? "opacity-20" : ""}
           `}
                     style={{
@@ -138,7 +138,7 @@ export function StatsGrid() {
             h-16 min-w-0
             flex items-center justify-center
             transition-all duration-500
-            ${isVisible ? "bg-card/20 border border-cyan-500/20" : "bg-transparent border border-transparent"}
+            ${isVisible ? "bg-white/5 border border-white/10" : "bg-transparent border border-transparent"}
             rounded-sm opacity-20
           `}
                     ></div>
@@ -150,7 +150,7 @@ export function StatsGrid() {
     return (
         <div
             ref={containerRef}
-            className="relative w-full min-h-[560px] bg-background overflow-hidden flex items-center justify-center py-14 px-4"
+            className="relative w-full min-h-[560px] bg-black overflow-hidden flex items-center justify-center py-14 px-4"
         >
             {/* Stats content */}
             <div
@@ -164,7 +164,7 @@ export function StatsGrid() {
                         {Array.from({ length: TOTAL_BOXES * GRID_ROWS }).map((_, idx) => (
                             <span
                                 key={`guide-${idx}`}
-                                className="rounded-sm border border-cyan-500/8 bg-transparent"
+                                className="rounded-sm border border-white/5 bg-transparent"
                             ></span>
                         ))}
                     </div>
