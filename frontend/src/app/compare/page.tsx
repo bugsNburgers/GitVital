@@ -38,10 +38,8 @@ export default function RepoComparePage() {
         <header className="sticky top-0 z-50 w-full glass border-b border-primary/10 px-6 py-3 lg:px-20">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push("/")}>
-              <div className="bg-primary p-1.5 rounded-lg">
-                <span className="material-symbols-outlined text-background-dark font-bold">query_stats</span>
-              </div>
-              <h2 className="text-xl font-black tracking-tight text-slate-100 uppercase">Git Vital</h2>
+              <img alt="GitVital logo" className="h-11 w-auto md:h-12" src="/gitvital_logo_fixed.svg" />
+              <h2 className="text-2xl font-black tracking-tight text-slate-100 uppercase">Git Vital</h2>
             </div>
             <nav className="hidden md:flex items-center gap-8">
               <a className="text-sm font-semibold text-slate-400 hover:text-primary transition-colors flex items-center gap-2" href="/">

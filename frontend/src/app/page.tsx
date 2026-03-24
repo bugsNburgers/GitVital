@@ -186,6 +186,11 @@ export default function GitvitalLanding() {
     font-weight: 700;
     letter-spacing: -0.02em;
   }
+  .logo-mark {
+    height: 46px;
+    width: auto;
+    display: block;
+  }
   .logo-icon {
     width: 26px;
     height: 26px;
@@ -1062,6 +1067,9 @@ export default function GitvitalLanding() {
   @media (max-width: 600px) {
     nav { padding: 0 16px; }
     .nav-links { display: none; }
+    .logo-mark {
+      height: 40px;
+    }
     section { padding: 72px 16px; }
     .bento-grid { grid-template-columns: 1fr; }
     .tabs-header { flex-direction: column; }
@@ -1075,14 +1083,8 @@ export default function GitvitalLanding() {
 
       <nav>
         <div className="nav-inner">
-          <a href="/" className="logo">
-            <div className="logo-icon">
-              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6" />
-              </svg>
-            </div>
-            GitVital
+          <a href="/" className="logo" aria-label="GitVital Home">
+            <img src="/gitvital_logo_fixed.svg" alt="GitVital" className="logo-mark" />
           </a>
           <ul className="nav-links">
             <li><a href="#features">Features</a></li>
@@ -1119,7 +1121,7 @@ export default function GitvitalLanding() {
               </span>
             </span>
           </h1>
-          <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics — bus factor, PR speed, issue backlog, activity trend, contributor spread, and code churn — in under 60 seconds.</p>
+          <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics Bus factor, PR speed, Issue backlog, Activity trend, Contributor spread & Code churn -- in under 60 seconds.</p>
 
           <div className="hero-input-wrap">
             <input type="text" placeholder="github.com/facebook/react" id="heroInput" onKeyDown={(e) => handleKeydown(e, 'heroInput')} />
@@ -1721,14 +1723,8 @@ export default function GitvitalLanding() {
         <div className="footer-inner">
           <div className="footer-grid">
             <div className="footer-brand">
-              <a href="/" className="logo">
-                <div className="logo-icon">
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                    <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6" />
-                  </svg>
-                </div>
-                GitVital
+              <a href="/" className="logo" aria-label="GitVital Home">
+                <img src="/gitvital_logo_fixed.svg" alt="GitVital" className="logo-mark" />
               </a>
               <p style={{ marginTop: '10px' }}>GitHub repository health analytics. Know before you depend.</p>
             </div>

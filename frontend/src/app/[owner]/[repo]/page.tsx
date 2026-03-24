@@ -32,9 +32,9 @@ export default function RepoDashboardPage() {
       <nav className="sticky top-0 z-50 border-b border-primary/10 bg-background-dark/80 backdrop-blur-md px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-primary">
-              <span className="material-symbols-outlined text-3xl">pulse_alert</span>
-              <h1 className="text-xl font-extrabold tracking-tight">Git Vital</h1>
+            <div className="flex items-center gap-3 text-primary cursor-pointer" onClick={() => router.push("/")}>
+              <img alt="GitVital logo" className="h-11 w-auto md:h-12" src="/gitvital_logo_fixed.svg" />
+              <h1 className="text-2xl font-extrabold tracking-tight">Git Vital</h1>
             </div>
             <div className="h-6 w-[1px] bg-primary/20 mx-2"></div>
             <div className="flex items-center gap-2">
@@ -217,11 +217,10 @@ export default function RepoDashboardPage() {
               {(["12M", "6M", "30D"] as const).map((r) => (
                 <button
                   key={r}
-                  className={`px-3 py-1 text-xs font-bold rounded transition-all ${
-                    activeRange === r
+                  className={`px-3 py-1 text-xs font-bold rounded transition-all ${activeRange === r
                       ? "bg-primary text-background-dark"
                       : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                  }`}
+                    }`}
                   onClick={() => setActiveRange(r)}
                 >
                   {r}

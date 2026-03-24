@@ -75,9 +75,9 @@ export default function LeaderboardPage() {
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <div className="flex items-center gap-3 text-primary cursor-pointer" onClick={() => router.push("/")}>
-              <span className="material-symbols-outlined text-3xl font-bold">show_chart</span>
-              <h2 className="text-slate-900 dark:text-white text-xl font-black tracking-tight">Git Vital</h2>
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push("/")}>
+              <img alt="GitVital logo" className="h-11 w-auto md:h-12" src="/gitvital_logo_fixed.svg" />
+              <h2 className="text-slate-900 dark:text-white text-2xl font-black tracking-tight">Git Vital</h2>
             </div>
             <nav className="hidden md:flex items-center gap-6">
               <a className="text-slate-600 dark:text-slate-400 hover:text-primary transition-colors text-sm font-semibold" href="/">Explore</a>
@@ -209,8 +209,8 @@ export default function LeaderboardPage() {
                 <span
                   key={p}
                   className={`size-8 flex items-center justify-center rounded cursor-pointer text-sm font-bold transition-colors ${currentPage === p
-                      ? "bg-primary text-slate-900 font-black"
-                      : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                    ? "bg-primary text-slate-900 font-black"
+                    : "hover:bg-slate-100 dark:hover:bg-slate-800"
                     }`}
                   onClick={() => setCurrentPage(p)}
                 >

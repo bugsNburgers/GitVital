@@ -121,10 +121,8 @@ export default function UserProfilePage() {
         <header className="sticky top-0 z-50 glass border-b border-slate-200/10 px-4 md:px-8 py-3">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push("/")}>
-              <div className="bg-primary p-1.5 rounded-lg text-background-dark">
-                <span className="material-symbols-outlined block text-2xl font-bold">pulse_alert</span>
-              </div>
-              <h2 className="text-xl font-bold tracking-tight">Git Vital</h2>
+              <img alt="GitVital logo" className="h-11 w-auto md:h-12" src="/gitvital_logo_fixed.svg" />
+              <h2 className="text-2xl font-bold tracking-tight">Git Vital</h2>
             </div>
             <div className="flex flex-1 justify-center max-w-md mx-8">
               <div className="relative w-full group">
