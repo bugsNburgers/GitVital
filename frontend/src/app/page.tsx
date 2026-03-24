@@ -1,9 +1,11 @@
 "use client";
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function GitvitalLanding() {
   const router = useRouter();
+  const [isHealthy, setIsHealthy] = useState(false);
+  const [animKey, setAnimKey] = useState(0);
 
   useEffect(() => {
     // IntersectionObservers equivalent
@@ -47,7 +49,7 @@ export default function GitvitalLanding() {
       });
     }, { threshold: 0.5 });
     counterEls.forEach(el => counterObserver.observe(el));
-    
+
     // Marquee duplications
     const tracks = document.querySelectorAll('.marquee-track, .testimonials-scroll-track');
     tracks.forEach(t => {
@@ -58,9 +60,15 @@ export default function GitvitalLanding() {
       }
     });
 
+    const healthTimer = setInterval(() => {
+      setIsHealthy(prev => !prev);
+      setAnimKey(prev => prev + 1);
+    }, 4000);
+
     return () => {
       fadeObserver.disconnect();
       counterObserver.disconnect();
+      clearInterval(healthTimer);
     };
   }, []);
 
@@ -85,7 +93,8 @@ export default function GitvitalLanding() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
@@ -104,9 +113,9 @@ export default function GitvitalLanding() {
     --red-dim: rgba(239,68,68,0.12);
     --yellow: #eab308;
     --yellow-dim: rgba(234,179,8,0.12);
-    --violet: #7c3aed;
-    --violet-light: #a855f7;
-    --violet-dim: rgba(124,58,237,0.15);
+    --violet: #FF5E00;
+    --orange-light: #FFA066;
+    --orange-dim: rgba(255,94,0,0.15);
     --font: 'Geist', system-ui, sans-serif;
     --mono: 'Geist Mono', monospace;
   }
@@ -167,7 +176,7 @@ export default function GitvitalLanding() {
   .logo-icon {
     width: 26px;
     height: 26px;
-    background: linear-gradient(135deg, var(--violet), var(--violet-light));
+    background: linear-gradient(135deg, var(--violet), var(--orange-light));
     border-radius: 7px;
     display: flex;
     align-items: center;
@@ -214,7 +223,7 @@ export default function GitvitalLanding() {
     font-weight: 600;
     color: #fff;
     background: var(--violet);
-    border: 1px solid rgba(124,58,237,0.5);
+    border: 1px solid rgba(255,94,0,0.5);
     border-radius: 20px;
     padding: 5px 16px;
     cursor: pointer;
@@ -224,7 +233,7 @@ export default function GitvitalLanding() {
     align-items: center;
     gap: 6px;
   }
-  .btn-primary:hover { background: #6d28d9; box-shadow: 0 0 20px rgba(124,58,237,0.35); }
+  .btn-primary:hover { background: #D94E00; box-shadow: 0 0 20px rgba(255,94,0,0.35); }
 
   /* ─── HERO ─── */
   .hero {
@@ -244,8 +253,12 @@ export default function GitvitalLanding() {
     transform: translateX(-50%);
     width: 900px;
     height: 600px;
-    background: radial-gradient(ellipse at center, rgba(124,58,237,0.13) 0%, transparent 70%);
+    background: radial-gradient(ellipse at center, rgba(251,54,64,0.15) 0%, transparent 70%);
     pointer-events: none;
+    transition: background 0.8s ease;
+  }
+  .hero.healthy .hero-glow {
+    background: radial-gradient(ellipse at center, rgba(34,197,94,0.15) 0%, transparent 70%);
   }
   .hero-glow-2 {
     position: absolute;
@@ -254,8 +267,12 @@ export default function GitvitalLanding() {
     transform: translateX(-50%);
     width: 700px;
     height: 300px;
-    background: radial-gradient(ellipse at center, rgba(124,58,237,0.06) 0%, transparent 70%);
+    background: radial-gradient(ellipse at center, rgba(251,54,64,0.06) 0%, transparent 70%);
     pointer-events: none;
+    transition: background 0.8s ease;
+  }
+  .hero.healthy .hero-glow-2 {
+    background: radial-gradient(ellipse at center, rgba(34,197,94,0.06) 0%, transparent 70%);
   }
   .hero-inner {
     position: relative;
@@ -270,15 +287,15 @@ export default function GitvitalLanding() {
     gap: 6px;
     font-size: 11.5px;
     font-weight: 500;
-    color: #a78bfa;
-    background: rgba(124,58,237,0.1);
-    border: 1px solid rgba(124,58,237,0.25);
+    color: #FFB380;
+    background: rgba(255,94,0,0.1);
+    border: 1px solid rgba(255,94,0,0.25);
     border-radius: 20px;
     padding: 4px 12px;
     margin-bottom: 28px;
     letter-spacing: 0.01em;
   }
-  .pill-badge span { width:5px; height:5px; border-radius:50%; background: var(--violet-light); display:inline-block; }
+  .pill-badge span { width:5px; height:5px; border-radius:50%; background: var(--orange-light); display:inline-block; }
   .hero h1 {
     font-size: clamp(40px, 6.5vw, 76px);
     font-weight: 800;
@@ -288,10 +305,42 @@ export default function GitvitalLanding() {
     margin-bottom: 22px;
   }
   .hero h1 .accent {
-    background: linear-gradient(135deg, #a78bfa 0%, #c084fc 50%, #e879f9 100%);
+    background: linear-gradient(135deg, #FFB380 0%, #FFC7A6 50%, #FFDACC 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+  .status-scroller {
+    display: inline-grid;
+    height: 1.15em;
+    overflow: hidden;
+    vertical-align: bottom;
+  }
+  .status-scroller-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25em;
+    transform: translateY(0);
+  }
+  .status-scroller-inner.animating {
+    animation: scrollDownAnim 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  }
+  @keyframes scrollDownAnim {
+    0% { transform: translateY(calc(-1.15em - 0.25em)); }
+    100% { transform: translateY(0); }
+  }
+  .word {
+    height: 1.15em;
+    display: flex;
+    align-items: center;
+    line-height: 1;
+    padding-bottom: 0.1em;
+  }
+  .word.dying {
+    color: #fb3640;
+  }
+  .word.healthy {
+    color: var(--green);
   }
   .hero-sub {
     font-size: 16px;
@@ -313,8 +362,8 @@ export default function GitvitalLanding() {
     transition: border-color 0.2s, box-shadow 0.2s;
   }
   .hero-input-wrap:focus-within {
-    border-color: rgba(124,58,237,0.5);
-    box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+    border-color: rgba(255,94,0,0.5);
+    box-shadow: 0 0 0 3px rgba(255,94,0,0.1);
   }
   .hero-input-wrap input {
     flex: 1;
@@ -343,7 +392,7 @@ export default function GitvitalLanding() {
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .hero-input-wrap button:hover { background: #6d28d9; }
+  .hero-input-wrap button:hover { background: #D94E00; }
   .hero-limit-note {
     font-size: 11.5px;
     color: var(--text-muted);
@@ -368,7 +417,7 @@ export default function GitvitalLanding() {
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(124,58,237,0.4), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,94,0,0.4), transparent);
   }
   .card-topbar {
     display: flex;
@@ -567,7 +616,7 @@ export default function GitvitalLanding() {
   .tab-label {
     font-size: 10.5px;
     font-weight: 700;
-    color: var(--violet-light);
+    color: var(--orange-light);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     margin-bottom: 10px;
@@ -593,7 +642,7 @@ export default function GitvitalLanding() {
     content: '';
     width: 5px; height: 5px;
     border-radius: 50%;
-    background: var(--violet-light);
+    background: var(--orange-light);
     flex-shrink: 0;
   }
   .tab-visual {
@@ -617,8 +666,8 @@ export default function GitvitalLanding() {
     line-height: 1.8;
   }
   .t-prompt { color: #3f3f46; }
-  .t-cmd { color: #e879f9; }
-  .t-key { color: #a78bfa; }
+  .t-cmd { color: #FFDACC; }
+  .t-key { color: #FFB380; }
   .t-val { color: #34d399; }
   .t-warn { color: var(--yellow); }
   .t-dim { color: #3f3f46; }
@@ -667,22 +716,22 @@ export default function GitvitalLanding() {
 
   .ai-card {
     background: var(--bg);
-    border: 1px solid rgba(124,58,237,0.25);
+    border: 1px solid rgba(255,94,0,0.25);
     border-radius: 12px;
     padding: 18px;
     width: 100%;
-    box-shadow: 0 0 30px rgba(124,58,237,0.08);
+    box-shadow: 0 0 30px rgba(255,94,0,0.08);
   }
   .ai-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .ai-icon {
     width: 28px; height: 28px;
-    background: linear-gradient(135deg, var(--violet), var(--violet-light));
+    background: linear-gradient(135deg, var(--violet), var(--orange-light));
     border-radius: 7px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
   .ai-model { font-size: 11px; color: var(--text-muted); }
-  .ai-model strong { color: #a78bfa; font-weight: 600; }
+  .ai-model strong { color: #FFB380; font-weight: 600; }
   .ai-text { font-size: 13px; color: var(--text-secondary); line-height: 1.65; font-style: italic; }
   .ai-text strong { color: var(--text); font-style: normal; }
 
@@ -749,7 +798,7 @@ export default function GitvitalLanding() {
     line-height: 1;
   }
   .rank-meta { font-size: 13px; color: var(--text-muted); line-height: 1.4; }
-  .rank-meta strong { color: var(--violet-light); font-weight: 600; }
+  .rank-meta strong { color: var(--orange-light); font-weight: 600; }
 
   .dev-profile-card { margin-top: 14px; }
   .dev-score-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
@@ -765,7 +814,7 @@ export default function GitvitalLanding() {
     border: 1px solid var(--border);
     color: var(--text-secondary);
   }
-  .dev-badge.earned { background: rgba(124,58,237,0.1); border-color: rgba(124,58,237,0.25); color: #a78bfa; }
+  .dev-badge.earned { background: rgba(255,94,0,0.1); border-color: rgba(255,94,0,0.25); color: #FFB380; }
 
   .limits-card { font-family: var(--mono); margin-top: 14px; }
   .limit-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
@@ -871,7 +920,7 @@ export default function GitvitalLanding() {
     transform: translate(-50%, -50%);
     width: 800px;
     height: 400px;
-    background: radial-gradient(ellipse at center, rgba(124,58,237,0.18) 0%, transparent 70%);
+    background: radial-gradient(ellipse at center, rgba(255,94,0,0.18) 0%, transparent 70%);
     pointer-events: none;
   }
   .cta-inner { position: relative; z-index: 1; }
@@ -959,7 +1008,7 @@ export default function GitvitalLanding() {
   /* ─── LEARN MORE LINK ─── */
   .learn-more {
     font-size: 13px;
-    color: var(--violet-light);
+    color: var(--orange-light);
     text-decoration: none;
     display: inline-flex;
     align-items: center;
@@ -994,614 +1043,706 @@ export default function GitvitalLanding() {
 
 
 
-<nav>
-  <div className="nav-inner">
-    <a href="#" className="logo">
-      <div className="logo-icon">
-        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-          <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6"/>
-        </svg>
-      </div>
-      GitVital
-    </a>
-    <ul className="nav-links">
-      <li><a href="#features">Features</a></li>
-      <li><a href="#compare">Compare</a></li>
-      <li><a href="#leaderboard">Leaderboard</a></li>
-      <li><a href="#docs">Docs</a></li>
-    </ul>
-    <div className="nav-right">
-      <a href="#" className="btn-ghost">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-        Login with GitHub
-      </a>
-      <a href="#" className="btn-primary">Analyze a Repo →</a>
-    </div>
-  </div>
-</nav>
-
-
-<section className="hero">
-  <div className="hero-glow"></div>
-  <div className="hero-glow-2"></div>
-  <div className="hero-inner">
-    <div className="pill-badge"><span></span> Now with AI-Powered Repo Coaching</div>
-    <h1>Is your GitHub repo<br /><span className="accent">healthy or dying?</span></h1>
-    <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics — bus factor, PR speed, issue backlog, activity trend, contributor spread, and code churn — in under 60 seconds.</p>
-
-    <div className="hero-input-wrap">
-      <input type="text" placeholder="github.com/facebook/react" id="heroInput" />
-      <button onClick={analyzeRepo}>Analyze →</button>
-    </div>
-    <p className="hero-limit-note">Analyzes last 1,000 commits · 500 PRs · 500 issues · Public repos only</p>
-
-    
-    <div className="hero-card fade-in" id="heroCard">
-      <div className="card-topbar">
-        <div className="card-dots">
-          <span className="dot-r"></span>
-          <span className="dot-y"></span>
-          <span className="dot-g"></span>
-        </div>
-        <div className="card-title">gitvital — repo analysis</div>
-        <div style={{ width: '52px' }}></div>
-      </div>
-      <div className="card-body">
-        <div className="repo-header">
-          <div>
-            <div className="repo-name">facebook/react</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', fontFamily: 'var(--mono)' }}>Analyzed 1,000 commits · last 12 months</div>
-          </div>
-          <div>
-            <div className="score-badge">88</div>
-            <div className="score-label">/ 100 health</div>
-          </div>
-        </div>
-        <div className="score-bar-wrap">
-          <div className="score-bar-track"><div className="score-bar-fill"></div></div>
-        </div>
-        <div className="metrics-row">
-          <div className="metric-pill green">
-            <div className="mp-val">12</div>
-            <div className="mp-label">Bus Factor</div>
-          </div>
-          <div className="metric-pill green">
-            <div className="mp-val">1.2d</div>
-            <div className="mp-label">PR Speed</div>
-          </div>
-          <div className="metric-pill green">
-            <div className="mp-val">+5%</div>
-            <div className="mp-label">Velocity</div>
-          </div>
-          <div className="metric-pill yellow">
-            <div className="mp-val">642</div>
-            <div className="mp-label">Open Issues</div>
-          </div>
-        </div>
-      </div>
-      <div className="flags-row">
-        <span className="flag success">✅ Healthy Contributor Base</span>
-        <span className="flag success">⚡ Fast PR Reviews</span>
-        <span className="flag warn">⚠️ Large Issue Backlog</span>
-        <span className="flag success">📈 Growing Activity</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<div className="logos-section">
-  <div className="logos-label">Trusted by developers at</div>
-  <div className="marquee-wrap">
-    <div className="marquee-track" id="marqueeTrack">
-      <div className="logo-item">⬡ Google</div>
-      <div className="logo-item">◈ Meta</div>
-      <div className="logo-item">▲ Vercel</div>
-      <div className="logo-item">⊕ Stripe</div>
-      <div className="logo-item">◉ Shopify</div>
-      <div className="logo-item">◆ Linear</div>
-      <div className="logo-item">● Supabase</div>
-      <div className="logo-item">○ Notion</div>
-      <div className="logo-item">◇ Figma</div>
-      <div className="logo-item">⬡ PlanetScale</div>
-      <div className="logo-item">▣ Prisma</div>
-      <div className="logo-item">◈ Resend</div>
-      <div className="logo-item">⊗ Railway</div>
-      <div className="logo-item">◉ Turso</div>
-      
-      <div className="logo-item">⬡ Google</div>
-      <div className="logo-item">◈ Meta</div>
-      <div className="logo-item">▲ Vercel</div>
-      <div className="logo-item">⊕ Stripe</div>
-      <div className="logo-item">◉ Shopify</div>
-      <div className="logo-item">◆ Linear</div>
-      <div className="logo-item">● Supabase</div>
-      <div className="logo-item">○ Notion</div>
-      <div className="logo-item">◇ Figma</div>
-      <div className="logo-item">⬡ PlanetScale</div>
-      <div className="logo-item">▣ Prisma</div>
-      <div className="logo-item">◈ Resend</div>
-      <div className="logo-item">⊗ Railway</div>
-      <div className="logo-item">◉ Turso</div>
-    </div>
-  </div>
-</div>
-
-
-<section className="features-section" id="features">
-  <div className="section-inner">
-    <div className="tabs-header fade-in">
-      <div>
-        <div className="section-label">What GitVital Measures</div>
-        <h2 className="section-h2">Every signal that tells you<br />if a repo is worth your time</h2>
-        <p className="section-sub">Stop manually checking last commit dates and star counts. GitVital runs a full diagnostic on any public repo.</p>
-        <div className="better-than">
-          <span className="bt-label">Better than:</span>
-          <span className="bt-item">⭐ Star counts</span>
-          <span className="bt-item">📅 Last commit date</span>
-          <span className="bt-item">👁️ Scanning READMEs</span>
-          <span className="bt-item">🤞 Hoping for the best</span>
-        </div>
-      </div>
-      <div className="tabs-nav">
-        <button className="tab-btn active" onClick={(e) => switchTab('analyze', e.currentTarget)}>Analyze</button>
-        <button className="tab-btn" onClick={(e) => switchTab('score', e.currentTarget)}>Score</button>
-        <button className="tab-btn" onClick={(e) => switchTab('compare', e.currentTarget)}>Compare</button>
-        <button className="tab-btn" onClick={(e) => switchTab('timeline', e.currentTarget)}>Timeline</button>
-        <button className="tab-btn" onClick={(e) => switchTab('advise', e.currentTarget)}>Advise</button>
-      </div>
-    </div>
-
-    
-    <div className="tab-panel active" id="tab-analyze">
-      <div className="tab-content">
-        <div className="tab-label">Core Metrics</div>
-        <h3>Run a full health check on any public repo</h3>
-        <p>Paste any GitHub URL. GitVital queues a background analysis job, fetches up to 1,000 commits and 500 PRs via GitHub GraphQL, and computes 6 core metrics in under a minute.</p>
-        <ul className="tab-bullets">
-          <li>Bus factor — contributor concentration risk</li>
-          <li>PR turnaround — median and p90 merge time</li>
-          <li>Commit velocity — weekly decay or growth trend</li>
-          <li>Issue backlog — age, response rate, open count</li>
-        </ul>
-        <a href="#" className="learn-more">View all metrics →</a>
-      </div>
-      <div className="tab-visual">
-        <div className="terminal">
-          <div><span className="t-prompt">$ </span><span className="t-cmd">gitvital analyze</span> facebook/react</div>
-          <div className="t-dim">────────────────────────────</div>
-          <div><span className="t-key">✓ commits</span>   <span className="t-val">1,000 fetched</span></div>
-          <div><span className="t-key">✓ pull_reqs</span> <span className="t-val">500 fetched</span></div>
-          <div><span className="t-key">✓ issues</span>    <span className="t-val">500 fetched</span></div>
-          <div className="t-dim">────────────────────────────</div>
-          <div><span className="t-key">bus_factor</span>         <span className="t-val">12</span></div>
-          <div><span className="t-key">top_contrib_pct</span>    <span className="t-val">18.4%</span></div>
-          <div><span className="t-key">avg_pr_merge_hrs</span>   <span className="t-val">28.8h</span></div>
-          <div><span className="t-key">velocity_change</span>    <span className="t-val">+5.2%</span></div>
-          <div><span className="t-key">open_issues</span>        <span className="t-warn">642</span></div>
-          <div className="t-dim">────────────────────────────</div>
-          <div><span className="t-key">health_score</span>       <span className="t-val" style={{ fontWeight: '700' }}>88 / 100</span></div>
-        </div>
-      </div>
-    </div>
-
-    
-    <div className="tab-panel" id="tab-score">
-      <div className="tab-content">
-        <div className="tab-label">Health Score</div>
-        <h3>A single number that tells the whole story</h3>
-        <p>Five weighted sub-scores combine into one 0–100 health rating. Each weight is documented and reasoned — not arbitrary. Activity is king at 30%, contributor diversity follows at 25%.</p>
-        <ul className="tab-bullets">
-          <li>Activity (30%) — most reliable signal of a living project</li>
-          <li>Contributor diversity (25%) — directly affects sustainability</li>
-          <li>PR responsiveness (20%) — shows team engagement</li>
-          <li>Issue backlog (15%) + Code churn (10%)</li>
-        </ul>
-        <a href="#" className="learn-more">See the formula →</a>
-      </div>
-      <div className="tab-visual">
-        <div className="score-display">
-          <div className="big-score">88</div>
-          <div className="big-score-label">Health Score · facebook/react</div>
-          <div className="score-breakdown">
-            <div className="sb-row"><span className="sb-label">Activity</span><div className="sb-track"><div className="sb-fill" style={{ width: '92%' }}></div></div></div>
-            <div className="sb-row"><span className="sb-label">Contributors</span><div className="sb-track"><div className="sb-fill" style={{ width: '82%', background: '#a78bfa' }}></div></div></div>
-            <div className="sb-row"><span className="sb-label">PR Speed</span><div className="sb-track"><div className="sb-fill" style={{ width: '88%' }}></div></div></div>
-            <div className="sb-row"><span className="sb-label">Issues</span><div className="sb-track"><div className="sb-fill" style={{ width: '60%', background: 'var(--yellow)' }}></div></div></div>
-            <div className="sb-row"><span className="sb-label">Churn</span><div className="sb-track"><div className="sb-fill" style={{ width: '78%' }}></div></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    
-    <div className="tab-panel" id="tab-compare">
-      <div className="tab-content">
-        <div className="tab-label">Repo Comparison</div>
-        <h3>Side-by-side. Pick the healthier dependency</h3>
-        <p>Input two repos. GitVital queues both analysis jobs simultaneously and renders a comparison table the moment both complete — winner highlighted per metric.</p>
-        <ul className="tab-bullets">
-          <li>Evaluate competing libraries before adding a dependency</li>
-          <li>Compare your fork vs the upstream repo</li>
-          <li>Interview demo: pull up react vs vue live</li>
-        </ul>
-        <a href="#" className="learn-more">Try a comparison →</a>
-      </div>
-      <div className="tab-visual">
-        <table className="compare-table" style={{ width: '100%' }}>
-          <thead>
-            <tr>
-              <th>Metric</th>
-              <th>facebook/react</th>
-              <th>vuejs/vue</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Health Score</td>
-              <td className="winner">88 <span className="w-badge">WIN</span></td>
-              <td className="loser">81</td>
-            </tr>
-            <tr>
-              <td>Bus Factor</td>
-              <td className="winner">12 <span className="w-badge">WIN</span></td>
-              <td className="loser">7</td>
-            </tr>
-            <tr>
-              <td>PR Merge Time</td>
-              <td className="winner">1.2d <span className="w-badge">WIN</span></td>
-              <td className="loser">2.4d</td>
-            </tr>
-            <tr>
-              <td>Velocity</td>
-              <td className="winner">+5% <span className="w-badge">WIN</span></td>
-              <td className="loser">−8%</td>
-            </tr>
-            <tr>
-              <td>Open Issues</td>
-              <td className="loser">642</td>
-              <td className="winner">312 <span className="w-badge">WIN</span></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    
-    <div className="tab-panel" id="tab-timeline">
-      <div className="tab-content">
-        <div className="tab-label">Health Timeline</div>
-        <h3>Watch a repo's health change over time</h3>
-        <p>GitVital splits your already-fetched data into quarterly windows and computes a partial health score per period — showing you if a project is gaining momentum or slowly dying.</p>
-        <ul className="tab-bullets">
-          <li>4-quarter trend computed from existing fetch data (zero extra API calls)</li>
-          <li>Catch declining projects before you depend on them</li>
-          <li>Spot the exact quarter a maintainer went quiet</li>
-        </ul>
-        <a href="#" className="learn-more">See timeline →</a>
-      </div>
-      <div className="tab-visual">
-        <div className="timeline-chart" style={{ width: '100%' }}>
-          <div className="tl-header">Health Score Over Time · kubernetes/kubernetes</div>
-          <div className="tl-bars">
-            <div className="tl-bar-wrap">
-              <div className="tl-score">84</div>
-              <div className="tl-bar" style={{ height: '64px', background: 'linear-gradient(to top, #22c55e, #86efac)' }}></div>
-              <div className="tl-qlabel">Q1</div>
+      <nav>
+        <div className="nav-inner">
+          <a href="#" className="logo">
+            <div className="logo-icon">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6" />
+              </svg>
             </div>
-            <div className="tl-bar-wrap">
-              <div className="tl-score">79</div>
-              <div className="tl-bar" style={{ height: '58px', background: 'linear-gradient(to top, #22c55e, #86efac)' }}></div>
-              <div className="tl-qlabel">Q2</div>
+            GitVital
+          </a>
+          <ul className="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#compare">Compare</a></li>
+            <li><a href="#leaderboard">Leaderboard</a></li>
+            <li><a href="#docs">Docs</a></li>
+          </ul>
+          <div className="nav-right">
+            <a href="#" className="btn-ghost">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+              Login with GitHub
+            </a>
+            <a href="#" className="btn-primary">Analyze a Repo →</a>
+          </div>
+        </div>
+      </nav>
+
+
+      <section className={`hero ${isHealthy ? 'healthy' : ''}`}>
+        <div className="hero-glow"></div>
+        <div className="hero-glow-2"></div>
+        <div className="hero-inner">
+          <h1>Is your GitHub repo<br />
+            <span className="status-scroller">
+              <span className={`status-scroller-inner ${animKey > 0 ? 'animating' : ''}`} key={animKey}>
+                <span className={`word ${isHealthy ? 'healthy' : 'dying'}`}>
+                  {isHealthy ? 'healthy?' : 'dying?'}
+                </span>
+                <span className={`word ${isHealthy ? 'dying' : 'healthy'}`}>
+                  {isHealthy ? 'dying?' : 'healthy?'}
+                </span>
+              </span>
+            </span>
+          </h1>
+          <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics — bus factor, PR speed, issue backlog, activity trend, contributor spread, and code churn — in under 60 seconds.</p>
+
+          <div className="hero-input-wrap">
+            <input type="text" placeholder="github.com/facebook/react" id="heroInput" />
+            <button onClick={analyzeRepo}>Analyze →</button>
+          </div>
+          <p className="hero-limit-note">Analyzes last 1,000 commits · 500 PRs · 500 issues · Public repos only</p>
+
+
+          <div className="hero-card fade-in" id="heroCard">
+            <div className="card-topbar">
+              <div className="card-dots">
+                <span className="dot-r"></span>
+                <span className="dot-y"></span>
+                <span className="dot-g"></span>
+              </div>
+              <div className="card-title">gitvital — repo analysis</div>
+              <div style={{ width: '52px' }}></div>
             </div>
-            <div className="tl-bar-wrap">
-              <div className="tl-score">71</div>
-              <div className="tl-bar" style={{ height: '52px', background: 'linear-gradient(to top, #eab308, #fde047)' }}></div>
-              <div className="tl-qlabel">Q3</div>
+            <div className="card-body">
+              <div className="repo-header">
+                <div>
+                  <div className="repo-name">facebook/react</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', fontFamily: 'var(--mono)' }}>Analyzed 1,000 commits · last 12 months</div>
+                </div>
+                <div>
+                  <div className="score-badge">88</div>
+                  <div className="score-label">/ 100 health</div>
+                </div>
+              </div>
+              <div className="score-bar-wrap">
+                <div className="score-bar-track"><div className="score-bar-fill"></div></div>
+              </div>
+              <div className="metrics-row">
+                <div className="metric-pill green">
+                  <div className="mp-val">12</div>
+                  <div className="mp-label">Bus Factor</div>
+                </div>
+                <div className="metric-pill green">
+                  <div className="mp-val">1.2d</div>
+                  <div className="mp-label">PR Speed</div>
+                </div>
+                <div className="metric-pill green">
+                  <div className="mp-val">+5%</div>
+                  <div className="mp-label">Velocity</div>
+                </div>
+                <div className="metric-pill yellow">
+                  <div className="mp-val">642</div>
+                  <div className="mp-label">Open Issues</div>
+                </div>
+              </div>
             </div>
-            <div className="tl-bar-wrap">
-              <div className="tl-score">65</div>
-              <div className="tl-bar" style={{ height: '44px', background: 'linear-gradient(to top, #ef4444, #fca5a5)', opacity: '0.9' }}></div>
-              <div className="tl-qlabel">Q4 ↓</div>
+            <div className="flags-row">
+              <span className="flag success">✅ Healthy Contributor Base</span>
+              <span className="flag success">⚡ Fast PR Reviews</span>
+              <span className="flag warn">⚠️ Large Issue Backlog</span>
+              <span className="flag success">📈 Growing Activity</span>
             </div>
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '12px', fontFamily: 'var(--mono)' }}>⚠️ Declining project detected — Q3→Q4 drop of 6pts</div>
+        </div>
+      </section>
+
+
+      <div className="logos-section">
+        <div className="logos-label">Trusted by developers at</div>
+        <div className="marquee-wrap">
+          <div className="marquee-track" id="marqueeTrack">
+            <div className="logo-item">⬡ Google</div>
+            <div className="logo-item">◈ Meta</div>
+            <div className="logo-item">▲ Vercel</div>
+            <div className="logo-item">⊕ Stripe</div>
+            <div className="logo-item">◉ Shopify</div>
+            <div className="logo-item">◆ Linear</div>
+            <div className="logo-item">● Supabase</div>
+            <div className="logo-item">○ Notion</div>
+            <div className="logo-item">◇ Figma</div>
+            <div className="logo-item">⬡ PlanetScale</div>
+            <div className="logo-item">▣ Prisma</div>
+            <div className="logo-item">◈ Resend</div>
+            <div className="logo-item">⊗ Railway</div>
+            <div className="logo-item">◉ Turso</div>
+
+            <div className="logo-item">⬡ Google</div>
+            <div className="logo-item">◈ Meta</div>
+            <div className="logo-item">▲ Vercel</div>
+            <div className="logo-item">⊕ Stripe</div>
+            <div className="logo-item">◉ Shopify</div>
+            <div className="logo-item">◆ Linear</div>
+            <div className="logo-item">● Supabase</div>
+            <div className="logo-item">○ Notion</div>
+            <div className="logo-item">◇ Figma</div>
+            <div className="logo-item">⬡ PlanetScale</div>
+            <div className="logo-item">▣ Prisma</div>
+            <div className="logo-item">◈ Resend</div>
+            <div className="logo-item">⊗ Railway</div>
+            <div className="logo-item">◉ Turso</div>
+          </div>
         </div>
       </div>
-    </div>
 
-    
-    <div className="tab-panel" id="tab-advise">
-      <div className="tab-content">
-        <div className="tab-label">AI-Powered Advice</div>
-        <h3>Not just data. A personal coaching session</h3>
-        <p>GitVital feeds your computed metrics into Gemini and generates personalized, actionable advice — not generic tips. It reads your actual numbers and tells you exactly what to improve.</p>
-        <ul className="tab-bullets">
-          <li>Prompt-engineered for developer context, not marketing copy</li>
-          <li>Stored alongside metrics — re-reads with every refresh</li>
-          <li>Turns a dashboard into a feedback loop</li>
-        </ul>
-        <a href="#" className="learn-more">See AI advice →</a>
-      </div>
-      <div className="tab-visual">
-        <div className="ai-card">
-          <div className="ai-header">
-            <div className="ai-icon">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            </div>
+
+      <section className="features-section" id="features">
+        <div className="section-inner">
+          <div className="tabs-header fade-in">
             <div>
-              <div style={{ fontSize: '12px', color: 'var(--text)', fontWeight: '600' }}>GitVital AI</div>
-              <div className="ai-model">Powered by <strong>Gemini</strong></div>
+              <div className="section-label">What GitVital Measures</div>
+              <h2 className="section-h2">Every signal that tells you<br />if a repo is worth your time</h2>
+              <p className="section-sub">Stop manually checking last commit dates and star counts. GitVital runs a full diagnostic on any public repo.</p>
+              <div className="better-than">
+                <span className="bt-label">Better than:</span>
+                <span className="bt-item">⭐ Star counts</span>
+                <span className="bt-item">📅 Last commit date</span>
+                <span className="bt-item">👁️ Scanning READMEs</span>
+                <span className="bt-item">🤞 Hoping for the best</span>
+              </div>
+            </div>
+            <div className="tabs-nav">
+              <button className="tab-btn active" onClick={(e) => switchTab('analyze', e.currentTarget)}>Analyze</button>
+              <button className="tab-btn" onClick={(e) => switchTab('score', e.currentTarget)}>Score</button>
+              <button className="tab-btn" onClick={(e) => switchTab('compare', e.currentTarget)}>Compare</button>
+              <button className="tab-btn" onClick={(e) => switchTab('timeline', e.currentTarget)}>Timeline</button>
+              <button className="tab-btn" onClick={(e) => switchTab('advise', e.currentTarget)}>Advise</button>
             </div>
           </div>
-          <p className="ai-text">
-            Your repo's <strong>PR merge time of 14 days</strong> is dragging your score down significantly. This is the single highest-impact thing you can fix right now — even 20 minutes of review time each morning could cut this to under 5 days and push your health score above <strong>90/100</strong>. Your commit velocity is solid, don't let slow reviews undo it.
-          </p>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
 
 
-<section style={{ paddingTop: '0' }} id="leaderboard">
-  <div className="section-inner">
-    <div className="fade-in" style={{ marginBottom: '32px' }}>
-      <div className="section-label">Everything in one place</div>
-      <h2 className="section-h2">Everything you need to evaluate<br />a repo or a developer</h2>
-    </div>
-    <div className="bento-grid fade-in fade-in-delay-1">
-
-      
-      <div className="bento-card col-2">
-        <div className="bc-label">Embeddable Badge</div>
-        <div className="bc-title">Embed a live health badge in any README</div>
-        <div className="bc-desc">A URL that returns an SVG badge — color-coded green, yellow, or red based on current health score. Auto-updates with every analysis.</div>
-        <div className="badge-embed">
-          <span className="badge-left">GitVital</span>
-          <span className="badge-right">Health: 88 ✅</span>
-        </div>
-        <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-muted)', marginTop: '10px' }}>![GitVital](https://gitvital.com/badge/facebook/react)</div>
-      </div>
-
-      
-      <div className="bento-card">
-        <div className="bc-label">Risk Flags</div>
-        <div className="bc-title">Plain English warnings</div>
-        <div className="bc-desc">Pure if/else logic that reads smart.</div>
-        <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <span className="flag danger" style={{ width: 'fit-content' }}>⚠️ Contributor Concentration Risk</span>
-          <span className="flag warn" style={{ width: 'fit-content' }}>⚠️ PR Response Slow</span>
-          <span className="flag success" style={{ width: 'fit-content' }}>✅ Fast PR Reviews</span>
-          <span className="flag success" style={{ width: 'fit-content' }}>📈 Growing Activity</span>
-        </div>
-      </div>
-
-      
-      <div className="bento-card">
-        <div className="bc-label">Leaderboard</div>
-        <div className="bc-title">Your global rank</div>
-        <div className="bc-desc">Percentile ranking via PostgreSQL window functions.</div>
-        <div className="rank-display">
-          <div className="rank-number">#142</div>
-          <div className="rank-meta">globally<br /><strong>Top 7%</strong> of all developers</div>
-        </div>
-      </div>
-
-      
-      <div className="bento-card">
-        <div className="bc-label">GitHub OAuth</div>
-        <div className="bc-title">Login to unlock more</div>
-        <div className="bc-desc">Authenticate to analyze your own repos, track your developer score, and get personalized AI advice.</div>
-        <a href="#" className="btn-ghost" style={{ marginTop: '16px', display: 'inline-flex', borderRadius: '8px' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-          Login with GitHub
-        </a>
-      </div>
-
-      
-      <div className="bento-card col-2">
-        <div className="bc-label">Developer Health Score</div>
-        <div className="bc-title">Your repos, aggregated into one developer score</div>
-        <div className="bc-desc">Aggregate metrics across all your repos. Earn badges. Get ranked globally. Spotify Wrapped, but for your GitHub.</div>
-        <div className="dev-profile-card">
-          <div className="dev-score-row">
-            <div className="dev-score-big green">74</div>
-            <div>
-              <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: '600' }}>@yourusername</div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Better than 90% of developers</div>
+          <div className="tab-panel active" id="tab-analyze">
+            <div className="tab-content">
+              <div className="tab-label">Core Metrics</div>
+              <h3>Run a full health check on any public repo</h3>
+              <p>Paste any GitHub URL. GitVital queues a background analysis job, fetches up to 1,000 commits and 500 PRs via GitHub GraphQL, and computes 6 core metrics in under a minute.</p>
+              <ul className="tab-bullets">
+                <li>Bus factor — contributor concentration risk</li>
+                <li>PR turnaround — median and p90 merge time</li>
+                <li>Commit velocity — weekly decay or growth trend</li>
+                <li>Issue backlog — age, response rate, open count</li>
+              </ul>
+              <a href="#" className="learn-more">View all metrics →</a>
+            </div>
+            <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px', alignItems: 'stretch' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flexShrink: 0, width: '88px', height: '88px' }}>
+                  <svg width="88" height="88" viewBox="0 0 88 88" style={{ transform: 'rotate(-90deg)' }}>
+                    <circle cx="44" cy="44" r="36" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+                    <circle cx="44" cy="44" r="36" fill="none" stroke="#FF5E00" strokeWidth="8" strokeDasharray="226.19" strokeDashoffset="27" strokeLinecap="round" />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '20px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1 }}>88</span>
+                    <span style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 600 }}>/100</span>
+                  </div>
+                </div>
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' }}>
+                  <div style={{ background: 'var(--bg-surface)', border: '1px solid rgba(255,94,0,0.2)', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Bus Factor</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--green)' }}>12</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px', marginTop: '4px' }}>
+                      {[40,60,50,80,100,70].map((h,i)=><div key={i} style={{ background:`rgba(255,94,0,${0.2+i*0.15})`, flex:1, height:`${h}%`, borderRadius:'2px 2px 0 0' }}></div>)}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--bg-surface)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>PR Velocity</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--green)' }}>+12%</div>
+                    <svg style={{ width: '100%', height: '18px', marginTop: '4px' }} viewBox="0 0 60 20" preserveAspectRatio="none"><path d="M0,18 Q8,6 15,12 T30,7 T45,14 T60,3" fill="none" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                  </div>
+                  <div style={{ background: 'var(--bg-surface)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Issue Health</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ position: 'relative', width: '28px', height: '28px', flexShrink: 0 }}>
+                        <svg width="28" height="28" style={{ transform: 'rotate(-90deg)' }}><circle cx="14" cy="14" r="10" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" /><circle cx="14" cy="14" r="10" fill="none" stroke="#eab308" strokeWidth="4" strokeDasharray="62.83" strokeDashoffset="9" /></svg>
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '7px', fontWeight: 700, color: 'var(--text)' }}>85%</div>
+                      </div>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--yellow)' }}>Good</span>
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--bg-surface)', border: '1px solid rgba(255,94,0,0.2)', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Code Churn</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--orange-light)' }}>Low</div>
+                    <svg style={{ width: '100%', height: '18px', marginTop: '4px' }} viewBox="0 0 60 20" preserveAspectRatio="none"><path d="M0,20 L0,14 Q16,16 28,11 T52,14 T60,9 L60,20 Z" fill="rgba(255,94,0,0.12)" /><path d="M0,14 Q16,16 28,11 T52,14 T60,9" fill="none" stroke="#FF5E00" strokeWidth="1.5" /></svg>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>Commits per Week · last 12 months</div>
+                <svg style={{ width: '100%', height: '52px' }} viewBox="0 0 400 52" preserveAspectRatio="none">
+                  <defs><linearGradient id="og" x1="0%" x2="0%" y1="0%" y2="100%"><stop offset="0%" stopColor="#FF5E00" stopOpacity="0.3" /><stop offset="100%" stopColor="#FF5E00" stopOpacity="0" /></linearGradient></defs>
+                  <path d="M0,42 Q50,28 100,35 T200,22 T300,32 T380,12 L400,10 L400,52 L0,52 Z" fill="url(#og)" />
+                  <path d="M0,42 Q50,28 100,35 T200,22 T300,32 T380,12 L400,10" fill="none" stroke="#FF5E00" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                  {['Jan','Mar','Jun','Sep','Dec'].map(m=><span key={m} style={{ fontSize:'9px', color:'var(--text-muted)', fontFamily:'var(--mono)' }}>{m}</span>)}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="dev-badges">
-            <span className="dev-badge earned">🏃 The Speedster</span>
-            <span className="dev-badge earned">🔒 The Closer</span>
-            <span className="dev-badge earned">⭐ OSS Contributor</span>
-            <span className="dev-badge">🌱 Consistent Committer</span>
-            <span className="dev-badge">🧹 Issue Resolver</span>
+
+
+          <div className="tab-panel" id="tab-score">
+            <div className="tab-content">
+              <div className="tab-label">Health Score</div>
+              <h3>A single number that tells the whole story</h3>
+              <p>Five weighted sub-scores combine into one 0–100 health rating. Each weight is documented and reasoned — not arbitrary. Activity is king at 30%, contributor diversity follows at 25%.</p>
+              <ul className="tab-bullets">
+                <li>Activity (30%) — most reliable signal of a living project</li>
+                <li>Contributor diversity (25%) — directly affects sustainability</li>
+                <li>PR responsiveness (20%) — shows team engagement</li>
+                <li>Issue backlog (15%) + Code churn (10%)</li>
+              </ul>
+              <a href="#" className="learn-more">See the formula →</a>
+            </div>
+            <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div style={{ position: 'relative', flexShrink: 0, width: '100px', height: '100px' }}>
+                  <svg width="100" height="100" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="#FF5E00" strokeWidth="10" strokeDasharray="263.89" strokeDashoffset="32" strokeLinecap="round" />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '26px', fontWeight: 900, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1 }}>88</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>/100</span>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)', marginBottom: '4px' }}>Repository Health</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px' }}>facebook/react · Excellent condition</div>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div><div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Velocity</div><div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--green)' }}>+23%</div></div>
+                    <div><div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Bus Factor</div><div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>12</div></div>
+                    <div><div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Maintenance</div><div style={{ fontSize: '14px', fontWeight: 700, color: '#FFB380' }}>High</div></div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}>Score Breakdown</div>
+                {[{l:'Activity 30%',w:'92%',c:'var(--green)',v:'92'},{l:'Contributors 25%',w:'82%',c:'#FFB380',v:'82'},{l:'PR Speed 20%',w:'88%',c:'var(--green)',v:'88'},{l:'Issues 15%',w:'60%',c:'var(--yellow)',v:'60'},{l:'Code Churn 10%',w:'78%',c:'var(--green)',v:'78'}].map(r=>(
+                  <div key={r.l} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                    <span style={{ fontSize:'10.5px', color:'var(--text-muted)', width:'96px', fontFamily:'var(--mono)', flexShrink:0 }}>{r.l}</span>
+                    <div style={{ flex:1, height:'6px', background:'rgba(255,255,255,0.06)', borderRadius:'3px', overflow:'hidden' }}><div style={{ width:r.w, height:'100%', background:r.c, borderRadius:'3px' }}></div></div>
+                    <span style={{ fontSize:'10px', color:r.c, fontFamily:'var(--mono)', width:'24px', textAlign:'right' }}>{r.v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+
+          <div className="tab-panel" id="tab-compare">
+            <div className="tab-content">
+              <div className="tab-label">Repo Comparison</div>
+              <h3>Side-by-side. Pick the healthier dependency</h3>
+              <p>Input two repos. GitVital queues both analysis jobs simultaneously and renders a comparison table the moment both complete — winner highlighted per metric.</p>
+              <ul className="tab-bullets">
+                <li>Evaluate competing libraries before adding a dependency</li>
+                <li>Compare your fork vs the upstream repo</li>
+                <li>Interview demo: pull up react vs vue live</li>
+              </ul>
+              <a href="#" className="learn-more">Try a comparison →</a>
+            </div>
+            <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {[
+                  { name: 'facebook/react', score: 88, color: 'var(--green)', vel: '+5% vel', velColor: 'var(--green)', path: 'M0,28 Q20,10 35,20 T60,10 T85,18 T100,4', fill: 'rgba(34,197,94,0.12)', stroke: '#22c55e', bus: 'Bus 12', pr: 'PR 1.2d', tagColor: 'var(--green)', tagBg: 'rgba(34,197,94,0.12)' },
+                  { name: 'vuejs/vue', score: 81, color: 'var(--yellow)', vel: '\u22128% vel', velColor: 'var(--red)', path: 'M0,8 Q15,12 30,10 T55,18 T80,22 T100,28', fill: 'rgba(234,179,8,0.1)', stroke: '#eab308', bus: 'Bus 7', pr: 'PR 2.4d', tagColor: 'var(--yellow)', tagBg: 'rgba(234,179,8,0.12)' }
+                ].map(r => (
+                  <div key={r.name} style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>{r.name}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: 800, color: r.color }}>{r.score}</span>
+                      <span style={{ fontSize: '10px', color: r.velColor, fontFamily: 'var(--mono)' }}>{r.vel}</span>
+                    </div>
+                    <svg style={{ width: '100%', height: '32px' }} viewBox="0 0 100 32" preserveAspectRatio="none">
+                      <path d={`${r.path} L100,32 L0,32 Z`} fill={r.fill} />
+                      <path d={r.path} fill="none" stroke={r.stroke} strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                    <div style={{ display: 'flex', gap: '5px', marginTop: '8px' }}>
+                      {[r.bus, r.pr].map(t => <span key={t} style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '12px', background: r.tagBg, color: r.tagColor }}>{t}</span>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Head-to-head · 4 of 5 metrics</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '6px' }}>
+                  {[{m:'Health',v:'88 ✓',c:'var(--green)'},{m:'Bus Factor',v:'12 ✓',c:'var(--green)'},{m:'PR Speed',v:'1.2d ✓',c:'var(--green)'},{m:'Issues',v:'642 ~',c:'var(--yellow)'}].map(x=>(
+                    <div key={x.m} style={{ textAlign:'center' }}><div style={{ fontSize:'9px', color:'var(--text-muted)', marginBottom:'3px' }}>{x.m}</div><div style={{ fontSize:'13px', fontWeight:700, color:x.c }}>{x.v}</div></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <div className="tab-panel" id="tab-timeline">
+            <div className="tab-content">
+              <div className="tab-label">Health Timeline</div>
+              <h3>Watch a repo's health change over time</h3>
+              <p>GitVital splits your already-fetched data into quarterly windows and computes a partial health score per period — showing you if a project is gaining momentum or slowly dying.</p>
+              <ul className="tab-bullets">
+                <li>4-quarter trend computed from existing fetch data (zero extra API calls)</li>
+                <li>Catch declining projects before you depend on them</li>
+                <li>Spot the exact quarter a maintainer went quiet</li>
+              </ul>
+              <a href="#" className="learn-more">See timeline →</a>
+            </div>
+            <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>kubernetes/kubernetes</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>Health over time · quarterly windows</div>
+                </div>
+                <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--red)', letterSpacing: '-0.04em' }}>65 <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>/100 ↓</span></div>
+              </div>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
+                <svg style={{ width: '100%', height: '80px' }} viewBox="0 0 400 80" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="declineGrad" x1="0%" x2="0%" y1="0%" y2="100%">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#ef4444" stopOpacity="0.05" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M0,20 Q80,18 130,28 T230,42 T330,56 T400,68 L400,80 L0,80 Z" fill="url(#declineGrad)" />
+                  <path d="M0,20 Q80,18 130,28 T230,42 T330,56 T400,68" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="6 3" />
+                  <circle cx="0" cy="20" r="4" fill="#22c55e" />
+                  <circle cx="133" cy="30" r="4" fill="#22c55e" />
+                  <circle cx="266" cy="48" r="4" fill="#eab308" />
+                  <circle cx="400" cy="68" r="4" fill="#ef4444" />
+                  <text x="4" y="14" fontSize="9" fill="#22c55e" fontFamily="monospace">84</text>
+                  <text x="136" y="24" fontSize="9" fill="#22c55e" fontFamily="monospace">79</text>
+                  <text x="269" y="42" fontSize="9" fill="#eab308" fontFamily="monospace">71</text>
+                  <text x="380" y="62" fontSize="9" fill="#ef4444" fontFamily="monospace">65</text>
+                </svg>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                  {['Q1 2024','Q2','Q3','Q4 ↓'].map((q,i)=><span key={q} style={{ fontSize:'9.5px', color:i===3?'var(--red)':'var(--text-muted)', fontFamily:'var(--mono)' }}>{q}</span>)}
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:'8px', padding:'10px', display:'flex', alignItems:'flex-start', gap:'8px' }}>
+                  <span style={{ fontSize:'14px' }}>⚠️</span>
+                  <div><div style={{ fontSize:'11px', fontWeight:700, color:'var(--red)' }}>Declining Health</div><div style={{ fontSize:'10px', color:'rgba(239,68,68,0.7)' }}>19pt drop over 4 quarters</div></div>
+                </div>
+                <div style={{ background:'rgba(234,179,8,0.08)', border:'1px solid rgba(234,179,8,0.2)', borderRadius:'8px', padding:'10px', display:'flex', alignItems:'flex-start', gap:'8px' }}>
+                  <span style={{ fontSize:'14px' }}>📉</span>
+                  <div><div style={{ fontSize:'11px', fontWeight:700, color:'var(--yellow)' }}>Maintainer Quiet</div><div style={{ fontSize:'10px', color:'rgba(234,179,8,0.7)' }}>Commit velocity falling Q3+</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <div className="tab-panel" id="tab-advise">
+            <div className="tab-content">
+              <div className="tab-label">AI-Powered Advice</div>
+              <h3>Not just data. A personal coaching session</h3>
+              <p>GitVital feeds your computed metrics into Gemini and generates personalized, actionable advice — not generic tips. It reads your actual numbers and tells you exactly what to improve.</p>
+              <ul className="tab-bullets">
+                <li>Prompt-engineered for developer context, not marketing copy</li>
+                <li>Stored alongside metrics — re-reads with every refresh</li>
+                <li>Turns a dashboard into a feedback loop</li>
+              </ul>
+              <a href="#" className="learn-more">See AI advice →</a>
+            </div>
+            <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
+              <div style={{ background:'rgba(255,94,0,0.06)', border:'1px solid rgba(255,94,0,0.25)', borderLeft:'3px solid #FF5E00', borderRadius:'10px', padding:'14px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
+                  <div className="ai-icon" style={{ width:'30px', height:'30px', borderRadius:'8px', flexShrink:0 }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>AI Deep Analysis</div>
+                    <div style={{ fontSize:'10.5px', color:'var(--text-muted)' }}>your-org/your-repo · Powered by Gemini</div>
+                  </div>
+                  <div style={{ marginLeft:'auto', fontSize:'20px', fontWeight:800, color:'var(--yellow)' }}>73<span style={{ fontSize:'10px', color:'var(--text-muted)', fontWeight:400 }}>/100</span></div>
+                </div>
+                <p style={{ fontSize:'11.5px', color:'var(--text-secondary)', lineHeight:1.65, margin:0 }}>
+                  Based on recent commit patterns, <span style={{ color:'#FFB380', fontWeight:600 }}>your-org/your-repo</span> is struggling with <span style={{ color:'var(--red)', fontWeight:600 }}>PR review bottlenecks</span>. We noticed a <span style={{ color:'var(--yellow)', fontWeight:600 }}>14-day average merge delay</span> — the single highest drag on your health score.
+                </p>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:'8px', padding:'12px' }}>
+                  <div style={{ fontSize:'9.5px', fontWeight:700, color:'#FFB380', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'6px' }}>Recommendation 1</div>
+                  <p style={{ fontSize:'11px', color:'var(--text-secondary)', lineHeight:1.55, margin:0 }}>Set a daily 20-min PR review block. Cut merge time from 14d → 3d and gain <strong style={{ color:'var(--green)' }}>+12pts</strong>.</p>
+                </div>
+                <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:'8px', padding:'12px' }}>
+                  <div style={{ fontSize:'9.5px', fontWeight:700, color:'#FFB380', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'6px' }}>Recommendation 2</div>
+                  <p style={{ fontSize:'11px', color:'var(--text-secondary)', lineHeight:1.55, margin:0 }}>Invite 2 community maintainers to &apos;docs&apos; tag. Push bus factor above <strong style={{ color:'var(--green)' }}>5</strong>.</p>
+                </div>
+              </div>
+              <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:'8px', padding:'10px' }}>
+                <div style={{ fontSize:'10px', color:'var(--text-muted)', marginBottom:'6px' }}>Recent commit activity</div>
+                <svg style={{ width:'100%', height:'36px' }} viewBox="0 0 300 36" preserveAspectRatio="none">
+                  <path d="M0,28 Q30,10 60,20 T120,14 T180,22 T240,10 T300,18 L300,36 L0,36 Z" fill="rgba(255,94,0,0.1)" />
+                  <path d="M0,28 Q30,10 60,20 T120,14 T180,22 T240,10 T300,18" fill="none" stroke="#FF5E00" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+
+      <section style={{ paddingTop: '0' }} id="leaderboard">
+        <div className="section-inner">
+          <div className="fade-in" style={{ marginBottom: '32px' }}>
+            <div className="section-label">Everything in one place</div>
+            <h2 className="section-h2">Everything you need to evaluate<br />a repo or a developer</h2>
+          </div>
+          <div className="bento-grid fade-in fade-in-delay-1">
+
+
+            <div className="bento-card col-2">
+              <div className="bc-label">Embeddable Badge</div>
+              <div className="bc-title">Embed a live health badge in any README</div>
+              <div className="bc-desc">A URL that returns an SVG badge — color-coded green, yellow, or red based on current health score. Auto-updates with every analysis.</div>
+              <div className="badge-embed">
+                <span className="badge-left">GitVital</span>
+                <span className="badge-right">Health: 88 ✅</span>
+              </div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-muted)', marginTop: '10px' }}>![GitVital](https://gitvital.com/badge/facebook/react)</div>
+            </div>
+
+
+            <div className="bento-card">
+              <div className="bc-label">Risk Flags</div>
+              <div className="bc-title">Plain English warnings</div>
+              <div className="bc-desc">Pure if/else logic that reads smart.</div>
+              <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span className="flag danger" style={{ width: 'fit-content' }}>⚠️ Contributor Concentration Risk</span>
+                <span className="flag warn" style={{ width: 'fit-content' }}>⚠️ PR Response Slow</span>
+                <span className="flag success" style={{ width: 'fit-content' }}>✅ Fast PR Reviews</span>
+                <span className="flag success" style={{ width: 'fit-content' }}>📈 Growing Activity</span>
+              </div>
+            </div>
+
+
+            <div className="bento-card">
+              <div className="bc-label">Leaderboard</div>
+              <div className="bc-title">Your global rank</div>
+              <div className="bc-desc">Percentile ranking via PostgreSQL window functions.</div>
+              <div className="rank-display">
+                <div className="rank-number">#142</div>
+                <div className="rank-meta">globally<br /><strong>Top 7%</strong> of all developers</div>
+              </div>
+            </div>
+
+
+            <div className="bento-card">
+              <div className="bc-label">GitHub OAuth</div>
+              <div className="bc-title">Login to unlock more</div>
+              <div className="bc-desc">Authenticate to analyze your own repos, track your developer score, and get personalized AI advice.</div>
+              <a href="#" className="btn-ghost" style={{ marginTop: '16px', display: 'inline-flex', borderRadius: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+                Login with GitHub
+              </a>
+            </div>
+
+
+            <div className="bento-card col-2">
+              <div className="bc-label">Developer Health Score</div>
+              <div className="bc-title">Your repos, aggregated into one developer score</div>
+              <div className="bc-desc">Aggregate metrics across all your repos. Earn badges. Get ranked globally. Spotify Wrapped, but for your GitHub.</div>
+              <div className="dev-profile-card">
+                <div className="dev-score-row">
+                  <div className="dev-score-big green">74</div>
+                  <div>
+                    <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: '600' }}>@yourusername</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Better than 90% of developers</div>
+                  </div>
+                </div>
+                <div className="dev-badges">
+                  <span className="dev-badge earned">🏃 The Speedster</span>
+                  <span className="dev-badge earned">🔒 The Closer</span>
+                  <span className="dev-badge earned">⭐ OSS Contributor</span>
+                  <span className="dev-badge">🌱 Consistent Committer</span>
+                  <span className="dev-badge">🧹 Issue Resolver</span>
+                </div>
+              </div>
+            </div>
+
+
+            <div className="bento-card">
+              <div className="bc-label">Transparent Limits</div>
+              <div className="bc-title">No hidden constraints</div>
+              <div className="bc-desc">Always shown. Never hidden.</div>
+              <div className="limits-card">
+                <div className="limit-row"><span className="limit-key">max commits</span><span className="limit-val">1,000</span></div>
+                <div className="limit-row"><span className="limit-key">max pull reqs</span><span className="limit-val">500</span></div>
+                <div className="limit-row"><span className="limit-key">max issues</span><span className="limit-val">500</span></div>
+                <div className="limit-row"><span className="limit-key">time window</span><span className="limit-val">12 months</span></div>
+                <div className="limit-row"><span className="limit-key">visibility</span><span className="limit-val">public only</span></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+
+      <section className="testimonials-section">
+        <div className="section-inner">
+          <div className="testimonials-header fade-in">
+            <div className="section-label">Loved by developers</div>
+            <h2 className="section-h2">Developers who care about code quality</h2>
+            <p className="section-sub">Join developers who've stopped guessing and started knowing.</p>
+          </div>
+
+          <div className="testimonials-grid fade-in fade-in-delay-1">
+            <div className="testimonial-card">
+              <p className="t-quote">"Pasted facebook/react URL and instantly knew it was safe to use as a dependency. Bus factor of 12, PRs merging in 1 day. Sold in under 60 seconds."</p>
+              <div className="t-author">
+                <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #FF5E00, #FF5E00)', color: 'white' }}>DK</div>
+                <div>
+                  <div className="t-name">Devansh Kumar</div>
+                  <div className="t-handle">@devanshk_dev</div>
+                </div>
+              </div>
+            </div>
+            <div className="testimonial-card">
+              <p className="t-quote">"The repo comparison feature is genuinely impressive. Compared next.js vs nuxt in 10 seconds before starting a new project. Should've existed years ago."</p>
+              <div className="t-author">
+                <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', color: 'white' }}>PT</div>
+                <div>
+                  <div className="t-name">Priya Tiwari</div>
+                  <div className="t-handle">@priyatiwari_io</div>
+                </div>
+              </div>
+            </div>
+            <div className="testimonial-card">
+              <p className="t-quote">"GitVital showed my side project had a bus factor of 1 (just me 😂). Great reality check before open sourcing. Fixed it, now at 4. The AI advice was actually spot on."</p>
+              <div className="t-author">
+                <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #22c55e, #86efac)', color: '#052e16' }}>RB</div>
+                <div>
+                  <div className="t-name">Rohan Builds</div>
+                  <div className="t-handle">@roh_builds</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ height: '16px' }}></div>
+          <div className="testimonials-scroll-row">
+            <div className="testimonials-scroll-track">
+
+              <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">@aditya_raj · Backend Eng at Swiggy</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">@sara_codes · Full Stack Dev</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">@techleadmike · Staff Eng</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">@oss_maintainer</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">@niteshv · SDE-2 at Flipkart</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">@campus_sde · IIT Bombay</div></div>
+
+              <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">@aditya_raj · Backend Eng at Swiggy</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">@sara_codes · Full Stack Dev</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">@techleadmike · Staff Eng</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">@oss_maintainer</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">@niteshv · SDE-2 at Flipkart</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">@campus_sde · IIT Bombay</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <div className="stats-section">
+        <div className="stats-grid">
+          <div className="stat-item fade-in">
+            <div className="stat-num" data-target="2000000" data-suffix="M+" data-divisor="1000000">0</div>
+            <div className="stat-label">Developers</div>
+          </div>
+          <div className="stat-item fade-in fade-in-delay-1">
+            <div className="stat-num" data-target="50000" data-suffix="K+" data-divisor="1000">0</div>
+            <div className="stat-label">Repos Analyzed</div>
+          </div>
+          <div className="stat-item fade-in fade-in-delay-2">
+            <div className="stat-num" data-target="500" data-suffix="ms" data-divisor="1">0</div>
+            <div className="stat-label">Avg Analysis Time</div>
+          </div>
+          <div className="stat-item fade-in fade-in-delay-3">
+            <div className="stat-num" data-target="999" data-suffix="%" data-prefix="99.">0</div>
+            <div className="stat-label">Uptime</div>
           </div>
         </div>
       </div>
 
-      
-      <div className="bento-card">
-        <div className="bc-label">Transparent Limits</div>
-        <div className="bc-title">No hidden constraints</div>
-        <div className="bc-desc">Always shown. Never hidden.</div>
-        <div className="limits-card">
-          <div className="limit-row"><span className="limit-key">max commits</span><span className="limit-val">1,000</span></div>
-          <div className="limit-row"><span className="limit-key">max pull reqs</span><span className="limit-val">500</span></div>
-          <div className="limit-row"><span className="limit-key">max issues</span><span className="limit-val">500</span></div>
-          <div className="limit-row"><span className="limit-key">time window</span><span className="limit-val">12 months</span></div>
-          <div className="limit-row"><span className="limit-key">visibility</span><span className="limit-val">public only</span></div>
+
+      <section className="cta-section">
+        <div className="cta-glow"></div>
+        <div className="cta-inner fade-in">
+          <div className="section-label">Get started free</div>
+          <h2>Stop guessing.<br />Start knowing.</h2>
+          <p>Paste any GitHub URL. Get a full health report in under 60 seconds. Free forever for public repos.</p>
+          <div className="hero-input-wrap" style={{ maxWidth: '480px', margin: '0 auto 12px' }}>
+            <input type="text" placeholder="github.com/your-org/your-repo" />
+            <button onClick={analyzeRepo}>Analyze Now →</button>
+          </div>
+          <p className="cta-note">No signup required for public repos · Free forever</p>
         </div>
-      </div>
-
-    </div>
-  </div>
-</section>
+      </section>
 
 
-<section className="testimonials-section">
-  <div className="section-inner">
-    <div className="testimonials-header fade-in">
-      <div className="section-label">Loved by developers</div>
-      <h2 className="section-h2">Developers who care about code quality</h2>
-      <p className="section-sub">Join developers who've stopped guessing and started knowing.</p>
-    </div>
-
-    <div className="testimonials-grid fade-in fade-in-delay-1">
-      <div className="testimonial-card">
-        <p className="t-quote">"Pasted facebook/react URL and instantly knew it was safe to use as a dependency. Bus factor of 12, PRs merging in 1 day. Sold in under 60 seconds."</p>
-        <div className="t-author">
-          <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: 'white' }}>DK</div>
-          <div>
-            <div className="t-name">Devansh Kumar</div>
-            <div className="t-handle">@devanshk_dev</div>
+      <footer>
+        <div className="footer-inner">
+          <div className="footer-grid">
+            <div className="footer-brand">
+              <a href="#" className="logo">
+                <div className="logo-icon">
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                    <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6" />
+                  </svg>
+                </div>
+                GitVital
+              </a>
+              <p style={{ marginTop: '10px' }}>GitHub repository health analytics. Know before you depend.</p>
+            </div>
+            <div className="footer-col">
+              <h4>Product</h4>
+              <ul>
+                <li><a href="#">Health Score</a></li>
+                <li><a href="#">Repo Compare</a></li>
+                <li><a href="#">Timeline</a></li>
+                <li><a href="#">AI Advice</a></li>
+                <li><a href="#">Badges</a></li>
+                <li><a href="#">Leaderboard</a></li>
+              </ul>
+            </div>
+            <div className="footer-col">
+              <h4>Developers</h4>
+              <ul>
+                <li><a href="#">Docs</a></li>
+                <li><a href="#">API Reference</a></li>
+                <li><a href="#">GitHub</a></li>
+                <li><a href="#">Changelog</a></li>
+              </ul>
+            </div>
+            <div className="footer-col">
+              <h4>Community</h4>
+              <ul>
+                <li><a href="#">Discord</a></li>
+                <li><a href="#">Twitter / X</a></li>
+                <li><a href="#">GitHub Discussions</a></li>
+              </ul>
+            </div>
+            <div className="footer-col">
+              <h4>Legal</h4>
+              <ul>
+                <li><a href="#">Privacy Policy</a></li>
+                <li><a href="#">Terms of Service</a></li>
+                <li><a href="#">Fair Use</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="footer-bottom">
+            <span>© 2025 GitVital. All rights reserved.</span>
+            <a href="#" className="status-dot">All systems operational ↗</a>
           </div>
         </div>
-      </div>
-      <div className="testimonial-card">
-        <p className="t-quote">"The repo comparison feature is genuinely impressive. Compared next.js vs nuxt in 10 seconds before starting a new project. Should've existed years ago."</p>
-        <div className="t-author">
-          <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', color: 'white' }}>PT</div>
-          <div>
-            <div className="t-name">Priya Tiwari</div>
-            <div className="t-handle">@priyatiwari_io</div>
-          </div>
-        </div>
-      </div>
-      <div className="testimonial-card">
-        <p className="t-quote">"GitVital showed my side project had a bus factor of 1 (just me 😂). Great reality check before open sourcing. Fixed it, now at 4. The AI advice was actually spot on."</p>
-        <div className="t-author">
-          <div className="t-avatar" style={{ background: 'linear-gradient(135deg, #22c55e, #86efac)', color: '#052e16' }}>RB</div>
-          <div>
-            <div className="t-name">Rohan Builds</div>
-            <div className="t-handle">@roh_builds</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div style={{ height: '16px' }}></div>
-    <div className="testimonials-scroll-row">
-      <div className="testimonials-scroll-track">
-        
-        <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">@aditya_raj · Backend Eng at Swiggy</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">@sara_codes · Full Stack Dev</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">@techleadmike · Staff Eng</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">@oss_maintainer</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">@niteshv · SDE-2 at Flipkart</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">@campus_sde · IIT Bombay</div></div>
-        
-        <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">@aditya_raj · Backend Eng at Swiggy</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">@sara_codes · Full Stack Dev</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">@techleadmike · Staff Eng</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">@oss_maintainer</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">@niteshv · SDE-2 at Flipkart</div></div>
-        <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">@campus_sde · IIT Bombay</div></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<div className="stats-section">
-  <div className="stats-grid">
-    <div className="stat-item fade-in">
-      <div className="stat-num" data-target="2000000" data-suffix="M+" data-divisor="1000000">0</div>
-      <div className="stat-label">Developers</div>
-    </div>
-    <div className="stat-item fade-in fade-in-delay-1">
-      <div className="stat-num" data-target="50000" data-suffix="K+" data-divisor="1000">0</div>
-      <div className="stat-label">Repos Analyzed</div>
-    </div>
-    <div className="stat-item fade-in fade-in-delay-2">
-      <div className="stat-num" data-target="500" data-suffix="ms" data-divisor="1">0</div>
-      <div className="stat-label">Avg Analysis Time</div>
-    </div>
-    <div className="stat-item fade-in fade-in-delay-3">
-      <div className="stat-num" data-target="999" data-suffix="%" data-prefix="99.">0</div>
-      <div className="stat-label">Uptime</div>
-    </div>
-  </div>
-</div>
-
-
-<section className="cta-section">
-  <div className="cta-glow"></div>
-  <div className="cta-inner fade-in">
-    <div className="section-label">Get started free</div>
-    <h2>Stop guessing.<br />Start knowing.</h2>
-    <p>Paste any GitHub URL. Get a full health report in under 60 seconds. Free forever for public repos.</p>
-    <div className="hero-input-wrap" style={{ maxWidth: '480px', margin: '0 auto 12px' }}>
-      <input type="text" placeholder="github.com/your-org/your-repo" />
-      <button onClick={analyzeRepo}>Analyze Now →</button>
-    </div>
-    <p className="cta-note">No signup required for public repos · Free forever</p>
-  </div>
-</section>
-
-
-<footer>
-  <div className="footer-inner">
-    <div className="footer-grid">
-      <div className="footer-brand">
-        <a href="#" className="logo">
-          <div className="logo-icon">
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-              <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <circle cx="7.5" cy="11" r="2" fill="white" opacity="0.6"/>
-            </svg>
-          </div>
-          GitVital
-        </a>
-        <p style={{ marginTop: '10px' }}>GitHub repository health analytics. Know before you depend.</p>
-      </div>
-      <div className="footer-col">
-        <h4>Product</h4>
-        <ul>
-          <li><a href="#">Health Score</a></li>
-          <li><a href="#">Repo Compare</a></li>
-          <li><a href="#">Timeline</a></li>
-          <li><a href="#">AI Advice</a></li>
-          <li><a href="#">Badges</a></li>
-          <li><a href="#">Leaderboard</a></li>
-        </ul>
-      </div>
-      <div className="footer-col">
-        <h4>Developers</h4>
-        <ul>
-          <li><a href="#">Docs</a></li>
-          <li><a href="#">API Reference</a></li>
-          <li><a href="#">GitHub</a></li>
-          <li><a href="#">Changelog</a></li>
-        </ul>
-      </div>
-      <div className="footer-col">
-        <h4>Community</h4>
-        <ul>
-          <li><a href="#">Discord</a></li>
-          <li><a href="#">Twitter / X</a></li>
-          <li><a href="#">GitHub Discussions</a></li>
-        </ul>
-      </div>
-      <div className="footer-col">
-        <h4>Legal</h4>
-        <ul>
-          <li><a href="#">Privacy Policy</a></li>
-          <li><a href="#">Terms of Service</a></li>
-          <li><a href="#">Fair Use</a></li>
-        </ul>
-      </div>
-    </div>
-    <div className="footer-bottom">
-      <span>© 2025 GitVital. All rights reserved.</span>
-      <a href="#" className="status-dot">All systems operational ↗</a>
-    </div>
-  </div>
-</footer>
+      </footer>
 
 
 

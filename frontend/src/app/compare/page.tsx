@@ -7,7 +7,7 @@ const DEFAULT_REPOS = ["facebook/react", "vuejs/core", "sveltejs/svelte"];
 
 const REPO_COLORS = [
   { dot: "bg-primary shadow-[0_0_8px_#4ccaf0]", border: "border-primary/10", text: "text-primary", label: "react.sys", fill: "rgba(76,202,240,0.15)", stroke: "#4ccaf0", points: "200,40 350,150 290,320 110,320 60,150", pointFill: "#4ccaf0" },
-  { dot: "bg-violet-400 shadow-[0_0_8px_#a78bfa]", border: "border-violet-500/10", text: "text-violet-300", label: "vue.sys", fill: "rgba(139,92,246,0.15)", stroke: "#a78bfa", points: "200,90 310,165 260,280 140,280 90,165", pointFill: "#a78bfa" },
+  { dot: "bg-orange-400 shadow-[0_0_8px_#FFB380]", border: "border-orange-500/10", text: "text-orange-300", label: "vue.sys", fill: "rgba(255,160,102,0.15)", stroke: "#FFB380", points: "200,90 310,165 260,280 140,280 90,165", pointFill: "#FFB380" },
   { dot: "bg-orange-400 shadow-[0_0_8px_#fb923c]", border: "border-orange-500/10", text: "text-orange-300", label: "svelte.sys", fill: "rgba(249,115,22,0.15)", stroke: "#fb923c", points: "200,130 270,180 230,240 170,240 130,180", pointFill: "#fb923c" },
 ];
 
