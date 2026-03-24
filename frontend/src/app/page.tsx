@@ -79,16 +79,28 @@ export default function GitvitalLanding() {
     btn.classList.add('active');
   };
 
-  const analyzeRepo = () => {
-    const el = document.getElementById('heroInput') as HTMLInputElement;
+  const parseRepoInput = (raw: string) => {
+    const val = raw.trim().replace(/^https?:\/\//i, '').replace(/^github\.com\//i, '').replace(/^www\.github\.com\//i, '');
+    const parts = val.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      return { owner: parts[0], repo: parts[1] };
+    }
+    return null;
+  };
+
+  const analyzeRepo = (inputId: string = 'heroInput') => {
+    const el = document.getElementById(inputId) as HTMLInputElement | null;
     const val = el ? el.value.trim() : "";
     if (val) {
-      router.push('/analyze?repo=' + encodeURIComponent(val));
+      const parsed = parseRepoInput(val);
+      if (parsed) {
+        router.push(`/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`);
+      }
     }
   };
 
-  const handleKeydown = (e: any) => {
-    if (e.key === 'Enter') analyzeRepo();
+  const handleKeydown = (e: React.KeyboardEvent<HTMLInputElement>, inputId: string) => {
+    if (e.key === 'Enter') analyzeRepo(inputId);
   };
 
   return (
@@ -1045,7 +1057,7 @@ export default function GitvitalLanding() {
 
       <nav>
         <div className="nav-inner">
-          <a href="#" className="logo">
+          <a href="/" className="logo">
             <div className="logo-icon">
               <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                 <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -1056,16 +1068,16 @@ export default function GitvitalLanding() {
           </a>
           <ul className="nav-links">
             <li><a href="#features">Features</a></li>
-            <li><a href="#compare">Compare</a></li>
-            <li><a href="#leaderboard">Leaderboard</a></li>
-            <li><a href="#docs">Docs</a></li>
+            <li><a href="/compare">Compare</a></li>
+            <li><a href="/leaderboard">Leaderboard</a></li>
+            <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noreferrer">Docs</a></li>
           </ul>
           <div className="nav-right">
-            <a href="#" className="btn-ghost">
+            <a href="https://github.com/login/oauth/authorize" className="btn-ghost" target="_blank" rel="noreferrer">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
               Login with GitHub
             </a>
-            <a href="#" className="btn-primary">Analyze a Repo →</a>
+            <a href="/facebook/react" className="btn-primary">Analyze a Repo →</a>
           </div>
         </div>
       </nav>
@@ -1090,8 +1102,8 @@ export default function GitvitalLanding() {
           <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics — bus factor, PR speed, issue backlog, activity trend, contributor spread, and code churn — in under 60 seconds.</p>
 
           <div className="hero-input-wrap">
-            <input type="text" placeholder="github.com/facebook/react" id="heroInput" />
-            <button onClick={analyzeRepo}>Analyze →</button>
+            <input type="text" placeholder="github.com/facebook/react" id="heroInput" onKeyDown={(e) => handleKeydown(e, 'heroInput')} />
+            <button onClick={() => analyzeRepo('heroInput')}>Analyze →</button>
           </div>
           <p className="hero-limit-note">Analyzes last 1,000 commits · 500 PRs · 500 issues · Public repos only</p>
 
@@ -1224,7 +1236,7 @@ export default function GitvitalLanding() {
                 <li>Commit velocity — weekly decay or growth trend</li>
                 <li>Issue backlog — age, response rate, open count</li>
               </ul>
-              <a href="#" className="learn-more">View all metrics →</a>
+              <a href="/facebook/react" className="learn-more">View all metrics →</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -1243,7 +1255,7 @@ export default function GitvitalLanding() {
                     <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Bus Factor</div>
                     <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--green)' }}>12</div>
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '18px', marginTop: '4px' }}>
-                      {[40,60,50,80,100,70].map((h,i)=><div key={i} style={{ background:`rgba(255,94,0,${0.2+i*0.15})`, flex:1, height:`${h}%`, borderRadius:'2px 2px 0 0' }}></div>)}
+                      {[40, 60, 50, 80, 100, 70].map((h, i) => <div key={i} style={{ background: `rgba(255,94,0,${0.2 + i * 0.15})`, flex: 1, height: `${h}%`, borderRadius: '2px 2px 0 0' }}></div>)}
                     </div>
                   </div>
                   <div style={{ background: 'var(--bg-surface)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: '8px', padding: '8px 10px' }}>
@@ -1276,7 +1288,7 @@ export default function GitvitalLanding() {
                   <path d="M0,42 Q50,28 100,35 T200,22 T300,32 T380,12 L400,10" fill="none" stroke="#FF5E00" strokeWidth="2" strokeLinecap="round" />
                 </svg>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                  {['Jan','Mar','Jun','Sep','Dec'].map(m=><span key={m} style={{ fontSize:'9px', color:'var(--text-muted)', fontFamily:'var(--mono)' }}>{m}</span>)}
+                  {['Jan', 'Mar', 'Jun', 'Sep', 'Dec'].map(m => <span key={m} style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{m}</span>)}
                 </div>
               </div>
             </div>
@@ -1294,7 +1306,7 @@ export default function GitvitalLanding() {
                 <li>PR responsiveness (20%) — shows team engagement</li>
                 <li>Issue backlog (15%) + Code churn (10%)</li>
               </ul>
-              <a href="#" className="learn-more">See the formula →</a>
+              <a href="/facebook/react" className="learn-more">See the formula →</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -1320,11 +1332,11 @@ export default function GitvitalLanding() {
               </div>
               <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}>Score Breakdown</div>
-                {[{l:'Activity 30%',w:'92%',c:'var(--green)',v:'92'},{l:'Contributors 25%',w:'82%',c:'#FFB380',v:'82'},{l:'PR Speed 20%',w:'88%',c:'var(--green)',v:'88'},{l:'Issues 15%',w:'60%',c:'var(--yellow)',v:'60'},{l:'Code Churn 10%',w:'78%',c:'var(--green)',v:'78'}].map(r=>(
-                  <div key={r.l} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                    <span style={{ fontSize:'10.5px', color:'var(--text-muted)', width:'96px', fontFamily:'var(--mono)', flexShrink:0 }}>{r.l}</span>
-                    <div style={{ flex:1, height:'6px', background:'rgba(255,255,255,0.06)', borderRadius:'3px', overflow:'hidden' }}><div style={{ width:r.w, height:'100%', background:r.c, borderRadius:'3px' }}></div></div>
-                    <span style={{ fontSize:'10px', color:r.c, fontFamily:'var(--mono)', width:'24px', textAlign:'right' }}>{r.v}</span>
+                {[{ l: 'Activity 30%', w: '92%', c: 'var(--green)', v: '92' }, { l: 'Contributors 25%', w: '82%', c: '#FFB380', v: '82' }, { l: 'PR Speed 20%', w: '88%', c: 'var(--green)', v: '88' }, { l: 'Issues 15%', w: '60%', c: 'var(--yellow)', v: '60' }, { l: 'Code Churn 10%', w: '78%', c: 'var(--green)', v: '78' }].map(r => (
+                  <div key={r.l} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', width: '96px', fontFamily: 'var(--mono)', flexShrink: 0 }}>{r.l}</span>
+                    <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}><div style={{ width: r.w, height: '100%', background: r.c, borderRadius: '3px' }}></div></div>
+                    <span style={{ fontSize: '10px', color: r.c, fontFamily: 'var(--mono)', width: '24px', textAlign: 'right' }}>{r.v}</span>
                   </div>
                 ))}
               </div>
@@ -1342,7 +1354,7 @@ export default function GitvitalLanding() {
                 <li>Compare your fork vs the upstream repo</li>
                 <li>Interview demo: pull up react vs vue live</li>
               </ul>
-              <a href="#" className="learn-more">Try a comparison →</a>
+              <a href="/compare" className="learn-more">Try a comparison →</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -1369,8 +1381,8 @@ export default function GitvitalLanding() {
               <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Head-to-head · 4 of 5 metrics</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '6px' }}>
-                  {[{m:'Health',v:'88 ✓',c:'var(--green)'},{m:'Bus Factor',v:'12 ✓',c:'var(--green)'},{m:'PR Speed',v:'1.2d ✓',c:'var(--green)'},{m:'Issues',v:'642 ~',c:'var(--yellow)'}].map(x=>(
-                    <div key={x.m} style={{ textAlign:'center' }}><div style={{ fontSize:'9px', color:'var(--text-muted)', marginBottom:'3px' }}>{x.m}</div><div style={{ fontSize:'13px', fontWeight:700, color:x.c }}>{x.v}</div></div>
+                  {[{ m: 'Health', v: '88 ✓', c: 'var(--green)' }, { m: 'Bus Factor', v: '12 ✓', c: 'var(--green)' }, { m: 'PR Speed', v: '1.2d ✓', c: 'var(--green)' }, { m: 'Issues', v: '642 ~', c: 'var(--yellow)' }].map(x => (
+                    <div key={x.m} style={{ textAlign: 'center' }}><div style={{ fontSize: '9px', color: 'var(--text-muted)', marginBottom: '3px' }}>{x.m}</div><div style={{ fontSize: '13px', fontWeight: 700, color: x.c }}>{x.v}</div></div>
                   ))}
                 </div>
               </div>
@@ -1388,7 +1400,7 @@ export default function GitvitalLanding() {
                 <li>Catch declining projects before you depend on them</li>
                 <li>Spot the exact quarter a maintainer went quiet</li>
               </ul>
-              <a href="#" className="learn-more">See timeline →</a>
+              <a href="/facebook/react" className="learn-more">See timeline →</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1418,17 +1430,17 @@ export default function GitvitalLanding() {
                   <text x="380" y="62" fontSize="9" fill="#ef4444" fontFamily="monospace">65</text>
                 </svg>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                  {['Q1 2024','Q2','Q3','Q4 ↓'].map((q,i)=><span key={q} style={{ fontSize:'9.5px', color:i===3?'var(--red)':'var(--text-muted)', fontFamily:'var(--mono)' }}>{q}</span>)}
+                  {['Q1 2024', 'Q2', 'Q3', 'Q4 ↓'].map((q, i) => <span key={q} style={{ fontSize: '9.5px', color: i === 3 ? 'var(--red)' : 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{q}</span>)}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:'8px', padding:'10px', display:'flex', alignItems:'flex-start', gap:'8px' }}>
-                  <span style={{ fontSize:'14px' }}>⚠️</span>
-                  <div><div style={{ fontSize:'11px', fontWeight:700, color:'var(--red)' }}>Declining Health</div><div style={{ fontSize:'10px', color:'rgba(239,68,68,0.7)' }}>19pt drop over 4 quarters</div></div>
+                <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                  <span style={{ fontSize: '14px' }}>⚠️</span>
+                  <div><div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--red)' }}>Declining Health</div><div style={{ fontSize: '10px', color: 'rgba(239,68,68,0.7)' }}>19pt drop over 4 quarters</div></div>
                 </div>
-                <div style={{ background:'rgba(234,179,8,0.08)', border:'1px solid rgba(234,179,8,0.2)', borderRadius:'8px', padding:'10px', display:'flex', alignItems:'flex-start', gap:'8px' }}>
-                  <span style={{ fontSize:'14px' }}>📉</span>
-                  <div><div style={{ fontSize:'11px', fontWeight:700, color:'var(--yellow)' }}>Maintainer Quiet</div><div style={{ fontSize:'10px', color:'rgba(234,179,8,0.7)' }}>Commit velocity falling Q3+</div></div>
+                <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '8px', padding: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                  <span style={{ fontSize: '14px' }}>📉</span>
+                  <div><div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--yellow)' }}>Maintainer Quiet</div><div style={{ fontSize: '10px', color: 'rgba(234,179,8,0.7)' }}>Commit velocity falling Q3+</div></div>
                 </div>
               </div>
             </div>
@@ -1445,37 +1457,37 @@ export default function GitvitalLanding() {
                 <li>Stored alongside metrics — re-reads with every refresh</li>
                 <li>Turns a dashboard into a feedback loop</li>
               </ul>
-              <a href="#" className="learn-more">See AI advice →</a>
+              <a href="/facebook/react" className="learn-more">See AI advice →</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
-              <div style={{ background:'rgba(255,94,0,0.06)', border:'1px solid rgba(255,94,0,0.25)', borderLeft:'3px solid #FF5E00', borderRadius:'10px', padding:'14px' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
-                  <div className="ai-icon" style={{ width:'30px', height:'30px', borderRadius:'8px', flexShrink:0 }}>
+              <div style={{ background: 'rgba(255,94,0,0.06)', border: '1px solid rgba(255,94,0,0.25)', borderLeft: '3px solid #FF5E00', borderRadius: '10px', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                  <div className="ai-icon" style={{ width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
                   </div>
                   <div>
-                    <div style={{ fontSize:'13px', fontWeight:700, color:'var(--text)' }}>AI Deep Analysis</div>
-                    <div style={{ fontSize:'10.5px', color:'var(--text-muted)' }}>your-org/your-repo · Powered by Gemini</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>AI Deep Analysis</div>
+                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>your-org/your-repo · Powered by Gemini</div>
                   </div>
-                  <div style={{ marginLeft:'auto', fontSize:'20px', fontWeight:800, color:'var(--yellow)' }}>73<span style={{ fontSize:'10px', color:'var(--text-muted)', fontWeight:400 }}>/100</span></div>
+                  <div style={{ marginLeft: 'auto', fontSize: '20px', fontWeight: 800, color: 'var(--yellow)' }}>73<span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>/100</span></div>
                 </div>
-                <p style={{ fontSize:'11.5px', color:'var(--text-secondary)', lineHeight:1.65, margin:0 }}>
-                  Based on recent commit patterns, <span style={{ color:'#FFB380', fontWeight:600 }}>your-org/your-repo</span> is struggling with <span style={{ color:'var(--red)', fontWeight:600 }}>PR review bottlenecks</span>. We noticed a <span style={{ color:'var(--yellow)', fontWeight:600 }}>14-day average merge delay</span> — the single highest drag on your health score.
+                <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
+                  Based on recent commit patterns, <span style={{ color: '#FFB380', fontWeight: 600 }}>your-org/your-repo</span> is struggling with <span style={{ color: 'var(--red)', fontWeight: 600 }}>PR review bottlenecks</span>. We noticed a <span style={{ color: 'var(--yellow)', fontWeight: 600 }}>14-day average merge delay</span> — the single highest drag on your health score.
                 </p>
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
-                <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:'8px', padding:'12px' }}>
-                  <div style={{ fontSize:'9.5px', fontWeight:700, color:'#FFB380', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'6px' }}>Recommendation 1</div>
-                  <p style={{ fontSize:'11px', color:'var(--text-secondary)', lineHeight:1.55, margin:0 }}>Set a daily 20-min PR review block. Cut merge time from 14d → 3d and gain <strong style={{ color:'var(--green)' }}>+12pts</strong>.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#FFB380', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>Recommendation 1</div>
+                  <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.55, margin: 0 }}>Set a daily 20-min PR review block. Cut merge time from 14d → 3d and gain <strong style={{ color: 'var(--green)' }}>+12pts</strong>.</p>
                 </div>
-                <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:'8px', padding:'12px' }}>
-                  <div style={{ fontSize:'9.5px', fontWeight:700, color:'#FFB380', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:'6px' }}>Recommendation 2</div>
-                  <p style={{ fontSize:'11px', color:'var(--text-secondary)', lineHeight:1.55, margin:0 }}>Invite 2 community maintainers to &apos;docs&apos; tag. Push bus factor above <strong style={{ color:'var(--green)' }}>5</strong>.</p>
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#FFB380', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>Recommendation 2</div>
+                  <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.55, margin: 0 }}>Invite 2 community maintainers to &apos;docs&apos; tag. Push bus factor above <strong style={{ color: 'var(--green)' }}>5</strong>.</p>
                 </div>
               </div>
-              <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:'8px', padding:'10px' }}>
-                <div style={{ fontSize:'10px', color:'var(--text-muted)', marginBottom:'6px' }}>Recent commit activity</div>
-                <svg style={{ width:'100%', height:'36px' }} viewBox="0 0 300 36" preserveAspectRatio="none">
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '6px' }}>Recent commit activity</div>
+                <svg style={{ width: '100%', height: '36px' }} viewBox="0 0 300 36" preserveAspectRatio="none">
                   <path d="M0,28 Q30,10 60,20 T120,14 T180,22 T240,10 T300,18 L300,36 L0,36 Z" fill="rgba(255,94,0,0.1)" />
                   <path d="M0,28 Q30,10 60,20 T120,14 T180,22 T240,10 T300,18" fill="none" stroke="#FF5E00" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
@@ -1536,7 +1548,7 @@ export default function GitvitalLanding() {
               <div className="bc-label">GitHub OAuth</div>
               <div className="bc-title">Login to unlock more</div>
               <div className="bc-desc">Authenticate to analyze your own repos, track your developer score, and get personalized AI advice.</div>
-              <a href="#" className="btn-ghost" style={{ marginTop: '16px', display: 'inline-flex', borderRadius: '8px' }}>
+              <a href="https://github.com/login/oauth/authorize" className="btn-ghost" style={{ marginTop: '16px', display: 'inline-flex', borderRadius: '8px' }} target="_blank" rel="noreferrer">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
                 Login with GitHub
               </a>
@@ -1677,8 +1689,8 @@ export default function GitvitalLanding() {
           <h2>Stop guessing.<br />Start knowing.</h2>
           <p>Paste any GitHub URL. Get a full health report in under 60 seconds. Free forever for public repos.</p>
           <div className="hero-input-wrap" style={{ maxWidth: '480px', margin: '0 auto 12px' }}>
-            <input type="text" placeholder="github.com/your-org/your-repo" />
-            <button onClick={analyzeRepo}>Analyze Now →</button>
+            <input type="text" placeholder="github.com/your-org/your-repo" id="ctaInput" onKeyDown={(e) => handleKeydown(e, 'ctaInput')} />
+            <button onClick={() => analyzeRepo('ctaInput')}>Analyze Now →</button>
           </div>
           <p className="cta-note">No signup required for public repos · Free forever</p>
         </div>
@@ -1689,7 +1701,7 @@ export default function GitvitalLanding() {
         <div className="footer-inner">
           <div className="footer-grid">
             <div className="footer-brand">
-              <a href="#" className="logo">
+              <a href="/" className="logo">
                 <div className="logo-icon">
                   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                     <path d="M2 7.5 L5 4 L8 7 L11 3 L13 5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -1703,43 +1715,43 @@ export default function GitvitalLanding() {
             <div className="footer-col">
               <h4>Product</h4>
               <ul>
-                <li><a href="#">Health Score</a></li>
-                <li><a href="#">Repo Compare</a></li>
-                <li><a href="#">Timeline</a></li>
-                <li><a href="#">AI Advice</a></li>
-                <li><a href="#">Badges</a></li>
-                <li><a href="#">Leaderboard</a></li>
+                <li><a href="/facebook/react">Health Score</a></li>
+                <li><a href="/compare">Repo Compare</a></li>
+                <li><a href="/facebook/react">Timeline</a></li>
+                <li><a href="/facebook/react">AI Advice</a></li>
+                <li><a href="/facebook/react">Badges</a></li>
+                <li><a href="/leaderboard">Leaderboard</a></li>
               </ul>
             </div>
             <div className="footer-col">
               <h4>Developers</h4>
               <ul>
-                <li><a href="#">Docs</a></li>
-                <li><a href="#">API Reference</a></li>
-                <li><a href="#">GitHub</a></li>
-                <li><a href="#">Changelog</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noreferrer">Docs</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/tree/main/gitvital/backend/src" target="_blank" rel="noreferrer">API Reference</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noreferrer">GitHub</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a></li>
               </ul>
             </div>
             <div className="footer-col">
               <h4>Community</h4>
               <ul>
-                <li><a href="#">Discord</a></li>
-                <li><a href="#">Twitter / X</a></li>
-                <li><a href="#">GitHub Discussions</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/discussions" target="_blank" rel="noreferrer">Discord</a></li>
+                <li><a href="https://x.com" target="_blank" rel="noreferrer">Twitter / X</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/discussions" target="_blank" rel="noreferrer">GitHub Discussions</a></li>
               </ul>
             </div>
             <div className="footer-col">
               <h4>Legal</h4>
               <ul>
-                <li><a href="#">Privacy Policy</a></li>
-                <li><a href="#">Terms of Service</a></li>
-                <li><a href="#">Fair Use</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noreferrer">Privacy Policy</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noreferrer">Terms of Service</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noreferrer">Fair Use</a></li>
               </ul>
             </div>
           </div>
           <div className="footer-bottom">
             <span>© 2025 GitVital. All rights reserved.</span>
-            <a href="#" className="status-dot">All systems operational ↗</a>
+            <a href="/leaderboard" className="status-dot">All systems operational ↗</a>
           </div>
         </div>
       </footer>
