@@ -61,15 +61,23 @@ export default function GitvitalLanding() {
       }
     });
 
-    const healthTimer = setInterval(() => {
+    let healthTimer: ReturnType<typeof setInterval>;
+    
+    const initialTimeout = setTimeout(() => {
       setIsHealthy(prev => !prev);
       setAnimKey(prev => prev + 1);
-    }, 4000);
+      
+      healthTimer = setInterval(() => {
+        setIsHealthy(prev => !prev);
+        setAnimKey(prev => prev + 1);
+      }, 3000);
+    }, 1000);
 
     return () => {
       fadeObserver.disconnect();
       counterObserver.disconnect();
-      clearInterval(healthTimer);
+      clearTimeout(initialTimeout);
+      if (healthTimer) clearInterval(healthTimer);
     };
   }, []);
 
