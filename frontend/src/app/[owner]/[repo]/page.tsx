@@ -27,7 +27,7 @@ export default function RepoDashboardPage() {
   }
 
   return (
-    <body className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
+    <div className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
       {/* Top Bar */}
       <nav className="sticky top-0 z-50 border-b border-primary/10 bg-background-dark/80 backdrop-blur-md px-6 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -218,8 +218,8 @@ export default function RepoDashboardPage() {
                 <button
                   key={r}
                   className={`px-3 py-1 text-xs font-bold rounded transition-all ${activeRange === r
-                      ? "bg-primary text-background-dark"
-                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    ? "bg-primary text-background-dark"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                     }`}
                   onClick={() => setActiveRange(r)}
                 >
@@ -353,6 +353,6 @@ export default function RepoDashboardPage() {
           </div>
         </div>
       </footer>
-    </body>
+    </div>
   );
 }

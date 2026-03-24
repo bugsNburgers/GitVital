@@ -70,7 +70,7 @@ export default function LeaderboardPage() {
   }
 
   return (
-    <body className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
+    <div className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -258,6 +258,6 @@ export default function LeaderboardPage() {
           </div>
         </div>
       </section>
-    </body>
+    </div>
   );
 }

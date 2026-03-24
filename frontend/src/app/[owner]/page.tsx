@@ -113,7 +113,7 @@ export default function UserProfilePage() {
       <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet" />
       <Script src="https://unpkg.com/aos@2.3.1/dist/aos.js" onLoad={onScriptLoad} strategy="afterInteractive" />
 
-      <body className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+      <div className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
         {/* Tooltip */}
         <div className="absolute hidden bg-slate-900 text-white text-xs py-1 px-2 rounded pointer-events-none z-[100] border border-slate-700 shadow-xl" id="tooltip"></div>
 
@@ -343,7 +343,7 @@ export default function UserProfilePage() {
             <a className="text-sm text-slate-400 hover:text-primary transition-colors" href="#">Documentation</a>
           </div>
         </footer>
-      </body>
+      </div>
     </>
   );
 }

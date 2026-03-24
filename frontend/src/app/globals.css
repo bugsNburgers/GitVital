@@ -129,3 +129,16 @@ body {
   background-color: #101e22;
   color: #f1f5f9;
 }
+
+/* Hide native scrollbar; custom SVG indicator handles scroll progress UI. */
+html,
+body {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}

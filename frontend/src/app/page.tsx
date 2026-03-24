@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ScrollPulse from '@/components/ScrollPulse';
 
 export default function GitvitalLanding() {
   const router = useRouter();
@@ -105,6 +106,7 @@ export default function GitvitalLanding() {
 
   return (
     <>
+      <ScrollPulse />
       <style dangerouslySetInnerHTML={{
         __html: `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

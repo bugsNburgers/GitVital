@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import ScrollPulse from "../components/ScrollPulse";
 import "./globals.css";
 
 const inter = Inter({
@@ -28,6 +29,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.variable} ${inter.className} antialiased`}>
+        <ScrollPulse />
         {children}
       </body>
     </html>

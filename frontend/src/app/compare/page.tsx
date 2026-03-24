@@ -32,7 +32,7 @@ export default function RepoComparePage() {
   }
 
   return (
-    <body className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+    <div className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
       <div className="relative flex min-h-screen w-full flex-col overflow-x-hidden">
         {/* Top Navigation */}
         <header className="sticky top-0 z-50 w-full glass border-b border-primary/10 px-6 py-3 lg:px-20">
@@ -249,6 +249,6 @@ export default function RepoComparePage() {
           </div>
         </footer>
       </div>
-    </body>
+    </div>
   );
 }
