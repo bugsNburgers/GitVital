@@ -274,7 +274,7 @@ export default function UserProfilePage() {
               </h3>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-slate-400 italic last-analyzed">{lastAnalyzed}</span>
-                <select className="bg-slate-800 border-none rounded-lg text-sm focus:ring-1 focus:ring-primary py-1.5 pl-3 pr-8">
+                <select className="bg-slate-800 border-none rounded-lg text-sm focus:ring-1 focus:ring-primary py-1.5 pl-3 pr-8" aria-label="Sort repositories by">
                   <option>Health Score</option>
                   <option>Recent Activity</option>
                   <option>Popularity</option>

@@ -117,6 +117,7 @@ export default function LeaderboardPage() {
             <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Filter by Language</label>
             <div className="relative">
               <select
+                aria-label="Filter developers by programming language"
                 className="w-full appearance-none bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-3 pr-10 focus:ring-2 focus:ring-primary focus:border-primary text-sm font-medium"
                 value={langFilter}
                 onChange={handleLangChange}
@@ -207,11 +208,10 @@ export default function LeaderboardPage() {
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                 <span
                   key={p}
-                  className={`size-8 flex items-center justify-center rounded cursor-pointer text-sm font-bold transition-colors ${
-                    currentPage === p
+                  className={`size-8 flex items-center justify-center rounded cursor-pointer text-sm font-bold transition-colors ${currentPage === p
                       ? "bg-primary text-slate-900 font-black"
                       : "hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
+                    }`}
                   onClick={() => setCurrentPage(p)}
                 >
                   {p}
