@@ -171,14 +171,15 @@ export default function GitvitalLanding() {
     width: 100%;
     max-width: 1120px;
     margin: 0 auto;
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
   }
   .logo {
     display: flex;
     align-items: center;
     gap: 8px;
+    justify-self: start;
     text-decoration: none;
     color: var(--text);
     font-size: 15px;
@@ -200,6 +201,7 @@ export default function GitvitalLanding() {
     align-items: center;
     gap: 2px;
     list-style: none;
+    justify-self: center;
   }
   .nav-links a {
     color: var(--text-secondary);
@@ -211,7 +213,7 @@ export default function GitvitalLanding() {
     transition: color 0.15s, background 0.15s;
   }
   .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
-  .nav-right { display: flex; align-items: center; gap: 8px; }
+  .nav-right { display: flex; align-items: center; gap: 8px; justify-self: end; }
   .btn-ghost {
     font-family: var(--font);
     font-size: 13px;
@@ -315,6 +317,19 @@ export default function GitvitalLanding() {
     line-height: 1.0;
     color: var(--text);
     margin-bottom: 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.12em;
+  }
+  .hero-title-line {
+    display: block;
+  }
+  .hero-title-status {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    line-height: 1;
   }
   .hero h1 .accent {
     background: linear-gradient(135deg, #FFB380 0%, #FFC7A6 50%, #FFDACC 100%);
@@ -323,10 +338,11 @@ export default function GitvitalLanding() {
     background-clip: text;
   }
   .status-scroller {
-    display: inline-grid;
+    display: grid;
     height: 1.15em;
+    min-width: 8ch;
     overflow: hidden;
-    vertical-align: bottom;
+    text-align: center;
   }
   .status-scroller-inner {
     display: flex;
@@ -345,6 +361,8 @@ export default function GitvitalLanding() {
     height: 1.15em;
     display: flex;
     align-items: center;
+    justify-content: center;
+    width: 100%;
     line-height: 1;
     padding-bottom: 0.1em;
   }
@@ -1077,7 +1095,6 @@ export default function GitvitalLanding() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
               Login with GitHub
             </a>
-            <a href="/facebook/react" className="btn-primary">Analyze a Repo →</a>
           </div>
         </div>
       </nav>
@@ -1087,14 +1104,17 @@ export default function GitvitalLanding() {
         <div className="hero-glow"></div>
         <div className="hero-glow-2"></div>
         <div className="hero-inner">
-          <h1>Is your GitHub repo<br />
-            <span className="status-scroller">
-              <span className={`status-scroller-inner ${animKey > 0 ? 'animating' : ''}`} key={animKey}>
-                <span className={`word ${isHealthy ? 'healthy' : 'dying'}`}>
-                  {isHealthy ? 'healthy?' : 'dying?'}
-                </span>
-                <span className={`word ${isHealthy ? 'dying' : 'healthy'}`}>
-                  {isHealthy ? 'dying?' : 'healthy?'}
+          <h1>
+            <span className="hero-title-line">Is your GitHub repo</span>
+            <span className="hero-title-status">
+              <span className="status-scroller">
+                <span className={`status-scroller-inner ${animKey > 0 ? 'animating' : ''}`} key={animKey}>
+                  <span className={`word ${isHealthy ? 'healthy' : 'dying'}`}>
+                    {isHealthy ? 'Healthy?' : 'Dying?'}
+                  </span>
+                  <span className={`word ${isHealthy ? 'dying' : 'healthy'}`}>
+                    {isHealthy ? 'Dying?' : 'Healthy?'}
+                  </span>
                 </span>
               </span>
             </span>
