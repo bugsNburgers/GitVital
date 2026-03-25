@@ -13,15 +13,15 @@ export const redis = new Redis(config.redisUrl, {
 // Redis Memory Management
 // On first connect, apply free-tier-safe memory limits:
 //   maxmemory  100mb       — cap memory consumption (safe for free tiers)
-//   maxmemory-policy allkeys-lru — evict least-recently-used keys when full
+//   maxmemory-policy noeviction — do not evict keys when full
 // Note: some managed Redis providers (e.g. Upstash with read-only CONFIG)
 // will reject CONFIG SET. The catch block ensures this never crashes the server.
 redis.on('connect', async () => {
   console.log('✅ Redis connected');
   try {
     await redis.config('SET', 'maxmemory', '100mb');
-    await redis.config('SET', 'maxmemory-policy', 'allkeys-lru');
-    console.log('✅ Redis memory policy set: maxmemory=100mb, policy=allkeys-lru');
+    await redis.config('SET', 'maxmemory-policy', 'noeviction');
+    console.log('✅ Redis memory policy set: maxmemory=100mb, policy=noeviction');
   } catch (err) {
     // Non-fatal: managed Redis instances may disallow CONFIG SET
     console.warn('⚠️  Redis CONFIG SET skipped (managed instance or insufficient permissions):', (err as Error).message);

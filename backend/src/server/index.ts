@@ -973,7 +973,7 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
     // });
 
     // Redirect back to the frontend
-    res.redirect(config.frontendUrl);
+    res.redirect(`${config.frontendUrl}/${userData.login}`);
   } catch (error) {
     console.error('GitHub OAuth error:', error);
     res.status(500).json({ error: 'Authentication failed' });
@@ -1002,6 +1002,20 @@ app.post('/auth/logout', async (req: Request, res: Response): Promise<void> => {
 
     res.status(200).json({ success: true });
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// 6l. GET /api/me — Get current user session
+// ─────────────────────────────────────────────────────────────
+app.get('/api/me', (req: Request, res: Response) => {
+  const userId = (req.session as any)?.userId;
+  const githubUsername = (req.session as any)?.githubUsername;
+  
+  if (userId && githubUsername) {
+    res.json({ loggedIn: true, userId, githubUsername });
+  } else {
+    res.json({ loggedIn: false });
+  }
 });
 
 
