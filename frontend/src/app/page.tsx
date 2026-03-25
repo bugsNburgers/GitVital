@@ -52,14 +52,8 @@ export default function GitvitalLanding() {
     counterEls.forEach(el => counterObserver.observe(el));
 
     // Marquee duplications
-    const tracks = document.querySelectorAll('.marquee-track, .testimonials-scroll-track');
-    tracks.forEach(t => {
-      const track = t as HTMLElement;
-      if (!track.dataset.copied) {
-        track.innerHTML += track.innerHTML;
-        track.dataset.copied = "true";
-      }
-    });
+    // Removed innerHTML duplication to avoid React 'removeChild' errors!
+    // The items are already duplicated directly in the JSX below.
 
     let healthTimer: ReturnType<typeof setInterval>;
     
@@ -1195,38 +1189,30 @@ export default function GitvitalLanding() {
 
 
       <div className="logos-section">
-        <div className="logos-label">Trusted by developers at</div>
+        <div className="logos-label">Built with</div>
         <div className="marquee-wrap">
           <div className="marquee-track" id="marqueeTrack">
-            <div className="logo-item">⬡ Google</div>
-            <div className="logo-item">◈ Meta</div>
-            <div className="logo-item">▲ Vercel</div>
-            <div className="logo-item">⊕ Stripe</div>
-            <div className="logo-item">◉ Shopify</div>
-            <div className="logo-item">◆ Linear</div>
-            <div className="logo-item">● Supabase</div>
-            <div className="logo-item">○ Notion</div>
-            <div className="logo-item">◇ Figma</div>
-            <div className="logo-item">⬡ PlanetScale</div>
-            <div className="logo-item">▣ Prisma</div>
-            <div className="logo-item">◈ Resend</div>
-            <div className="logo-item">⊗ Railway</div>
-            <div className="logo-item">◉ Turso</div>
+            <div className="logo-item">⬡ Next.js</div>
+            <div className="logo-item">◈ React</div>
+            <div className="logo-item">▲ TypeScript</div>
+            <div className="logo-item">⊕ Node.js</div>
+            <div className="logo-item">◉ Prisma</div>
+            <div className="logo-item">◆ PostgreSQL</div>
+            <div className="logo-item">● Redis</div>
+            <div className="logo-item">○ BullMQ</div>
+            <div className="logo-item">◇ GraphQL</div>
+            <div className="logo-item">▣ Vercel</div>
 
-            <div className="logo-item">⬡ Google</div>
-            <div className="logo-item">◈ Meta</div>
-            <div className="logo-item">▲ Vercel</div>
-            <div className="logo-item">⊕ Stripe</div>
-            <div className="logo-item">◉ Shopify</div>
-            <div className="logo-item">◆ Linear</div>
-            <div className="logo-item">● Supabase</div>
-            <div className="logo-item">○ Notion</div>
-            <div className="logo-item">◇ Figma</div>
-            <div className="logo-item">⬡ PlanetScale</div>
-            <div className="logo-item">▣ Prisma</div>
-            <div className="logo-item">◈ Resend</div>
-            <div className="logo-item">⊗ Railway</div>
-            <div className="logo-item">◉ Turso</div>
+            <div className="logo-item">⬡ Next.js</div>
+            <div className="logo-item">◈ React</div>
+            <div className="logo-item">▲ TypeScript</div>
+            <div className="logo-item">⊕ Node.js</div>
+            <div className="logo-item">◉ Prisma</div>
+            <div className="logo-item">◆ PostgreSQL</div>
+            <div className="logo-item">● Redis</div>
+            <div className="logo-item">○ BullMQ</div>
+            <div className="logo-item">◇ GraphQL</div>
+            <div className="logo-item">▣ Vercel</div>
           </div>
         </div>
       </div>
