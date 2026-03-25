@@ -516,7 +516,7 @@ export default function GitvitalLanding() {
   .metric-pill.green .mp-val { color: var(--green); }
   .metric-pill.yellow { border-color: rgba(234,179,8,0.2); }
   .metric-pill.yellow .mp-val { color: var(--yellow); }
-  .flags-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px 18px; border-top: 1px solid var(--border); }
+  .flags-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 12px 20px 18px; border-top: 1px solid var(--border); }
   .flag {
     font-size: 11px;
     font-weight: 500;
@@ -1178,9 +1178,9 @@ export default function GitvitalLanding() {
               </div>
             </div>
             <div className="flags-row">
-              <span className="flag success">✅ Healthy Contributor Base</span>
-              <span className="flag success">⚡ Fast PR Reviews</span>
-              <span className="flag warn">⚠️ Large Issue Backlog</span>
+              <span className="flag success">✅ Healthy Team</span>
+              <span className="flag success">⚡ Fast Reviews</span>
+              <span className="flag warn">⚠️ Large Backlog</span>
               <span className="flag success">📈 Growing Activity</span>
             </div>
           </div>
