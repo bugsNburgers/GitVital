@@ -17,6 +17,11 @@ export const metadata: Metadata = {
     "AI-powered health scores and deep repository insights for engineering teams. Monitor codebase vitality, contributor dynamics, and merge velocity in real-time.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

@@ -393,7 +393,7 @@ export default function GitvitalLanding() {
     color: var(--green);
   }
   .hero-sub {
-    font-size: 16px;
+    font-size: clamp(14px, 1.3vw, 17px);
     line-height: 1.65;
     color: var(--text-secondary);
     max-width: 520px;
@@ -1068,6 +1068,15 @@ export default function GitvitalLanding() {
   }
   .learn-more:hover { gap: 7px; }
 
+  /* ─── LARGE SCREENS (15"+ / wide monitors) ─── */
+  @media (min-width: 1400px) {
+    .nav-inner { max-width: 1280px; }
+    .section-inner { max-width: 1280px; }
+    .stats-grid { max-width: 1280px; }
+    .footer-inner { max-width: 1280px; }
+  }
+
+  /* ─── MEDIUM (tablets / small laptops ~700-900px) ─── */
   @media (max-width: 900px) {
     .tab-panel.active { grid-template-columns: 1fr; }
     .tab-visual { border-left: none; border-top: 1px solid var(--border); }
@@ -1079,18 +1088,41 @@ export default function GitvitalLanding() {
     .footer-grid { grid-template-columns: 1fr 1fr; }
     .metrics-row { grid-template-columns: repeat(2, 1fr); }
   }
+
+  @media (max-width: 700px) {
+    .hero { padding: 90px 16px 48px; }
+    .hero-input-wrap { max-width: 100%; }
+    .hero-sub { max-width: 100%; }
+    .hero-inner { max-width: 100%; }
+    .tabs-header { flex-direction: column; }
+    .tab-content { padding: 24px; }
+  }
+
+  /* ─── MOBILE (≤600px) ─── */
   @media (max-width: 600px) {
     nav { padding: 0 16px; }
     .nav-links { display: none; }
-    .logo-mark {
-      height: 40px;
-    }
-    section { padding: 72px 16px; }
+    .logo-mark { height: 38px; }
+    section { padding: 64px 16px; }
     .bento-grid { grid-template-columns: 1fr; }
     .tabs-header { flex-direction: column; }
     .stats-grid { grid-template-columns: 1fr 1fr; }
     .footer-grid { grid-template-columns: 1fr; }
     .hero-card { max-width: 100%; }
+    .hero-input-wrap { flex-wrap: wrap; border-radius: 10px; }
+    .hero-input-wrap input { width: 100%; padding: 12px 14px; }
+    .hero-input-wrap button { width: 100%; margin: 0 4px 4px; border-radius: 7px; text-align: center; justify-content: center; }
+    .metrics-row { grid-template-columns: repeat(2, 1fr); }
+    .testimonials-grid { grid-template-columns: 1fr; }
+    .nav-right .btn-ghost { display: none; }
+    .cta-section { padding: 72px 16px; }
+    .stat-num { font-size: 32px; }
+  }
+
+  /* ─── VERY SMALL PHONES (≤380px) ─── */
+  @media (max-width: 380px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .metrics-row { grid-template-columns: 1fr 1fr; }
   }
 ` }} />
 
