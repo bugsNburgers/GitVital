@@ -9,6 +9,7 @@ export default function GitvitalLanding() {
   const [animKey, setAnimKey] = useState(0);
   const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
   const [showIpNotice, setShowIpNotice] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     // Check if the user has already acknowledged the IP notice
@@ -1209,10 +1210,88 @@ export default function GitvitalLanding() {
     .tab-content { padding: 24px; }
   }
 
+  /* ─── HAMBURGER BUTTON ─── */
+  .hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    width: 36px;
+    height: 36px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 0;
+    transition: border-color 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+  .hamburger:hover { border-color: var(--border-hover); background: rgba(255,255,255,0.04); }
+  .hamburger span {
+    display: block;
+    width: 16px;
+    height: 1.5px;
+    background: var(--text-secondary);
+    border-radius: 2px;
+    transition: transform 0.25s ease, opacity 0.25s ease, width 0.25s ease;
+    transform-origin: center;
+  }
+  .hamburger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+  .hamburger.open span:nth-child(2) { opacity: 0; width: 0; }
+  .hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+  /* ─── MOBILE DRAWER ─── */
+  .mobile-drawer {
+    display: none;
+    position: fixed;
+    top: 58px;
+    left: 0; right: 0;
+    background: rgba(10,11,11,0.97);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    z-index: 99;
+    flex-direction: column;
+    padding: 12px 16px 16px;
+    gap: 4px;
+    animation: drawerSlide 0.2s ease;
+  }
+  @keyframes drawerSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  .mobile-drawer.open { display: flex; }
+  .mobile-drawer a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 11px 12px;
+    border-radius: 8px;
+    transition: color 0.15s, background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mobile-drawer a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .mobile-drawer .drawer-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0;
+  }
+  .mobile-drawer .drawer-login {
+    color: var(--text);
+    font-weight: 600;
+    background: rgba(255,94,0,0.1);
+    border: 1px solid rgba(255,94,0,0.25);
+    margin-top: 2px;
+  }
+  .mobile-drawer .drawer-login:hover { background: rgba(255,94,0,0.18); }
+
   /* ─── MOBILE (≤600px) ─── */
   @media (max-width: 600px) {
     nav { padding: 0 16px; }
     .nav-links { display: none; }
+    .nav-right { display: none; }
+    .hamburger { display: flex; }
     .logo-mark { height: 38px; }
     section { padding: 64px 16px; }
     .bento-grid { grid-template-columns: 1fr; }
@@ -1225,7 +1304,6 @@ export default function GitvitalLanding() {
     .hero-input-wrap button { width: 100%; margin: 0 4px 4px; border-radius: 7px; text-align: center; justify-content: center; }
     .metrics-row { grid-template-columns: repeat(2, 1fr); }
     .testimonials-grid { grid-template-columns: 1fr; }
-    .nav-right .btn-ghost { font-size: 12px; padding: 5px 10px; }
     .cta-section { padding: 72px 16px; }
     .stat-num { font-size: 32px; }
   }
@@ -1263,8 +1341,36 @@ export default function GitvitalLanding() {
               </a>
             )}
           </div>
+          {/* Hamburger – mobile only */}
+          <button
+            className={`hamburger${menuOpen ? ' open' : ''}`}
+            aria-label="Toggle menu"
+            onClick={() => setMenuOpen(o => !o)}
+          >
+            <span /><span /><span />
+          </button>
         </div>
       </nav>
+
+      {/* Mobile drawer */}
+      <div className={`mobile-drawer${menuOpen ? ' open' : ''}`}>
+        <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
+        <a href="/compare" onClick={() => setMenuOpen(false)}>Compare</a>
+        <a href="/leaderboard" onClick={() => setMenuOpen(false)}>Leaderboard</a>
+        <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
+        <div className="drawer-divider" />
+        {user?.loggedIn ? (
+          <a href={`/${user.githubUsername}`} className="drawer-login" onClick={() => setMenuOpen(false)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+            View Profile
+          </a>
+        ) : (
+          <a href="http://localhost:8080/auth/github" className="drawer-login" onClick={() => setMenuOpen(false)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+            Login with GitHub
+          </a>
+        )}
+      </div>
 
 
       <section className={`hero ${isHealthy ? 'healthy' : ''}`}>
