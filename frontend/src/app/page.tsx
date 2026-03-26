@@ -8,6 +8,23 @@ export default function GitvitalLanding() {
   const [isHealthy, setIsHealthy] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+  const [showIpNotice, setShowIpNotice] = useState(false);
+
+  useEffect(() => {
+    // Check if the user has already acknowledged the IP notice
+    if (typeof window !== 'undefined' && !localStorage.getItem('gitvital_ip_notice_ack')) {
+      setShowIpNotice(true);
+      // Disable scrolling when modal is open
+      document.body.style.overflow = 'hidden';
+    }
+  }, []);
+
+  const handleAckIpNotice = () => {
+    localStorage.setItem('gitvital_ip_notice_ack', 'true');
+    setShowIpNotice(false);
+    // Re-enable scrolling
+    document.body.style.overflow = 'auto';
+  };
 
   useEffect(() => {
     fetch('http://localhost:8080/api/me', { credentials: 'include' })
@@ -120,6 +137,31 @@ export default function GitvitalLanding() {
   return (
     <>
       <ScrollPulse />
+      
+      {showIpNotice && (
+        <div className="ip-modal-overlay">
+          <div className="ip-modal">
+            <div className="ip-modal-header">
+              <div className="ip-modal-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="m9 12 2 2 4-4" /></svg>
+              </div>
+              <h2 className="ip-modal-title">API Rate Limiting Warning</h2>
+            </div>
+            <div className="ip-modal-body">
+              <p>
+                To provide you with lightning-fast analysis and protect our AI systems from abuse, GitVital temporarily collects your <strong>IP address</strong> for <strong>rate-limiting purposes</strong>.
+              </p>
+              <p>
+                <strong>Why is this safe?</strong> We process your IP strictly for request counting. It is completely anonymous—we do not store, track, or share your IP with any third parties. 
+              </p>
+            </div>
+            <div className="ip-modal-actions">
+              <button className="ip-modal-btn" onClick={handleAckIpNotice}>I understand, let's go!</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style dangerouslySetInnerHTML={{
         __html: `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -156,6 +198,75 @@ export default function GitvitalLanding() {
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
   }
+
+  /* ─── IP NOTICE MODAL ─── */
+  .ip-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(8, 9, 9, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: fadeInModal 0.3s ease;
+  }
+  @keyframes fadeInModal { from { opacity: 0; backdrop-filter: blur(0px); } to { opacity: 1; backdrop-filter: blur(8px); } }
+  
+  .ip-modal {
+    background: var(--bg-card);
+    border: 1px solid rgba(255,94,0,0.25);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px var(--border), 0 0 40px rgba(255,94,0,0.1);
+    position: relative;
+    overflow: hidden;
+    transform: translateY(0);
+    animation: slideUpModal 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes slideUpModal { from { opacity: 0; transform: translateY(20px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .ip-modal::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,94,0,0.5), transparent);
+  }
+  
+  .ip-modal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .ip-modal-icon {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, rgba(255,94,0,0.15), rgba(76,202,240,0.05));
+    border: 1px solid rgba(255,94,0,0.2);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--orange-light);
+    flex-shrink: 0;
+  }
+  .ip-modal-title { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+  .ip-modal-body { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 28px; }
+  .ip-modal-body p { margin-bottom: 12px; }
+  .ip-modal-body p:last-child { margin-bottom: 0; }
+  .ip-modal-body strong { color: var(--text); font-weight: 600; }
+  .ip-modal-btn {
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--violet);
+    border: 1px solid rgba(255,94,0,0.5);
+    border-radius: 8px;
+    padding: 10px 24px;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+    width: 100%;
+    text-align: center;
+  }
+  .ip-modal-btn:hover { background: #D94E00; box-shadow: 0 0 20px rgba(255,94,0,0.35); }
 
   /* ─── NOISE TEXTURE OVERLAY ─── */
   body::before {
