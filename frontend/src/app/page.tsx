@@ -1225,7 +1225,7 @@ export default function GitvitalLanding() {
     .hero-input-wrap button { width: 100%; margin: 0 4px 4px; border-radius: 7px; text-align: center; justify-content: center; }
     .metrics-row { grid-template-columns: repeat(2, 1fr); }
     .testimonials-grid { grid-template-columns: 1fr; }
-    .nav-right .btn-ghost { display: none; }
+    .nav-right .btn-ghost { font-size: 12px; padding: 5px 10px; }
     .cta-section { padding: 72px 16px; }
     .stat-num { font-size: 32px; }
   }

@@ -72,6 +72,9 @@ export default function ScrollPulse() {
         html { overflow-y: scroll; }
         body { scrollbar-width: none; -ms-overflow-style: none; }
         body::-webkit-scrollbar { display: none; }
+        @media (max-width: 768px) {
+          #ecg-scrollbar { display: none !important; }
+        }
       `;
       document.head.appendChild(s);
     }
@@ -123,6 +126,7 @@ export default function ScrollPulse() {
 
   return (
     <div
+      id="ecg-scrollbar"
       aria-hidden="true"
       style={{
         position: "fixed",
@@ -151,7 +155,7 @@ export default function ScrollPulse() {
           </linearGradient>
 
           {/* Orange neon glow — 3 layers */}
-          <filter id="ecgGlow" x="-200%" y="-5%" width="500%" height="110%">
+          <filter id="ecgGlow" x="-150%" y="-5%" width="350%" height="110%">
             <feGaussianBlur id="ecg-b1" in="SourceGraphic" stdDeviation="3"  result="b1"/>
             <feGaussianBlur              in="SourceGraphic" stdDeviation="8"  result="b2"/>
             <feGaussianBlur              in="SourceGraphic" stdDeviation="18" result="b3"/>
