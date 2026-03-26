@@ -31,7 +31,7 @@ export default function GitvitalLanding() {
       .then(res => res.json())
       .then(data => setUser(data))
       .catch(err => {
-        console.error('Failed to fetch user session:', err);
+        console.warn('Failed to fetch user session:', err);
         setUser({ loggedIn: false });
       });
   }, []);
@@ -149,7 +149,7 @@ export default function GitvitalLanding() {
             </div>
             <div className="ip-modal-body">
               <p>
-                To provide you with lightning-fast analysis and protect our AI systems from abuse, GitVital temporarily collects your <strong>IP address</strong> for <strong>rate-limiting purposes</strong>.
+                To provide you with lightning-fast analysis and protect our AI systems from abuse, GitVital temporarily collects your <strong>IP address</strong> for <strong>rate-limiting purposes</strong> Hence please approve the pop-up permission <strong>"Access other apps and services on this device"</strong> shown on your browser.
               </p>
               <p>
                 <strong>Why is this safe?</strong> We process your IP strictly for request counting. It is completely anonymous—we do not store, track, or share your IP with any third parties. 
