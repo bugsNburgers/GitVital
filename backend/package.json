@@ -16,18 +16,14 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "devDependencies": {
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^6.19.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
     "@types/node": "^25.5.0",
     "@types/node-cron": "^3.0.11",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@prisma/client": "^6.19.2",
     "bullmq": "^5.71.0",
     "connect-redis": "^9.0.0",
     "cors": "^2.8.6",
@@ -39,6 +35,8 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.10.0",
     "node-cron": "^4.2.1",
-    "prisma": "^6.19.2"
+    "prisma": "^6.19.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
