@@ -27,332 +27,541 @@ export default function RepoDashboardPage() {
   }
 
   return (
-    <div className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
-      {/* Top Bar */}
-      <nav className="sticky top-0 z-50 border-b border-primary/10 bg-background-dark/80 backdrop-blur-md px-6 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 text-primary cursor-pointer" onClick={() => router.push("/")}>
-              <img alt="GitVital logo" className="h-11 w-auto md:h-12" src="/gitvital_logo_fixed.svg" />
-              <h1 className="text-2xl font-extrabold tracking-tight">Git Vital</h1>
-            </div>
-            <div className="h-6 w-[1px] bg-primary/20 mx-2"></div>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-slate-400">folder_open</span>
-              <span className="font-semibold text-lg">{owner}/{repo}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-4 text-sm font-medium text-slate-400">
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">star</span>
-                <span>215k</span>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: `
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+          --bg: #080909;
+          --bg-surface: #0f1011;
+          --bg-card: #111314;
+          --bg-card-hover: #161819;
+          --border: rgba(255,255,255,0.055);
+          --border-hover: rgba(255,255,255,0.12);
+          --text: #f4f4f5;
+          --text-secondary: #a1a1aa;
+          --text-muted: #52525b;
+          --green: #22c55e;
+          --green-dim: rgba(34,197,94,0.12);
+          --red: #ef4444;
+          --red-dim: rgba(239,68,68,0.12);
+          --yellow: #eab308;
+          --yellow-dim: rgba(234,179,8,0.12);
+          --orange: #FF5E00;
+          --orange-light: #FFA066;
+          --orange-dim: rgba(255,94,0,0.12);
+          --font: 'Inter', system-ui, sans-serif;
+          --mono: 'Geist Mono', monospace;
+        }
+
+        body { font-family: var(--font); background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+
+        /* ── NAV ── */
+        .dash-nav {
+          position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+          height: 58px; display: flex; align-items: center; padding: 0 24px;
+          background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border-bottom: 1px solid var(--border);
+        }
+        .dash-nav-inner {
+          width: 100%; max-width: 1120px; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        }
+        .dash-logo {
+          display: flex; align-items: center; gap: 8px;
+          text-decoration: none; color: var(--text);
+          font-size: 15px; font-weight: 700; letter-spacing: -0.02em; cursor: pointer;
+        }
+        .dash-logo img { height: 36px; width: auto; }
+        .dash-breadcrumb {
+          display: flex; align-items: center; gap: 8px;
+          font-family: var(--mono); font-size: 13px; color: var(--text-muted);
+        }
+        .dash-breadcrumb .sep { color: var(--border-hover); }
+        .dash-breadcrumb .crumb { color: var(--text-secondary); }
+        .dash-nav-right { display: flex; align-items: center; gap: 8px; }
+        .btn-ghost {
+          font-family: var(--font); font-size: 13px; font-weight: 500;
+          color: var(--text-secondary); background: none;
+          border: 1px solid var(--border); border-radius: 20px;
+          padding: 5px 14px; cursor: pointer;
+          transition: color 0.15s, border-color 0.15s;
+          text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+        .btn-primary {
+          font-family: var(--font); font-size: 13px; font-weight: 600;
+          color: #fff; background: var(--orange);
+          border: 1px solid rgba(255,94,0,0.5); border-radius: 20px;
+          padding: 5px 16px; cursor: pointer;
+          transition: background 0.15s, box-shadow 0.15s;
+          display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-primary:hover { background: #D94E00; box-shadow: 0 0 20px rgba(255,94,0,0.35); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-icon {
+          font-family: var(--font); font-size: 13px; font-weight: 500;
+          color: var(--text-muted); background: none;
+          border: 1px solid var(--border); border-radius: 8px;
+          padding: 5px 10px; cursor: pointer;
+          transition: color 0.15s, border-color 0.15s;
+          display: inline-flex; align-items: center;
+        }
+        .btn-icon:hover { color: var(--text-secondary); border-color: var(--border-hover); }
+
+        /* ── PAGE ── */
+        .dash-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
+        .dash-main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; display: flex; flex-direction: column; gap: 16px; }
+
+        /* ── CARD BASE ── */
+        .card {
+          background: var(--bg-card); border: 1px solid var(--border);
+          border-radius: 14px; position: relative; overflow: hidden;
+          transition: border-color 0.2s;
+        }
+        .card:hover { border-color: var(--border-hover); }
+        .card-pad { padding: 28px; }
+        .card-top-line::before {
+          content: ''; position: absolute; top: 0; left: 0; right: 0;
+          height: 1px; background: linear-gradient(90deg, transparent, rgba(255,94,0,0.35), transparent);
+        }
+
+        /* ── HEALTH SCORE SECTION ── */
+        .health-section { display: flex; align-items: center; gap: 48px; flex-wrap: wrap; }
+        .score-ring-wrap { flex-shrink: 0; position: relative; width: 160px; height: 160px; }
+        .score-ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        .score-ring-center {
+          position: absolute; inset: 0; display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+        }
+        .score-big { font-size: 44px; font-weight: 900; letter-spacing: -0.05em; color: var(--text); line-height: 1; }
+        .score-of { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .health-meta { flex: 1; min-width: 240px; }
+        .health-meta h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.025em; margin-bottom: 6px; }
+        .health-meta p { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px; max-width: 400px; }
+        .health-stats { display: flex; gap: 32px; flex-wrap: wrap; }
+        .hstat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 4px; }
+        .hstat-val { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--text); }
+        .hstat-sub { font-size: 12px; color: var(--green); margin-top: 2px; }
+        .hstat-sub.orange { color: var(--orange-light); }
+
+        /* ── META ROW (stars/forks) ── */
+        .meta-pill {
+          display: inline-flex; align-items: center; gap: 5px;
+          font-size: 12px; color: var(--text-muted);
+          background: var(--bg-surface); border: 1px solid var(--border);
+          border-radius: 20px; padding: 3px 10px;
+        }
+
+        /* ── 4-COL METRIC CARDS ── */
+        .metrics-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .metric-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+        .metric-card-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+        .metric-card-val { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--text); }
+        .metric-card-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+        .metric-card-bars { display: flex; align-items: flex-end; gap: 3px; height: 48px; margin: 12px 0; }
+        .metric-card-bars span {
+          flex: 1; border-radius: 3px 3px 0 0;
+          background: rgba(255,94,0,0.2);
+          transition: background 0.2s;
+        }
+        .metric-card-bars span.hi { background: var(--orange); }
+        .metric-card-bars span.md { background: rgba(255,94,0,0.5); }
+        .metric-chart { height: 48px; margin: 12px 0; }
+        .metric-chart svg { width: 100%; height: 100%; }
+        .metric-donut { display: flex; align-items: center; justify-content: center; height: 48px; margin: 12px 0; }
+
+        /* ── COMMITS TIMELINE ── */
+        .commits-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+        .commits-header h3 { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+        .commits-header p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+        .range-btns { display: flex; gap: 3px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+        .range-btn {
+          font-family: var(--font); font-size: 12px; font-weight: 500;
+          color: var(--text-muted); background: none; border: none;
+          padding: 5px 12px; border-radius: 5px; cursor: pointer;
+          transition: color 0.15s, background 0.15s;
+        }
+        .range-btn:hover { color: var(--text-secondary); }
+        .range-btn.active { color: var(--text); background: rgba(255,255,255,0.07); }
+        .commits-chart { height: 180px; }
+        .commits-chart svg { width: 100%; height: 100%; }
+        .commits-labels { display: flex; justify-content: space-between; padding: 8px 0 0; }
+        .commits-labels span { font-size: 10px; color: var(--text-muted); font-family: var(--mono); text-transform: uppercase; }
+
+        /* ── RISK FLAGS ── */
+        .flags-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .flag-card {
+          border-radius: 10px; padding: 14px 16px;
+          display: flex; align-items: flex-start; gap: 10px;
+        }
+        .flag-card.danger { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.2); }
+        .flag-card.warn { background: var(--yellow-dim); border: 1px solid rgba(234,179,8,0.2); }
+        .flag-card.success { background: var(--green-dim); border: 1px solid rgba(34,197,94,0.2); }
+        .flag-card.info { background: var(--orange-dim); border: 1px solid rgba(255,94,0,0.2); }
+        .flag-icon { font-size: 16px; margin-top: 1px; flex-shrink: 0; }
+        .flag-icon.danger { color: var(--red); }
+        .flag-icon.warn { color: var(--yellow); }
+        .flag-icon.success { color: var(--green); }
+        .flag-icon.info { color: var(--orange-light); }
+        .flag-title { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+        .flag-title.danger { color: var(--red); }
+        .flag-title.warn { color: var(--yellow); }
+        .flag-title.success { color: var(--green); }
+        .flag-title.info { color: var(--orange-light); }
+        .flag-desc { font-size: 11px; line-height: 1.45; color: var(--text-muted); }
+
+        /* ── AI PANEL ── */
+        .ai-panel { border-left: 3px solid var(--orange); }
+        .ai-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+        .ai-icon-box {
+          width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+          background: linear-gradient(135deg, var(--orange), var(--orange-light));
+          display: flex; align-items: center; justify-content: center;
+        }
+        .ai-panel h3 { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+        .ai-text { font-size: 14px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 20px; }
+        .ai-text strong { color: var(--text); font-style: normal; }
+        .ai-recs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .ai-rec {
+          background: var(--bg-surface); border: 1px solid var(--border);
+          border-radius: 10px; padding: 14px;
+        }
+        .ai-rec-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--orange-light); margin-bottom: 6px; }
+        .ai-rec p { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+
+        /* ── BADGE SECTION ── */
+        .badge-section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+        .badge-section-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; }
+        .badge-preview { display: flex; gap: 10px; flex-wrap: wrap; }
+        .badge-pill {
+          display: inline-flex; align-items: center;
+          background: var(--bg-surface); border: 1px solid var(--border);
+          border-radius: 6px; overflow: hidden;
+          font-family: var(--mono); font-size: 11px;
+        }
+        .badge-pill-left { padding: 4px 10px; color: var(--text-muted); background: rgba(255,255,255,0.03); border-right: 1px solid var(--border); }
+        .badge-pill-right { padding: 4px 10px; color: var(--green); font-weight: 600; }
+        .badge-pill-right.orange { color: var(--orange-light); }
+        .badge-code-wrap { position: relative; }
+        .badge-code {
+          background: #0a0a0b; border: 1px solid var(--border); border-radius: 8px;
+          padding: 12px 14px; font-family: var(--mono); font-size: 11.5px;
+          color: var(--text-muted); line-height: 1.5; overflow-x: auto;
+          white-space: nowrap;
+        }
+        .badge-copy-btn {
+          position: absolute; top: 8px; right: 8px;
+          background: var(--bg-card); border: 1px solid var(--border);
+          border-radius: 6px; padding: 4px 8px; cursor: pointer;
+          font-size: 11px; color: var(--text-muted);
+          transition: color 0.15s, border-color 0.15s;
+        }
+        .badge-copy-btn:hover { color: var(--text); border-color: var(--border-hover); }
+
+        /* ── FOOTER ── */
+        .dash-footer {
+          border-top: 1px solid var(--border); padding: 24px;
+          max-width: 1120px; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between;
+          font-size: 12.5px; color: var(--text-muted);
+        }
+        .dash-footer a { color: var(--text-muted); text-decoration: none; transition: color 0.15s; }
+        .dash-footer a:hover { color: var(--text-secondary); }
+        .footer-links { display: flex; gap: 20px; }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 900px) {
+          .metrics-4 { grid-template-columns: 1fr 1fr; }
+          .flags-grid { grid-template-columns: 1fr 1fr; }
+          .ai-recs { grid-template-columns: 1fr; }
+          .badge-section-grid { grid-template-columns: 1fr; }
+          .health-section { gap: 28px; }
+        }
+        @media (max-width: 600px) {
+          .metrics-4 { grid-template-columns: 1fr; }
+          .flags-grid { grid-template-columns: 1fr; }
+          .dash-main { padding: 24px 16px 60px; }
+          .dash-breadcrumb { display: none; }
+        }
+      ` }} />
+
+      <div className="dash-page">
+        {/* ── NAVBAR ── */}
+        <nav className="dash-nav">
+          <div className="dash-nav-inner">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div className="dash-logo" onClick={() => router.push("/")}>
+                <img src="/gitvital_logo_fixed.svg" alt="GitVital" />
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">fork_right</span>
-                <span>44k</span>
+              <div className="dash-breadcrumb">
+                <span className="sep">/</span>
+                <span className="crumb">{owner}</span>
+                <span className="sep">/</span>
+                <span style={{ color: 'var(--text)' }}>{repo}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                className="bg-primary/10 hover:bg-primary/20 text-primary px-4 py-2 rounded-lg text-sm font-bold transition-all border border-primary/20 flex items-center gap-2"
-                onClick={() => router.push("/compare")}
-              >
-                <span className="material-symbols-outlined text-sm">compare_arrows</span> Compare
+            <div className="dash-nav-right">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                215k
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                44k
+              </div>
+              <button className="btn-ghost" onClick={() => router.push("/compare")}>
+                ⇄ Compare
               </button>
-              <button
-                className="bg-primary text-background-dark px-4 py-2 rounded-lg text-sm font-bold hover:opacity-90 transition-all flex items-center gap-2"
-                onClick={reanalyze}
-                disabled={reanalyzing}
-              >
-                <span className={`material-symbols-outlined text-sm ${reanalyzing ? "animate-spin" : ""}`}>refresh</span>
-                {reanalyzing ? "Analyzing..." : "Re-analyze"}
+              <button className="btn-primary" onClick={reanalyze} disabled={reanalyzing}>
+                {reanalyzing ? "Analyzing…" : "↻ Re-analyze"}
               </button>
-              <button
-                className="bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-700 transition-all"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                }}
-              >
-                <span className="material-symbols-outlined">share</span>
-              </button>
-              <button className="bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-700 transition-all">
-                <span className="material-symbols-outlined">brand_awareness</span>
+              <button className="btn-icon" onClick={() => navigator.clipboard.writeText(window.location.href)} title="Copy link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
               </button>
             </div>
           </div>
-        </div>
-      </nav>
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Row 1: Massive Health Score Ring */}
-        <section className="glass rounded-xl p-8 glow-cyan relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <span className="material-symbols-outlined text-[120px] text-primary">verified_user</span>
-          </div>
-          <div className="flex flex-col md:flex-row items-center gap-12 relative z-10">
-            <div className="relative flex items-center justify-center">
-              <svg className="w-48 h-48 transform -rotate-90">
-                <circle className="text-slate-800" cx="96" cy="96" fill="transparent" r="88" stroke="currentColor" strokeWidth="12"></circle>
-                <circle className="text-primary" cx="96" cy="96" fill="transparent" r="88" stroke="currentColor" strokeDasharray="552.92" strokeDashoffset="60" strokeWidth="12"></circle>
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-5xl font-black text-slate-100">89</span>
-                <span className="text-slate-400 text-sm font-bold">/ 100</span>
-              </div>
-            </div>
-            <div className="flex-1 space-y-4 text-center md:text-left">
-              <div>
-                <h2 className="text-3xl font-bold text-slate-100 mb-1">Repository Health Score</h2>
-                <p className="text-slate-400 max-w-md">Your repository is in excellent condition. Maintainers are active and technical debt is under control.</p>
-              </div>
-              <div className="flex flex-wrap justify-center md:justify-start gap-8 pt-4">
-                <div className="space-y-1">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Bus Factor</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-slate-100">12</span>
-                    <span className="text-emerald-400 text-sm font-medium flex items-center">Stable</span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Velocity</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-slate-100">+23%</span>
-                    <span className="text-emerald-400 text-sm font-medium flex items-center"><span className="material-symbols-outlined text-sm">trending_up</span> Higher</span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Maintenance</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-slate-100">High</span>
-                    <span className="text-primary text-sm font-medium flex items-center">Healthy</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        {/* Row 2: 4 Grid Cards */}
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Bus Factor Bar Chart Card */}
-          <div className="glass rounded-xl p-5 space-y-4">
-            <div className="flex justify-between items-start">
-              <p className="text-slate-400 font-bold text-sm">Bus Factor</p>
-              <span className="material-symbols-outlined text-primary text-xl">groups</span>
-            </div>
-            <div className="h-24 flex items-end gap-1.5 px-2">
-              <div className="bg-primary/20 w-full h-[40%] rounded-t-sm"></div>
-              <div className="bg-primary/30 w-full h-[60%] rounded-t-sm"></div>
-              <div className="bg-primary/50 w-full h-[45%] rounded-t-sm"></div>
-              <div className="bg-primary/70 w-full h-[80%] rounded-t-sm"></div>
-              <div className="bg-primary w-full h-[95%] rounded-t-sm"></div>
-              <div className="bg-primary/80 w-full h-[70%] rounded-t-sm"></div>
-            </div>
-            <div className="flex justify-between items-baseline">
-              <p className="text-2xl font-bold text-slate-100">High</p>
-              <p className="text-slate-500 text-xs">Last 30 days</p>
-            </div>
-          </div>
-          {/* PR Velocity Sparkline Card */}
-          <div className="glass rounded-xl p-5 space-y-4">
-            <div className="flex justify-between items-start">
-              <p className="text-slate-400 font-bold text-sm">PR Velocity</p>
-              <span className="material-symbols-outlined text-primary text-xl">speed</span>
-            </div>
-            <div className="h-24 py-2">
-              <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
-                <path className="text-primary" d="M0,35 Q10,5 20,25 T40,15 T60,30 T80,5 T100,20" fill="none" stroke="currentColor" strokeWidth="2"></path>
-              </svg>
-            </div>
-            <div className="flex justify-between items-baseline">
-              <p className="text-2xl font-bold text-slate-100">Stable</p>
-              <p className="text-emerald-400 text-xs font-bold">+12% avg</p>
-            </div>
-          </div>
-          {/* Issue Health Donut Card */}
-          <div className="glass rounded-xl p-5 space-y-4">
-            <div className="flex justify-between items-start">
-              <p className="text-slate-400 font-bold text-sm">Issue Health</p>
-              <span className="material-symbols-outlined text-primary text-xl">error_circle_rounded</span>
-            </div>
-            <div className="h-24 flex items-center justify-center">
-              <div className="relative w-20 h-20">
-                <svg className="w-full h-full transform -rotate-90">
-                  <circle className="text-slate-800" cx="40" cy="40" fill="transparent" r="32" stroke="currentColor" strokeWidth="8"></circle>
-                  <circle className="text-primary" cx="40" cy="40" fill="transparent" r="32" stroke="currentColor" strokeDasharray="201" strokeDashoffset="30" strokeWidth="8"></circle>
+        </nav>
+
+        {/* ── MAIN ── */}
+        <main className="dash-main">
+
+          {/* ── HEALTH SCORE CARD ── */}
+          <div className="card card-top-line card-pad">
+            <div className="health-section">
+              {/* Ring */}
+              <div className="score-ring-wrap">
+                <svg viewBox="0 0 160 160">
+                  <circle cx="80" cy="80" r="68" stroke="rgba(255,255,255,0.06)" strokeWidth="10" fill="none" />
+                  <circle
+                    cx="80" cy="80" r="68"
+                    stroke="url(#scoreGrad)" strokeWidth="10" fill="none"
+                    strokeDasharray="427.26"
+                    strokeDashoffset={427.26 * (1 - 0.89)}
+                    strokeLinecap="round"
+                  />
+                  <defs>
+                    <linearGradient id="scoreGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#FF5E00" />
+                      <stop offset="100%" stopColor="#FFA066" />
+                    </linearGradient>
+                  </defs>
                 </svg>
-                <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-100">85%</div>
+                <div className="score-ring-center">
+                  <span className="score-big">89</span>
+                  <span className="score-of">/ 100</span>
+                </div>
+              </div>
+
+              {/* Meta */}
+              <div className="health-meta">
+                <h2>Repository Health Score</h2>
+                <p>Your repository is in excellent condition. Maintainers are active and technical debt is under control.</p>
+                <div className="health-stats">
+                  <div>
+                    <div className="hstat-label">Bus Factor</div>
+                    <div className="hstat-val">12</div>
+                    <div className="hstat-sub">Stable</div>
+                  </div>
+                  <div>
+                    <div className="hstat-label">Velocity</div>
+                    <div className="hstat-val">+23%</div>
+                    <div className="hstat-sub">↑ Higher</div>
+                  </div>
+                  <div>
+                    <div className="hstat-label">Maintenance</div>
+                    <div className="hstat-val">High</div>
+                    <div className="hstat-sub orange">Healthy</div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="flex justify-between items-baseline">
-              <p className="text-2xl font-bold text-slate-100">Healthy</p>
-              <p className="text-slate-500 text-xs">2.4 days closure</p>
+          </div>
+
+          {/* ── 4 METRIC CARDS ── */}
+          <div className="metrics-4">
+            {/* Bus Factor */}
+            <div className="metric-card">
+              <div className="metric-card-label">Bus Factor</div>
+              <div className="metric-card-bars">
+                {[40, 60, 45, 80, 95, 70].map((h, i) => (
+                  <span key={i} style={{ height: `${h}%` }} className={h >= 80 ? 'hi' : h >= 55 ? 'md' : ''} />
+                ))}
+              </div>
+              <div className="metric-card-val">High</div>
+              <div className="metric-card-sub">Last 30 days</div>
+            </div>
+
+            {/* PR Velocity */}
+            <div className="metric-card">
+              <div className="metric-card-label">PR Velocity</div>
+              <div className="metric-chart">
+                <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                  <path d="M0,35 Q10,5 20,25 T40,15 T60,30 T80,5 T100,20" fill="none" stroke="#FF5E00" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div className="metric-card-val">Stable</div>
+              <div className="metric-card-sub" style={{ color: 'var(--green)' }}>+12% avg</div>
+            </div>
+
+            {/* Issue Health */}
+            <div className="metric-card">
+              <div className="metric-card-label">Issue Health</div>
+              <div className="metric-donut">
+                <div style={{ position: 'relative', width: 52, height: 52 }}>
+                  <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }} viewBox="0 0 52 52">
+                    <circle cx="26" cy="26" r="20" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                    <circle cx="26" cy="26" r="20" fill="none" stroke="#FF5E00" strokeWidth="6"
+                      strokeDasharray="125.66" strokeDashoffset="18.85" strokeLinecap="round" />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--text)' }}>85%</div>
+                </div>
+              </div>
+              <div className="metric-card-val">Healthy</div>
+              <div className="metric-card-sub">2.4 day closure</div>
+            </div>
+
+            {/* Code Churn */}
+            <div className="metric-card">
+              <div className="metric-card-label">Code Churn</div>
+              <div className="metric-chart">
+                <svg viewBox="0 0 100 40" preserveAspectRatio="none">
+                  <path d="M0,40 L0,30 Q20,35 40,25 T80,35 T100,20 L100,40 Z" fill="rgba(255,94,0,0.08)" />
+                  <path d="M0,30 Q20,35 40,25 T80,35 T100,20" fill="none" stroke="#FFA066" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div className="metric-card-val">Low</div>
+              <div className="metric-card-sub" style={{ color: 'var(--green)' }}>-5% risk</div>
             </div>
           </div>
-          {/* Code Churn Area Chart Card */}
-          <div className="glass rounded-xl p-5 space-y-4">
-            <div className="flex justify-between items-start">
-              <p className="text-slate-400 font-bold text-sm">Code Churn</p>
-              <span className="material-symbols-outlined text-primary text-xl">history_toggle_off</span>
+
+          {/* ── COMMITS TIMELINE ── */}
+          <div className="card card-pad">
+            <div className="commits-header">
+              <div>
+                <h3>Commits per Week</h3>
+                <p>Developer activity over the last {activeRange}</p>
+              </div>
+              <div className="range-btns">
+                {(["12M", "6M", "30D"] as const).map((r) => (
+                  <button key={r} className={`range-btn${activeRange === r ? ' active' : ''}`} onClick={() => setActiveRange(r)}>{r}</button>
+                ))}
+              </div>
             </div>
-            <div className="h-24 py-2">
-              <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 40">
-                <path className="text-primary/10" d="M0,40 L0,30 Q20,35 40,25 T80,35 T100,20 L100,40 Z" fill="currentColor"></path>
-                <path className="text-primary" d="M0,30 Q20,35 40,25 T80,35 T100,20" fill="none" stroke="currentColor" strokeWidth="2"></path>
+            <div className="commits-chart">
+              <svg viewBox="0 0 1200 180" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="commitGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#FF5E00" stopOpacity="0.25" />
+                    <stop offset="100%" stopColor="#FF5E00" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d="M0,140 Q100,80 200,110 T400,70 T600,100 T800,50 T1000,90 L1200,30 L1200,180 L0,180 Z" fill="url(#commitGrad)" />
+                <path d="M0,140 Q100,80 200,110 T400,70 T600,100 T800,50 T1000,90 L1200,30" fill="none" stroke="#FF5E00" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
             </div>
-            <div className="flex justify-between items-baseline">
-              <p className="text-2xl font-bold text-slate-100">Low</p>
-              <p className="text-emerald-400 text-xs font-bold">-5% risk</p>
+            <div className="commits-labels">
+              {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map(m => <span key={m}>{m}</span>)}
             </div>
           </div>
-        </section>
-        {/* Row 3: Commits Activity Timeline */}
-        <section className="glass rounded-xl p-6 space-y-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h3 className="text-xl font-bold text-slate-100">Commits per Week</h3>
-              <p className="text-slate-400 text-sm">Developer activity over the last 12 months</p>
+
+          {/* ── RISK FLAGS ── */}
+          <div className="flags-grid">
+            <div className="flag-card danger">
+              <span className="flag-icon danger">⚠</span>
+              <div>
+                <div className="flag-title danger">Critical Risk</div>
+                <div className="flag-desc">Unmaintained dependencies detected.</div>
+              </div>
             </div>
-            <div className="flex gap-2">
-              {(["12M", "6M", "30D"] as const).map((r) => (
-                <button
-                  key={r}
-                  className={`px-3 py-1 text-xs font-bold rounded transition-all ${activeRange === r
-                    ? "bg-primary text-background-dark"
-                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                    }`}
-                  onClick={() => setActiveRange(r)}
-                >
-                  {r}
-                </button>
-              ))}
+            <div className="flag-card warn">
+              <span className="flag-icon warn">!</span>
+              <div>
+                <div className="flag-title warn">Attention Needed</div>
+                <div className="flag-desc">Security scan pending for 3 PRs.</div>
+              </div>
             </div>
-          </div>
-          <div className="h-64 relative">
-            <svg className="w-full h-full" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="gradient" x1="0%" x2="0%" y1="0%" y2="100%">
-                  <stop offset="0%" stopColor="#4ccaf0" stopOpacity="0.3"></stop>
-                  <stop offset="100%" stopColor="#4ccaf0" stopOpacity="0"></stop>
-                </linearGradient>
-              </defs>
-              <path d="M0,180 Q100,120 200,150 T400,100 T600,140 T800,80 T1000,120 L1200,50 L1200,250 L0,250 Z" fill="url(#gradient)"></path>
-              <path d="M0,180 Q100,120 200,150 T400,100 T600,140 T800,80 T1000,120 L1200,50" fill="none" stroke="#4ccaf0" strokeLinecap="round" strokeWidth="3"></path>
-            </svg>
-            <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2 pt-4 text-[10px] font-bold text-slate-500 tracking-widest uppercase">
-              <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+            <div className="flag-card success">
+              <span className="flag-icon success">✓</span>
+              <div>
+                <div className="flag-title success">Code Quality</div>
+                <div className="flag-desc">Zero linting errors in latest master.</div>
+              </div>
+            </div>
+            <div className="flag-card info">
+              <span className="flag-icon info">ℹ</span>
+              <div>
+                <div className="flag-title info">Community</div>
+                <div className="flag-desc">High engagement on Discussion board.</div>
+              </div>
             </div>
           </div>
-        </section>
-        {/* Row 4: Risk Flags */}
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-lg flex items-start gap-3">
-            <span className="material-symbols-outlined text-red-400">warning</span>
-            <div>
-              <p className="text-red-400 font-bold text-sm">Critical Risk</p>
-              <p className="text-xs text-red-300/70">Unmaintained dependencies detected.</p>
+
+          {/* ── AI ANALYSIS ── */}
+          <div className="card card-pad ai-panel">
+            <div className="ai-panel-header">
+              <div className="ai-icon-box">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+              <h3>AI Deep Analysis</h3>
             </div>
-          </div>
-          <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-lg flex items-start gap-3">
-            <span className="material-symbols-outlined text-orange-400">priority_high</span>
-            <div>
-              <p className="text-orange-400 font-bold text-sm">Attention Needed</p>
-              <p className="text-xs text-orange-300/70">Security scan pending for 3 PRs.</p>
-            </div>
-          </div>
-          <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-lg flex items-start gap-3">
-            <span className="material-symbols-outlined text-emerald-400">check_circle</span>
-            <div>
-              <p className="text-emerald-400 font-bold text-sm">Code Quality</p>
-              <p className="text-xs text-emerald-300/70">Zero linting errors in latest master.</p>
-            </div>
-          </div>
-          <div className="bg-primary/10 border border-primary/20 p-4 rounded-lg flex items-start gap-3">
-            <span className="material-symbols-outlined text-primary">info</span>
-            <div>
-              <p className="text-primary font-bold text-sm">Community</p>
-              <p className="text-xs text-primary/70">High engagement on Discussion board.</p>
-            </div>
-          </div>
-        </section>
-        {/* Row 5: AI Analysis Panel */}
-        <section className="glass rounded-xl p-6 border-l-4 border-l-primary relative overflow-hidden">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-primary/20 rounded-lg text-primary">
-              <span className="material-symbols-outlined">auto_awesome</span>
-            </div>
-            <h3 className="text-xl font-bold text-slate-100">AI Deep Analysis</h3>
-          </div>
-          <div className="space-y-4">
-            <p className="text-slate-300 leading-relaxed">
-              Based on recent commit patterns, <span className="text-primary font-semibold">{owner}/{repo}</span> is currently optimizing for memory efficiency in concurrent rendering. We noticed a <span className="text-emerald-400 font-semibold">15% reduction</span> in object allocation churn over the last 14 days.
+            <p className="ai-text">
+              Based on recent commit patterns, <strong>{owner}/{repo}</strong> is currently optimizing for memory efficiency in concurrent rendering. We noticed a <strong style={{ color: 'var(--green)' }}>15% reduction</strong> in object allocation churn over the last 14 days.
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-              <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                <p className="text-xs font-bold text-primary uppercase mb-2">Recommendation 1</p>
-                <p className="text-sm text-slate-300">Expand unit tests for the new Scheduler hooks to maintain high coverage before next release.</p>
+            <div className="ai-recs">
+              <div className="ai-rec">
+                <div className="ai-rec-label">Recommendation 1</div>
+                <p>Expand unit tests for the new Scheduler hooks to maintain high coverage before next release.</p>
               </div>
-              <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                <p className="text-xs font-bold text-primary uppercase mb-2">Recommendation 2</p>
-                <p className="text-sm text-slate-300">Invite more community maintainers to the &apos;documentation&apos; tag to reduce PR wait times.</p>
+              <div className="ai-rec">
+                <div className="ai-rec-label">Recommendation 2</div>
+                <p>Invite more community maintainers to the &apos;documentation&apos; tag to reduce PR wait times.</p>
               </div>
             </div>
           </div>
-          <div className="absolute -bottom-10 -right-10 opacity-5 pointer-events-none">
-            <span className="material-symbols-outlined text-[200px]">auto_awesome</span>
-          </div>
-        </section>
-        {/* Row 6: Embeddable Badge */}
-        <section className="glass rounded-xl p-6 space-y-6">
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-slate-400">code</span>
-            <h3 className="text-lg font-bold text-slate-100">Vital Badges</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-4">
-              <p className="text-sm text-slate-400 font-medium">Preview</p>
-              <div className="flex items-center gap-4">
-                <div className="bg-slate-900 px-3 py-1.5 rounded flex items-center gap-2 border border-slate-700">
-                  <span className="material-symbols-outlined text-primary text-sm">pulse_alert</span>
-                  <span className="text-[11px] font-bold tracking-tight border-r border-slate-700 pr-2 mr-2">GIT VITAL</span>
-                  <span className="text-[11px] font-bold text-emerald-400">HEALTH 89/100</span>
-                </div>
-                <div className="bg-slate-900 px-3 py-1.5 rounded flex items-center gap-2 border border-slate-700">
-                  <span className="text-[11px] font-bold tracking-tight border-r border-slate-700 pr-2 mr-2 uppercase">GIT VITAL</span>
-                  <span className="text-[11px] font-bold text-primary">12 MAINTAINERS</span>
+
+          {/* ── VITAL BADGES ── */}
+          <div className="card card-pad">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em' }}>Vital Badges</span>
+            </div>
+            <div className="badge-section-grid">
+              <div>
+                <div className="badge-section-label">Preview</div>
+                <div className="badge-preview">
+                  <div className="badge-pill">
+                    <span className="badge-pill-left">GIT VITAL</span>
+                    <span className="badge-pill-right">HEALTH 89/100</span>
+                  </div>
+                  <div className="badge-pill">
+                    <span className="badge-pill-left">GIT VITAL</span>
+                    <span className="badge-pill-right orange">12 MAINTAINERS</span>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="space-y-3">
-              <p className="text-sm text-slate-400 font-medium">Embed in README</p>
-              <div className="relative group">
-                <pre className="bg-slate-950 p-3 rounded-lg text-xs font-mono text-slate-400 overflow-x-auto border border-slate-800">{`[![Git Vital](https://gitvital.io/badge/${owner}/${repo}.svg)](https://gitvital.io/repo/${owner}/${repo})`}</pre>
-                <button
-                  className="absolute top-2 right-2 p-1.5 bg-slate-800 rounded hover:bg-slate-700 text-slate-400"
-                  onClick={copyBadge}
-                  title="Copy to clipboard"
-                >
-                  <span className="material-symbols-outlined text-sm">{copyDone ? "check" : "content_copy"}</span>
-                </button>
+              <div>
+                <div className="badge-section-label">Embed in README</div>
+                <div className="badge-code-wrap">
+                  <div className="badge-code">{`[![Git Vital](https://gitvital.io/badge/${owner}/${repo}.svg)](https://gitvital.io/repo/${owner}/${repo})`}</div>
+                  <button className="badge-copy-btn" onClick={copyBadge}>{copyDone ? "✓ Copied" : "Copy"}</button>
+                </div>
               </div>
             </div>
           </div>
-        </section>
-      </main>
-      <footer className="max-w-7xl mx-auto px-6 py-12 border-t border-primary/10">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6 opacity-60 grayscale">
-          <div className="flex items-center gap-2 text-primary">
-            <span className="material-symbols-outlined">pulse_alert</span>
-            <span className="font-bold">Git Vital AI © 2024</span>
+
+        </main>
+
+        {/* ── FOOTER ── */}
+        <footer style={{ borderTop: '1px solid var(--border)', padding: '24px', maxWidth: 1120, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12.5px', color: 'var(--text-muted)', flexWrap: 'wrap', gap: 12 }}>
+          <span>© 2024 Git Vital Analytics</span>
+          <div style={{ display: 'flex', gap: 20 }}>
+            <a href="#" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Documentation</a>
+            <a href="#" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>API</a>
+            <a href="#" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Status</a>
+            <a href="#" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Terms</a>
           </div>
-          <div className="flex gap-8 text-sm font-medium">
-            <a className="hover:text-primary transition-colors" href="#">Documentation</a>
-            <a className="hover:text-primary transition-colors" href="#">API</a>
-            <a className="hover:text-primary transition-colors" href="#">Status</a>
-            <a className="hover:text-primary transition-colors" href="#">Terms</a>
-          </div>
-        </div>
-      </footer>
-    </div>
+        </footer>
+      </div>
+    </>
   );
 }
