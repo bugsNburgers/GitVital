@@ -25,6 +25,13 @@ export const config = {
 
   // The URL of your frontend app — used by CORS to only allow YOUR frontend to talk to this API
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
+  corsOrigins: [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://gitvital.com',
+    'https://www.gitvital.com',
+    'https://api.gitvital.com'
+  ],
 
   // ──────────────────────────────────────────────
   // Redis — used by BullMQ (job queue) and session store

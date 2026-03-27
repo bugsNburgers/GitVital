@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { API_BASE, AUTH_URL } from "@/config";
 
 // Orange-family palette (matches landing and compare pages)
 const COLORS = {
@@ -19,6 +20,14 @@ export default function UserProfilePage() {
 
   const [following, setFollowing] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/me`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setUser(data))
+      .catch(() => setUser({ loggedIn: false }));
+  }, []);
 
   // Fallback sparklines for repo cards
   const sparklineData = [
@@ -283,6 +292,15 @@ export default function UserProfilePage() {
             </div>
             
             <div className="nav-icons">
+              <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginRight: '16px' }}>
+                <a href="/" style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Explore</a>
+                <a href="/leaderboard" style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Leaderboard</a>
+                {user?.loggedIn ? (
+                  <a href={`/${user.githubUsername}`} style={{ color: 'var(--orange)', fontSize: '13px', textDecoration: 'none', fontWeight: 'bold' }}>My Profile</a>
+                ) : (
+                  <a href={AUTH_URL} style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Login</a>
+                )}
+              </div>
               <div className="nav-user">
                 <div className="nav-avatar">{owner.charAt(0).toUpperCase()}</div>
                 <span className="nav-username">{owner}</span>

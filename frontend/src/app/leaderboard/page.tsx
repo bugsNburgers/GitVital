@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { API_BASE, AUTH_URL } from "@/config";
 
 const ALL_LEADERS = [
   { rank: 1, name: "Sarah Drasner", handle: "@sdras", score: 98.42, lang: "TypeScript", repos: 142, percentile: "Top 0.1%", tier: "gold", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuCVeEhn4a9onTKoxR9BossCjCG93QhNm6nCP8FVDRShBX0orgX-qUum39-FmVKWC-8WFY2UVqvdOQcetR6qT9SoeJCcBiamxyrsmNgAu1o_ePy6les3koOzGPPHLhyacM5Kh0NK4R6HpS_WytpDuAAAT6gA2tN1zFipEhKVD-QPH47e14gILmGTqTrh4oG3VxeFSLQ0-hnEaQzyDdcujJPP-cAR4AP-d4N-fHXnhnl261Yp1lVImTPapDj1her2nVHhEnD3GmxWMSk" },
@@ -26,6 +27,14 @@ export default function LeaderboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [langFilter, setLangFilter] = useState("All Languages");
   const [currentPage, setCurrentPage] = useState(1);
+  const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/me`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setUser(data))
+      .catch(() => setUser({ loggedIn: false }));
+  }, []);
 
   const filtered = useMemo(() => {
     return ALL_LEADERS.filter((l) => {
@@ -180,6 +189,11 @@ export default function LeaderboardPage() {
               <a href="/">Explore</a>
               <a href="/leaderboard" className="active">Leaderboard</a>
               <a href="/compare">Compare</a>
+              {user?.loggedIn ? (
+                <a href={`/${user.githubUsername}`} style={{ color: 'var(--orange)' }}>View Profile</a>
+              ) : (
+                <a href={AUTH_URL}>Login</a>
+              )}
             </div>
             <div className="lb-nav-search">
               <span className="material-symbols-outlined">search</span>

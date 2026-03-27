@@ -112,10 +112,9 @@ function getClientIp(req: Request): string {
 app.use(helmet());
 
 // 3b. CORS — allow ONLY our frontend to talk to this API
-// Without this, the browser would block all requests from localhost:3000
 app.use(cors({
-  origin: config.frontendUrl,   // Only allow requests from our Next.js frontend
-  credentials: true,            // Allow cookies to be sent with requests (needed for sessions)
+  origin: config.corsOrigins,   // Allow multiple origins (localhost, gitvital.com, etc)
+  credentials: true,            // Allow cookies to be sent with requests
 }));
 
 // 3c. JSON body parser — tells Express to understand JSON in request bodies
@@ -889,11 +888,15 @@ app.get(
 // ─────────────────────────────────────────────────────────────
 // Redirects the user to GitHub's authorization page
 
-app.get('/auth/github', (_req: Request, res: Response) => {
+app.get('/auth/github', (req: Request, res: Response) => {
   if (!config.github.clientId || !config.github.clientSecret) {
     res.status(500).json({ error: 'GitHub OAuth is not configured.' });
     return;
   }
+
+  // Store the origin/referer so we know where to redirect back to after login
+  const referer = req.get('Referer') || config.frontendUrl;
+  (req.session as any).returnTo = referer;
 
   const params = new URLSearchParams({
     client_id: config.github.clientId,
@@ -965,15 +968,14 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
     (req.session as any).userId = userData.id;
     (req.session as any).githubUsername = userData.login;
 
-    // TODO: Upsert user in PostgreSQL via Prisma
-    // await prisma.user.upsert({
-    //   where: { githubId: userData.id },
-    //   update: { accessToken: encryptAccessToken(tokenData.access_token, config.encryptionKey) },
-    //   create: { githubId: userData.id, username: userData.login, ... },
-    // });
+    // Determine fallback redirect
+    const returnTo = (req.session as any).returnTo || config.frontendUrl;
+    // Ensure we don't redirect to something malicious
+    const safeBase = config.corsOrigins.find(o => returnTo.startsWith(o)) || config.frontendUrl;
+    const finalRedirect = `${safeBase.replace(/\/$/, '')}/${userData.login}`;
 
     // Redirect back to the frontend
-    res.redirect(`${config.frontendUrl}/${userData.login}`);
+    res.redirect(finalRedirect);
   } catch (error) {
     console.error('GitHub OAuth error:', error);
     res.status(500).json({ error: 'Authentication failed' });

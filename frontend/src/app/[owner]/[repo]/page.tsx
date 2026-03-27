@@ -1,7 +1,8 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { API_BASE, AUTH_URL } from "@/config";
 
 export default function RepoDashboardPage() {
   const params = useParams<{ owner: string; repo: string }>();
@@ -12,9 +13,17 @@ export default function RepoDashboardPage() {
   const [activeRange, setActiveRange] = useState<"12M" | "6M" | "30D">("12M");
   const [copyDone, setCopyDone] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/me`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setUser(data))
+      .catch(() => setUser({ loggedIn: false }));
+  }, []);
 
   function copyBadge() {
-    const md = `[![Git Vital](https://gitvital.io/badge/${owner}/${repo}.svg)](https://gitvital.io/repo/${owner}/${repo})`;
+    const md = `[![Git Vital](https://gitvital.com/badge/${owner}/${repo}.svg)](https://gitvital.com/repo/${owner}/${repo})`;
     navigator.clipboard.writeText(md).then(() => {
       setCopyDone(true);
       setTimeout(() => setCopyDone(false), 2000);
@@ -303,7 +312,15 @@ export default function RepoDashboardPage() {
               </div>
             </div>
             <div className="dash-nav-right">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginRight: '12px' }}>
+                <a href="/leaderboard" style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Leaderboard</a>
+                {user?.loggedIn ? (
+                  <a href={`/${user.githubUsername}`} style={{ color: 'var(--orange)', fontSize: '13px', textDecoration: 'none', fontWeight: 'bold' }}>View Profile</a>
+                ) : (
+                  <a href={AUTH_URL} style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Login</a>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', marginRight: '8px' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                 215k
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
@@ -542,7 +559,7 @@ export default function RepoDashboardPage() {
               <div>
                 <div className="badge-section-label">Embed in README</div>
                 <div className="badge-code-wrap">
-                  <div className="badge-code">{`[![Git Vital](https://gitvital.io/badge/${owner}/${repo}.svg)](https://gitvital.io/repo/${owner}/${repo})`}</div>
+                  <div className="badge-code">{`[![Git Vital](https://gitvital.com/badge/${owner}/${repo}.svg)](https://gitvital.com/repo/${owner}/${repo})`}</div>
                   <button className="badge-copy-btn" onClick={copyBadge}>{copyDone ? "✓ Copied" : "Copy"}</button>
                 </div>
               </div>

@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { API_BASE } from "@/config";
 
-const API = "http://localhost:8080";
+const API = API_BASE;
 
 // ── Backend type mirrors (matches AllMetrics from backend/src/types/index.ts) ──
 interface BusFactorResult { busFactor: number; topContributorPct: number; contributors: { login: string; count: number; pct: number }[]; }
