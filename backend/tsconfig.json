@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "commonjs",
     "lib": ["ES2022"],
+    "types": ["node"],
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": "./src",
@@ -11,8 +12,8 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
-      "@metrics/*": ["src/metrics/*"],
-      "@github/*": ["src/github/*"]
+      "@metrics/*": ["metrics/*"],
+      "@github/*": ["github/*"]
     }
   },
   "include": ["src/**/*"],
