@@ -46,8 +46,8 @@ export const config = {
 
   session: {
     cookieName: process.env.SESSION_COOKIE_NAME || 'gitvital.sid',
-    sameSite: 'strict' as const,
-    secureCookies: getBooleanEnv('SESSION_SECURE_COOKIES', process.env.NODE_ENV === 'production'),
+    sameSite: (process.env.NODE_ENV === 'production' ? 'none' : 'lax') as 'lax' | 'strict' | 'none',
+    secureCookies: process.env.NODE_ENV === 'production',
     ttlMs: 1000 * 60 * 60 * 24 * 7,
   },
 
