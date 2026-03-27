@@ -30,7 +30,8 @@ export const config = {
     'http://127.0.0.1:3000',
     'https://gitvital.com',
     'https://www.gitvital.com',
-    'https://api.gitvital.com'
+    'https://api.gitvital.com',
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
   ],
 
   // ──────────────────────────────────────────────

@@ -900,13 +900,22 @@ app.get('/auth/github', (req: Request, res: Response) => {
   const referer = req.get('Referer') || config.frontendUrl;
   (req.session as any).returnTo = referer;
 
+  const protocol = req.get('x-forwarded-proto') || req.protocol;
+  const host = req.get('host');
+  const redirect_uri = `${protocol}://${host}/auth/github/callback`;
+
   const params = new URLSearchParams({
     client_id: config.github.clientId,
-    redirect_uri: config.github.callbackUrl,
+    redirect_uri: redirect_uri,
     scope: 'read:user',  // We only need basic profile info
   });
 
-  res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error:', err);
+    }
+    res.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);
+  });
 });
 
 
