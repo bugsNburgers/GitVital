@@ -30,10 +30,8 @@ import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto'
 
 const app = express();
 
-if (config.session.secureCookies) {
-  // Required behind reverse proxies so secure cookies are preserved.
-  app.set('trust proxy', 1);
-}
+// Always trust the reverse proxy (Render, Railway, Nginx) so `req.secure` and `req.ip` are correct.
+app.set('trust proxy', 1);
 
 const OAUTH_TOKEN_TTL_SECONDS = Math.floor(config.session.ttlMs / 1000);
 const REDACTED_VALUE = '[REDACTED]';
@@ -985,8 +983,13 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
     const safeBase = config.corsOrigins.find(o => returnTo.startsWith(o)) || config.frontendUrl;
     const finalRedirect = `${safeBase.replace(/\/$/, '')}/${userData.login}`;
 
-    // Redirect back to the frontend
-    res.redirect(finalRedirect);
+    // Race condition prevention: Force session to save before sending 302 Redirect
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error inside callback:', err);
+      }
+      res.redirect(finalRedirect);
+    });
   } catch (error) {
     console.error('GitHub OAuth error:', error);
     res.status(500).json({ error: 'Authentication failed' });
@@ -1021,6 +1024,11 @@ app.post('/auth/logout', async (req: Request, res: Response): Promise<void> => {
 // 6l. GET /api/me — Get current user session
 // ─────────────────────────────────────────────────────────────
 app.get('/api/me', (req: Request, res: Response) => {
+  // Prevent aggressive browser/Next.js caching of the session state
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const userId = (req.session as any)?.userId;
   const githubUsername = (req.session as any)?.githubUsername;
   
