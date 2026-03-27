@@ -204,18 +204,20 @@ app.use(defaultLimiter);
 // Create a BullMQ queue named "repo-analysis".
 // This is the "order ticket rail" — we add jobs here, workers pick them up.
 
+const redisUrlObj = new URL(config.redisUrl);
+const bullConnection = {
+  host: redisUrlObj.hostname || 'localhost',
+  port: parseInt(redisUrlObj.port || '6379', 10),
+  password: redisUrlObj.password ? decodeURIComponent(redisUrlObj.password) : undefined,
+  tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
+};
+
 const analysisQueue = new Queue<JobData>('repo-analysis', {
-  connection: {
-    host: new URL(config.redisUrl).hostname || 'localhost',
-    port: parseInt(new URL(config.redisUrl).port || '6379', 10),
-  },
+  connection: bullConnection,
 });
 
 const userAnalysisQueue = new Queue<UserJobData>('user-analysis', {
-  connection: {
-    host: new URL(config.redisUrl).hostname || 'localhost',
-    port: parseInt(new URL(config.redisUrl).port || '6379', 10),
-  },
+  connection: bullConnection,
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1027,8 +1029,23 @@ app.get('/api/me', (req: Request, res: Response) => {
 // A simple endpoint that deployment platforms (Render, Railway) use
 // to check if our server is alive and healthy.
 
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/health', async (_req: Request, res: Response) => {
+  let redisStatus = 'error';
+  try {
+    const ping = await redis.ping();
+    if (ping === 'PONG') redisStatus = 'ok';
+  } catch (err) {
+    redisStatus = `error: ${(err as Error).message}`;
+  }
+
+  const isHealthy = redisStatus === 'ok';
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'healthy' : 'degraded',
+    redis: redisStatus,
+    timestamp: new Date().toISOString(),
+    env: config.nodeEnv,
+  });
 });
 
 
