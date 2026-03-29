@@ -202,3 +202,7 @@ export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo:
     
     return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
 }
+
+export function generateFallbackAdvice(metrics: AllMetrics, owner: string, repo: string): { advice: string, source: 'rule-based' } {
+    return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+}

@@ -9,7 +9,7 @@ import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis } from '../config/redis';
 import { config } from '../config';
 import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag, TimelineEntry } from '../types';
-import { generateAIAdvice } from '../ai/advice';
+import { generateAIAdvice, generateFallbackAdvice } from '../ai/advice';
 
 // ── Real Metrics Engine imports (Prompt 8.1) ──
 import { computeBusFactor } from '../metrics/busFactor';
@@ -431,16 +431,19 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         timeoutPromise,
       ]);
 
-      if (aiAdvice) {
-        metrics.aiAdvice = aiAdvice.advice;
-        metrics.aiAdviceSource = aiAdvice.source;
-        console.log(`   ${logPrefix} — Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
-      } else {
-        console.log(`   ${logPrefix} — Step 10: AI advice skipped (timeout or unavailable)`);
+      if (!aiAdvice) {
+        console.warn(`   ${logPrefix} — Step 10: AI timed out, applying rule-based fallback...`);
+        aiAdvice = generateFallbackAdvice(metrics, owner, repo);
       }
+      
+      metrics.aiAdvice = aiAdvice.advice;
+      metrics.aiAdviceSource = aiAdvice.source;
+      console.log(`   ${logPrefix} — Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
     } catch (aiError) {
-      // AI failure should NEVER fail the whole job
-      console.warn(`   ${logPrefix} — Step 10: AI advice failed (non-blocking):`, aiError);
+      console.warn(`   ${logPrefix} — Step 10: AI advice failed (non-blocking), applying fallback:`, aiError);
+      const fallback = generateFallbackAdvice(metrics, owner, repo);
+      metrics.aiAdvice = fallback.advice;
+      metrics.aiAdviceSource = fallback.source;
     }
 
     await job.updateProgress(85);
