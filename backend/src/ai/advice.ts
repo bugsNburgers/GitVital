@@ -99,23 +99,23 @@ async function shouldSkipLlmForJob(jobId?: string): Promise<boolean> {
     return created !== 'OK';
 }
 
-export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo: string, options: GenerateAdviceOptions = {}): Promise<string | null> {
+export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo: string, options: GenerateAdviceOptions = {}): Promise<{ advice: string, source: 'gemini' | 'rule-based' } | null> {
     // Cost-budget guardrail: no OpenAI usage in production path.
     if (!config.geminiApiKey) {
         console.warn('[AI] GEMINI_API_KEY missing; using local rule-based fallback advice.');
-        return formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo);
+        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
     }
 
     if (await shouldSkipLlmForJob(options.jobId)) {
         console.warn('[AI] LLM call already attempted for this analysis job; using local rule-based fallback advice.');
-        return formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo);
+        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
     }
 
     const cooldown = await getGeminiQuotaCooldownInfo();
     if (cooldown.active) {
         const remainingMins = Math.ceil(cooldown.remainingMs / 60_000);
         console.warn(`[AI] Gemini cooldown active (~${remainingMins}m remaining); using local rule-based fallback advice.`);
-        return formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo);
+        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
     }
 
     try {
@@ -133,21 +133,20 @@ export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo:
 
         if (!normalized
             || normalized.length > MAX_ADVICE_CHARS
-            || hasBlockedContent(normalized)
-            || countSentences(normalized) !== 2) {
+            || hasBlockedContent(normalized)) {
             console.warn('[AI] Gemini output failed validation; using local rule-based fallback advice.');
-            return formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo);
+            return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
         }
 
-        return formatAdviceForOutput(normalized, owner, repo);
+        return { advice: formatAdviceForOutput(normalized, owner, repo), source: 'gemini' };
     } catch (error) {
         if (isQuotaOrRateLimitError(error)) {
             await markGeminiQuotaLimited();
             console.warn('[AI] Gemini free-tier limit reached; using local rule-based fallback advice.');
-            return formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo);
+            return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
         }
 
         console.warn('[AI] Gemini unavailable; using local rule-based fallback advice.');
-        return formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo);
+        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
     }
 }

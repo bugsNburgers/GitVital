@@ -296,7 +296,7 @@ export default function RepoDashboardPage() {
   }
 
   function copyBadge() {
-    const md = `[![Git Vital](https://gitvital.com/badge/${owner}/${repo}.svg)](https://gitvital.com/repo/${owner}/${repo})`;
+    const md = `[![Git Vital](https://api.gitvital.com/badge/${owner}/${repo}.svg)](https://gitvital.com/${owner}/${repo})`;
     navigator.clipboard.writeText(md).then(() => {
       setCopyDone(true);
       setTimeout(() => setCopyDone(false), 2000);
@@ -336,6 +336,7 @@ export default function RepoDashboardPage() {
 
   // Parse AI advice into summary + recommendations
   let aiSummary = metrics?.aiAdvice ?? null;
+  const aiSource = metrics?.aiAdviceSource;
   let aiRecs: string[] = [];
   if (aiSummary) {
     const recs: string[] = [];
@@ -938,7 +939,26 @@ export default function RepoDashboardPage() {
                 <div className="ai-icon-box">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                 </div>
-                <h3>AI Deep Analysis</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h3>AI Deep Analysis</h3>
+                  {aiSource && (
+                    <span style={{ 
+                      fontSize: '11px', 
+                      padding: '3px 8px', 
+                      borderRadius: '12px', 
+                      backgroundColor: aiSource === 'gemini' ? 'rgba(66, 133, 244, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                      color: aiSource === 'gemini' ? '#8ab4f8' : 'var(--text-muted)',
+                      border: '1px solid',
+                      borderColor: aiSource === 'gemini' ? 'rgba(66, 133, 244, 0.3)' : 'var(--border)',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      {aiSource === 'gemini' ? '✨ Gemini 1.5 Pro' : '⚙️ Fallback Engine'}
+                    </span>
+                  )}
+                </div>
               </div>
               {aiSummary ? (
                 <>
@@ -986,7 +1006,7 @@ export default function RepoDashboardPage() {
                 <div>
                   <div className="badge-section-label">Embed in README</div>
                   <div className="badge-code-wrap">
-                    <div className="badge-code">{`[![Git Vital](https://gitvital.com/badge/${owner}/${repo}.svg)](https://gitvital.com/repo/${owner}/${repo})`}</div>
+                    <div className="badge-code">{`[![Git Vital](https://api.gitvital.com/badge/${owner}/${repo}.svg)](https://gitvital.com/${owner}/${repo})`}</div>
                     <button className="badge-copy-btn" onClick={copyBadge}>{copyDone ? "✓ Copied" : "Copy"}</button>
                   </div>
                 </div>

@@ -99,6 +99,7 @@ export interface AllMetrics {
   healthScore: number;
   riskFlags: RiskFlag[];
   aiAdvice: string | null;
+  aiAdviceSource?: 'gemini' | 'rule-based';
 }
 
 export interface JobData {

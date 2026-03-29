@@ -419,11 +419,11 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // If Gemini takes too long, we skip AI advice rather than
     // holding up the entire job.
     console.log(`   ${logPrefix} — Step 10: Generating AI advice...`);
-    let aiAdvice: string | null = null;
+    let aiAdvice: { advice: string, source: 'gemini' | 'rule-based' } | null = null;
 
     try {
       const timeoutPromise = new Promise<null>((resolve) => {
-        setTimeout(() => resolve(null), 10_000); // 10 second timeout
+        setTimeout(() => resolve(null), 25_000); // 25 second timeout
       });
 
       aiAdvice = await Promise.race([
@@ -432,8 +432,9 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
       ]);
 
       if (aiAdvice) {
-        metrics.aiAdvice = aiAdvice;
-        console.log(`   ${logPrefix} — Step 10: AI advice generated ✓`);
+        metrics.aiAdvice = aiAdvice.advice;
+        metrics.aiAdviceSource = aiAdvice.source;
+        console.log(`   ${logPrefix} — Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
       } else {
         console.log(`   ${logPrefix} — Step 10: AI advice skipped (timeout or unavailable)`);
       }
