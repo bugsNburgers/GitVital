@@ -1,6 +1,7 @@
 /**
  * GitVital Frontend Configuration
  * Centralizing API URLs to support both localhost and production (gitvital.com)
+ * Cache-breaker hash for URL binding: 2026-03-29
  */
 
 const getApiBase = () => {
