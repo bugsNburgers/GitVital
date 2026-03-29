@@ -22,6 +22,10 @@ import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCa
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
 
+// Start background workers in the same process to save hosting costs!
+import '../workers/repoAnalyzer';
+import '../workers/userAnalyzer';
+
 // ═══════════════════════════════════════════════════════════════
 // SECTION 2: CREATE THE EXPRESS APP
 // ═══════════════════════════════════════════════════════════════
@@ -183,7 +187,7 @@ const analyzeUnauthenticatedLimiter = rateLimit({
   keyGenerator: (req) => `anon-ip:${getClientIp(req)}`,
   standardHeaders: true,                      // Return rate limit info in headers
   legacyHeaders: false,                       // Disable old-style X-RateLimit headers
-  message: { error: 'Too many unauthenticated analysis requests from this IP. Try again later.' },
+  message: { error: 'Too many unauthenticated analysis requests from this IP. Please login to view more!.' },
 });
 
 const leaderboardLimiter = rateLimit({
