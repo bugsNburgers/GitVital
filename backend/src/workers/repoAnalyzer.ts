@@ -481,7 +481,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // Step 13: Update Redis cache with fresh metrics
     // ──────────────────────────────────────────────
-    await setRepoMetricsCache(owner, repo, metrics, config.cacheTtlSeconds);
+    await setRepoMetricsCache(owner, repo, { ...metrics, metadata }, config.cacheTtlSeconds);
     console.log(`   ${logPrefix} — Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
 
 

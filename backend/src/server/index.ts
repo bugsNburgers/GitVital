@@ -130,8 +130,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // After a user logs in via GitHub, this creates a session stored in Redis
 // and sends a cookie to the browser so the user stays logged in.
 const sessionStore = new RedisStore({
-  client: redis,    // Reuse our existing Redis connection
-  prefix: 'sess:',  // All session keys in Redis will start with "sess:"
+  client: {
+    get: async (key: string) => redis.get(key),
+    set: async (key: string, val: string, opts?: { EX?: number, PX?: number }) => {
+      if (opts?.EX) return redis.set(key, val, 'EX', opts.EX) as any;
+      if (opts?.PX) return redis.set(key, val, 'PX', opts.PX) as any;
+      return redis.set(key, val) as any;
+    },
+    del: async (key: string) => redis.del(key) as any,
+  } as any,
+  prefix: 'sess:',
 });
 
 app.use(session({
@@ -495,6 +503,9 @@ app.post(
           res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
           return;
         }
+        // Terminal state (failed/completed but not yet removed) — remove it so
+        // BullMQ can create a fresh job with the same ID instead of no-op'ing.
+        try { await existingJob.remove(); } catch { /* ignore */ }
       }
 
       // ── CREATE NEW JOB ──
@@ -509,6 +520,11 @@ app.post(
           removeOnFail: { age: 86400 },          // Keep failed jobs for 24 hours (for debugging)
         },
       );
+
+      if (!job.id) {
+        res.status(500).json({ error: 'Failed to create analysis job. Please try again.' });
+        return;
+      }
 
       await redis.set(`jobstatus:${job.id}`, 'queued', 'EX', 3600);
 
@@ -795,31 +811,41 @@ app.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const owner = req.params.owner as string;
-      const repo = req.params.repo as string;
+      // Strip .svg extension if provided so cache fetch works
+      const repo = (req.params.repo as string).replace(/\.svg$/, '');
 
-      // TODO: Fetch actual score from DB
-      const score = 0; // Placeholder
-      const color = score >= 70 ? '#4caf50' : score >= 40 ? '#ff9800' : '#f44336';
+      // Fetch actual score from Redis Cache (or soon DB)
+      let score = 0;
+      let statusText = "Unanalyzed";
+      
+      const cached = await getFreshRepoMetricsCache<any>(owner, repo);
+      if (cached && cached.value && typeof cached.value.healthScore === 'number') {
+        score = Math.round(cached.value.healthScore);
+        statusText = `${score}/100`;
+      }
+
+      // Gray for unanalyzed, else Green/Yellow/Red
+      const color = statusText === "Unanalyzed" ? '#9e9e9e' : score >= 80 ? '#4caf50' : score >= 50 ? '#ff9800' : '#f44336';
 
       // Generate a simple SVG badge
       const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="160" height="28" role="img" aria-label="GitVital: ${score}">
-          <title>GitVital: ${score}</title>
+        <svg xmlns="http://www.w3.org/2000/svg" width="170" height="28" role="img" aria-label="GitVital: ${statusText}">
+          <title>GitVital: ${statusText}</title>
           <linearGradient id="s" x2="0" y2="100%">
             <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
             <stop offset="1" stop-opacity=".1"/>
           </linearGradient>
-          <clipPath id="r"><rect width="160" height="28" rx="5" fill="#fff"/></clipPath>
+          <clipPath id="r"><rect width="170" height="28" rx="5" fill="#fff"/></clipPath>
           <g clip-path="url(#r)">
             <rect width="90" height="28" fill="#555"/>
-            <rect x="90" width="70" height="28" fill="${color}"/>
-            <rect width="160" height="28" fill="url(#s)"/>
+            <rect x="90" width="80" height="28" fill="${color}"/>
+            <rect width="170" height="28" fill="url(#s)"/>
           </g>
           <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
             <text x="45" y="19.5" fill="#010101" fill-opacity=".3">GitVital</text>
             <text x="45" y="18.5">GitVital</text>
-            <text x="125" y="19.5" fill="#010101" fill-opacity=".3">${score}/100</text>
-            <text x="125" y="18.5">${score}/100</text>
+            <text x="130" y="19.5" fill="#010101" fill-opacity=".3">${statusText}</text>
+            <text x="130" y="18.5">${statusText}</text>
           </g>
         </svg>`;
 
