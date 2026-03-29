@@ -31,8 +31,8 @@ export const config = {
     'https://gitvital.com',
     'https://www.gitvital.com',
     'https://api.gitvital.com',
-    'https://1pi.gitvital.com',
-    'https://api.1pi.gitvital.com',
+    'https://gitvital.com',
+    'https://api.gitvital.com',
     ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
   ],
 
@@ -52,6 +52,11 @@ export const config = {
     sameSite: ((process.env.NODE_ENV === 'production' || process.env.RENDER || process.env.VERCEL || process.env.RAILWAY_ENVIRONMENT_NAME) ? 'none' : 'lax') as 'none' | 'lax',
     secureCookies: !!(process.env.NODE_ENV === 'production' || process.env.RENDER || process.env.VERCEL || process.env.RAILWAY_ENVIRONMENT_NAME),
     ttlMs: 1000 * 60 * 60 * 24 * 7,
+    // Share the session cookie across ALL *.gitvital.com subdomains so that the
+    // frontend (gitvital.com) can read the session created by the backend
+    // (api.gitvital.com). Without this, the browser scopes the cookie to
+    // the exact backend hostname and the frontend never sees it.
+    cookieDomain: (process.env.NODE_ENV === 'production' || process.env.RENDER) ? '.gitvital.com' : undefined,
   },
 
   // ──────────────────────────────────────────────

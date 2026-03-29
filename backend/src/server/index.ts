@@ -158,6 +158,7 @@ app.use(session({
     httpOnly: true,
     maxAge: config.session.ttlMs,
     sameSite: config.session.sameSite,
+    domain: config.session.cookieDomain,
   },
 }));
 
@@ -1044,6 +1045,7 @@ app.post('/auth/logout', async (req: Request, res: Response): Promise<void> => {
       httpOnly: true,
       secure: config.session.secureCookies,
       sameSite: config.session.sameSite,
+      domain: config.session.cookieDomain,
     });
 
     res.status(200).json({ success: true });

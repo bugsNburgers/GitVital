@@ -235,8 +235,9 @@ export default function RepoDashboardPage() {
         });
 
         if (!qr.ok) {
-          const err = await qr.json();
-          if (!cancelled) { setErrorMsg(err.error || "Failed to start analysis."); setLoadState("error"); }
+          let errText = `Failed to start analysis (HTTP ${qr.status}).`;
+          try { const err = await qr.json(); errText = err.error || errText; } catch {}
+          if (!cancelled) { setErrorMsg(errText); setLoadState("error"); }
           return;
         }
 
@@ -256,7 +257,7 @@ export default function RepoDashboardPage() {
 
         if (!cancelled) startPolling(q.jobId);
       } catch (e) {
-        if (!cancelled) { setErrorMsg("Could not connect to the GitVital API."); setLoadState("error"); }
+        if (!cancelled) { setErrorMsg(`Could not connect to the GitVital API at ${API_BASE}. Check if the backend is running.`); setLoadState("error"); }
       }
     }
 
@@ -297,7 +298,7 @@ export default function RepoDashboardPage() {
   }
 
   function copyBadge() {
-    const md = `[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://1pi.gitvital.com/${owner}/${repo})`;
+    const md = `[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://gitvital.com/${owner}/${repo})`;
     navigator.clipboard.writeText(md).then(() => {
       setCopyDone(true);
       setTimeout(() => setCopyDone(false), 2000);
@@ -1007,7 +1008,7 @@ export default function RepoDashboardPage() {
                 <div>
                   <div className="badge-section-label">Embed in README</div>
                   <div className="badge-code-wrap">
-                    <div className="badge-code">{`[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://1pi.gitvital.com/${owner}/${repo})`}</div>
+                    <div className="badge-code">{`[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://gitvital.com/${owner}/${repo})`}</div>
                     <button className="badge-copy-btn" onClick={copyBadge}>{copyDone ? "✓ Copied" : "Copy"}</button>
                   </div>
                 </div>
