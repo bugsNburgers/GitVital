@@ -55,6 +55,7 @@ interface RepoMetrics {
   churnMetrics: ChurnMetricsResult | null;
   riskFlags: RiskFlag[];
   aiAdvice: string | null;
+  aiAdviceSource?: string | null;
   metadata?: RepoMetadata;
 }
 
