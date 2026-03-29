@@ -579,6 +579,8 @@ const worker = new Worker<JobData>(
     connection: {
       host: new URL(config.redisUrl).hostname || 'localhost',
       port: parseInt(new URL(config.redisUrl).port || '6379', 10),
+      password: new URL(config.redisUrl).password ? decodeURIComponent(new URL(config.redisUrl).password) : undefined,
+      tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
     },
     concurrency: 2,           // Process 2 jobs at the same time
     lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1

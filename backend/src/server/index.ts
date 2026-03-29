@@ -821,7 +821,7 @@ app.get(
       // Fetch actual score from Redis Cache (or soon DB)
       let score = 0;
       let statusText = "Unanalyzed";
-      
+
       const cached = await getFreshRepoMetricsCache<any>(owner, repo);
       if (cached && cached.value && typeof cached.value.healthScore === 'number') {
         score = Math.round(cached.value.healthScore);
