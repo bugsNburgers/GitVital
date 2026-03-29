@@ -21,6 +21,7 @@ import { redis } from '../config/redis';
 import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
+import { resetGeminiCooldown } from '../ai/advice';
 
 // Start background workers in the same process to save hosting costs!
 import '../workers/repoAnalyzer';
@@ -130,9 +131,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// 3d. Session middleware — manages login sessions using Redis
-// After a user logs in via GitHub, this creates a session stored in Redis
-// and sends a cookie to the browser so the user stays logged in.
 const sessionStore = new RedisStore({
   client: {
     get: async (key: string) => redis.get(key),
@@ -142,6 +140,8 @@ const sessionStore = new RedisStore({
       return redis.set(key, val) as any;
     },
     del: async (key: string) => redis.del(key) as any,
+    expire: async (key: string, seconds: number) => redis.expire(key, seconds) as any,
+    pexpire: async (key: string, ms: number) => redis.pexpire(key, ms) as any,
   } as any,
   prefix: 'sess:',
 });
@@ -1096,9 +1096,73 @@ app.get('/health', async (_req: Request, res: Response) => {
 });
 
 
-// ═══════════════════════════════════════════════════════════════
-// SECTION 8: START SERVER + GRACEFUL SHUTDOWN
-// ═══════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// ADMIN: GET /api/admin/test-ai — Direct Gemini API diagnostic
+// Hit this endpoint to see exactly why Gemini may be failing.
+// ─────────────────────────────────────────────────────────────
+app.get('/api/admin/test-ai', async (req: Request, res: Response): Promise<void> => {
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+
+  const result: Record<string, unknown> = {
+    geminiApiKeyPresent: !!config.geminiApiKey,
+    geminiApiKeyLength: config.geminiApiKey?.length ?? 0,
+  };
+
+  // Check Redis quota cooldown
+  try {
+    const cooldownVal = await redis.get('ai:gemini:quota:cooldown-until-ms');
+    result.cooldownActive = !!cooldownVal && (Number(cooldownVal) - Date.now()) > 0;
+    result.cooldownRemainingMs = cooldownVal ? Math.max(0, Number(cooldownVal) - Date.now()) : 0;
+  } catch (e) { result.redisError = String(e); }
+
+  if (!config.geminiApiKey) { res.json({ ...result, error: 'GEMINI_API_KEY missing' }); return; }
+
+  // Probe every candidate model × both API versions to find what works
+  const MODELS = [
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-001',
+    'gemini-1.5-pro',
+    'gemini-1.0-pro',
+    'gemini-pro',
+  ];
+  const API_VERSIONS = ['v1beta', 'v1'];
+  const PROMPT = 'SYSTEM: You are a code health advisor. Generate 1 sentence.\nUSER: {"health_score":75}';
+
+  const probeResults: Record<string, unknown>[] = [];
+  let firstSuccess: string | null = null;
+
+  for (const apiVersion of API_VERSIONS) {
+    for (const modelName of MODELS) {
+      const probe: Record<string, unknown> = { model: modelName, apiVersion };
+      try {
+        const ai = new GoogleGenerativeAI(config.geminiApiKey);
+        const mdl = ai.getGenerativeModel({ model: modelName }, { apiVersion } as any);
+        const r = await mdl.generateContent(PROMPT);
+        const txt = r.response.text();
+        probe.success = true;
+        probe.outputSnippet = txt.slice(0, 120);
+        if (!firstSuccess) firstSuccess = `${modelName} @ ${apiVersion}`;
+      } catch (e) {
+        probe.success = false;
+        probe.error = e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200);
+      }
+      probeResults.push(probe);
+      // Stop after first success to save quota
+      if (probe.success) break;
+    }
+    if (firstSuccess) break;
+  }
+
+  result.firstWorkingModel = firstSuccess;
+  result.probeResults = probeResults;
+  res.json(result);
+});
+
+
+
 
 const server = app.listen(config.port, () => {
   console.log(`🚀 GitVital API server running on http://localhost:${config.port}`);

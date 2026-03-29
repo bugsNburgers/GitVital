@@ -1,7 +1,7 @@
 import { redis } from '../config/redis';
 
 const GEMINI_QUOTA_COOLDOWN_KEY = 'ai:gemini:quota:cooldown-until-ms';
-const DEFAULT_COOLDOWN_MS = 60 * 60 * 1000;
+const DEFAULT_COOLDOWN_MS = 15_000; // 15 SECONDS lock out instead of 1 HOUR
 
 export interface GeminiQuotaCooldownInfo {
     active: boolean;
@@ -10,7 +10,7 @@ export interface GeminiQuotaCooldownInfo {
 }
 
 export async function markGeminiQuotaLimited(cooldownMs = DEFAULT_COOLDOWN_MS): Promise<void> {
-    const normalizedCooldownMs = Math.max(60_000, cooldownMs);
+    const normalizedCooldownMs = Math.max(15_000, cooldownMs);
     const cooldownUntilMs = Date.now() + normalizedCooldownMs;
 
     await redis.set(

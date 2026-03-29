@@ -297,7 +297,7 @@ export default function RepoDashboardPage() {
   }
 
   function copyBadge() {
-    const md = `[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://gitvital.com/${owner}/${repo})`;
+    const md = `[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://1pi.gitvital.com/${owner}/${repo})`;
     navigator.clipboard.writeText(md).then(() => {
       setCopyDone(true);
       setTimeout(() => setCopyDone(false), 2000);
@@ -1007,7 +1007,7 @@ export default function RepoDashboardPage() {
                 <div>
                   <div className="badge-section-label">Embed in README</div>
                   <div className="badge-code-wrap">
-                    <div className="badge-code">{`[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://gitvital.com/${owner}/${repo})`}</div>
+                    <div className="badge-code">{`[![Git Vital](${API_BASE}/badge/${owner}/${repo}.svg)](https://1pi.gitvital.com/${owner}/${repo})`}</div>
                     <button className="badge-copy-btn" onClick={copyBadge}>{copyDone ? "✓ Copied" : "Copy"}</button>
                   </div>
                 </div>

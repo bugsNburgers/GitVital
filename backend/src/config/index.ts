@@ -31,6 +31,8 @@ export const config = {
     'https://gitvital.com',
     'https://www.gitvital.com',
     'https://api.gitvital.com',
+    'https://1pi.gitvital.com',
+    'https://api.1pi.gitvital.com',
     ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
   ],
 
