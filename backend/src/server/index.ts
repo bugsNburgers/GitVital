@@ -830,10 +830,10 @@ app.post(
       const normalizedOwner = owner.toLowerCase();
       const normalizedRepo = repo.toLowerCase();
       const normalizedRepoRef = `${normalizedOwner}/${normalizedRepo}`;
-      const dedupeJobId = `analyze:${normalizedOwner}:${normalizedRepo}`;
+      const dedupeJobId = `analyze__${normalizedOwner}__${normalizedRepo}`;
       const forceReanalyze = parseBooleanFlag((req.body as { force?: unknown })?.force);
       const jobId = forceReanalyze
-        ? `reanalyze:${normalizedOwner}:${normalizedRepo}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+        ? `reanalyze__${normalizedOwner}__${normalizedRepo}__${Date.now()}__${Math.random().toString(36).slice(2, 8)}`
         : dedupeJobId;
       const userId = (req.session as any)?.userId as string | number | undefined;
       const requesterIp = getClientIp(req);
@@ -1171,9 +1171,9 @@ app.post(
         await clearUserContributionCache(normalizedUsername);
       }
 
-      const dedupeJobId = `analyze-user:${normalizedUsername}`;
+      const dedupeJobId = `analyze-user__${normalizedUsername}`;
       const jobId = forceReanalyze
-        ? `reanalyze-user:${normalizedUsername}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+        ? `reanalyze-user__${normalizedUsername}__${Date.now()}__${Math.random().toString(36).slice(2, 8)}`
         : dedupeJobId;
 
       if (!forceReanalyze) {
