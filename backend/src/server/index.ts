@@ -42,8 +42,12 @@ const OAUTH_TOKEN_TTL_SECONDS = Math.floor(config.session.ttlMs / 1000);
 const REDACTED_VALUE = '[REDACTED]';
 const DAILY_LIMIT_TTL_SECONDS = 60 * 60 * 24 + 60 * 60;
 const MAX_PENDING_ANALYSES_PER_USER = 5;
+const MAX_ANALYZE_REQUESTS_PER_WINDOW_AUTH = 20;
+const MAX_ANALYZE_REQUESTS_PER_WINDOW_ANON = 10;
 const MAX_UNIQUE_REPOS_PER_USER_PER_DAY = 20;
 const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 10;
+const MAX_GEMINI_ANALYSES_PER_USER_PER_DAY = 20;
+const MAX_GEMINI_ANALYSES_PER_IP_PER_DAY = 10;
 const RAPID_FIRE_WINDOW_SECONDS = 60;
 const RAPID_FIRE_ALERT_THRESHOLD = 8;
 const SENSITIVE_RESPONSE_KEYS = new Set([
@@ -259,7 +263,7 @@ const defaultLimiter = rateLimit({
 
 const analyzeAuthenticatedLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: MAX_ANALYZE_REQUESTS_PER_WINDOW_AUTH,
   skip: (req) => !(req.session as any)?.userId,
   keyGenerator: (req) => `auth-user:${String((req.session as any).userId)}`,
   standardHeaders: true,
@@ -269,7 +273,7 @@ const analyzeAuthenticatedLimiter = rateLimit({
 
 const analyzeUnauthenticatedLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 3,
+  max: MAX_ANALYZE_REQUESTS_PER_WINDOW_ANON,
   skip: (req) => Boolean((req.session as any)?.userId),
   keyGenerator: (req) => `anon-ip:${getClientIp(req)}`,
   standardHeaders: true,                      // Return rate limit info in headers
@@ -360,6 +364,10 @@ function getDailyUniqueRepoKey(scope: 'user' | 'ip', id: string): string {
   return `abuse:unique-repos:${scope}:${id}:${currentDayBucket()}`;
 }
 
+function getDailyAnalysisCountKey(scope: 'user' | 'ip', id: string): string {
+  return `abuse:analysis-count:${scope}:${id}:${currentDayBucket()}`;
+}
+
 function getRapidFireKey(ip: string): string {
   return `abuse:rapid-fire:${ip}:${Math.floor(Date.now() / 1000 / RAPID_FIRE_WINDOW_SECONDS)}`;
 }
@@ -382,6 +390,15 @@ async function enforceDailyUniqueRepoLimit(
   }
 
   return { allowed, count };
+}
+
+async function incrementDailyAnalysisCount(scope: 'user' | 'ip', subjectId: string): Promise<number> {
+  const key = getDailyAnalysisCountKey(scope, subjectId);
+  const count = await redis.incr(key);
+  if (count === 1) {
+    await redis.expire(key, DAILY_LIMIT_TTL_SECONDS);
+  }
+  return count;
 }
 
 async function trackRapidFireAndAlert(ip: string, normalizedRepo: string): Promise<void> {
@@ -538,6 +555,17 @@ app.post(
         : dedupeJobId;
       const userId = (req.session as any)?.userId as string | number | undefined;
       const requesterIp = getClientIp(req);
+      const analysisScope = userId !== undefined && userId !== null
+        ? {
+          scope: 'user' as const,
+          id: String(userId),
+          geminiLimitPerDay: MAX_GEMINI_ANALYSES_PER_USER_PER_DAY,
+        }
+        : {
+          scope: 'ip' as const,
+          id: requesterIp,
+          geminiLimitPerDay: MAX_GEMINI_ANALYSES_PER_IP_PER_DAY,
+        };
 
       await trackRapidFireAndAlert(requesterIp, normalizedRepoRef);
 
@@ -619,10 +647,31 @@ app.post(
         }
       }
 
+      // Soft daily AI cap: beyond threshold, continue analysis but force rule-based advice.
+      // This counter is shared by analyze + reanalyze because both hit the same endpoint.
+      const dailyAnalysisCount = await incrementDailyAnalysisCount(analysisScope.scope, analysisScope.id);
+      const forceFallbackAdvice = dailyAnalysisCount > analysisScope.geminiLimitPerDay;
+      if (forceFallbackAdvice) {
+        console.warn('[AI][SOFT-LIMIT] Daily Gemini analysis cap exceeded, forcing fallback advice for this job.', {
+          scope: analysisScope.scope,
+          subjectId: analysisScope.id,
+          dailyAnalysisCount,
+          geminiLimitPerDay: analysisScope.geminiLimitPerDay,
+          owner: normalizedOwner,
+          repo: normalizedRepo,
+          forceReanalyze,
+        });
+      }
+
       // ── CREATE NEW JOB ──
       const job = await analysisQueue.add(
         'analyze-repo',                           // Job name (for logging/filtering)
-        { owner, repo, userId: userId !== undefined && userId !== null ? String(userId) : undefined },  // Job data
+        {
+          owner,
+          repo,
+          userId: userId !== undefined && userId !== null ? String(userId) : undefined,
+          forceFallbackAdvice,
+        },  // Job data
         {
           jobId,
           attempts: 3,                            // Retry up to 3 times on failure
@@ -639,7 +688,13 @@ app.post(
 
       await redis.set(`jobstatus:${job.id}`, 'queued', 'EX', 3600);
 
-      res.status(202).json({ jobId: job.id, status: 'queued', forced: forceReanalyze });
+      res.status(202).json({
+        jobId: job.id,
+        status: 'queued',
+        forced: forceReanalyze,
+        fallbackOnly: forceFallbackAdvice,
+        dailyAnalysisCount,
+      });
     } catch (error) {
       console.error('Error queuing analysis job:', error);
       res.status(500).json({ error: 'Failed to queue analysis' });

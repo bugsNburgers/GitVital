@@ -240,7 +240,7 @@ function isGitHubApiError(error: unknown): error is GitHubApiError {
 // It follows the exact 15-step pipeline from the architecture doc.
 
 async function processAnalysisJob(job: Job<JobData>): Promise<void> {
-  const { owner, repo, userId } = job.data;
+  const { owner, repo, userId, forceFallbackAdvice } = job.data;
   const logPrefix = `[Job ${job.id}] ${owner}/${repo}`;
 
   console.log(`\n🔬 ${logPrefix} — Starting analysis...`);
@@ -422,33 +422,41 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // If Gemini takes too long, we skip AI advice rather than
     // holding up the entire job.
     console.log(`   ${logPrefix} — Step 10: Generating AI advice...`);
-    let aiAdvice: AdviceResult | null = null;
-
-    try {
-      const timeoutPromise = new Promise<null>((resolve) => {
-        setTimeout(() => resolve(null), 25_000); // 25 second timeout
-      });
-
-      aiAdvice = await Promise.race([
-        generateAIAdvice(metrics, owner, repo, { jobId: String(job.id) }),
-        timeoutPromise,
-      ]);
-
-      if (!aiAdvice) {
-        console.warn(`   ${logPrefix} — Step 10: AI timed out, applying rule-based fallback...`);
-        aiAdvice = generateFallbackAdvice(metrics, owner, repo);
-      }
-
-      metrics.aiAdvice = aiAdvice.advice;
-      metrics.aiAdviceSource = aiAdvice.source;
-      metrics.aiAdviceModel = aiAdvice.source === 'gemini' ? aiAdvice.model ?? null : null;
-      console.log(`   ${logPrefix} — Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
-    } catch (aiError) {
-      console.warn(`   ${logPrefix} — Step 10: AI advice failed (non-blocking), applying fallback:`, aiError);
+    if (forceFallbackAdvice) {
+      console.warn(`   ${logPrefix} — Step 10: Daily AI soft-limit reached. Using fallback engine by policy.`);
       const fallback = generateFallbackAdvice(metrics, owner, repo);
       metrics.aiAdvice = fallback.advice;
       metrics.aiAdviceSource = fallback.source;
       metrics.aiAdviceModel = null;
+    } else {
+      let aiAdvice: AdviceResult | null = null;
+
+      try {
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), 25_000); // 25 second timeout
+        });
+
+        aiAdvice = await Promise.race([
+          generateAIAdvice(metrics, owner, repo, { jobId: String(job.id) }),
+          timeoutPromise,
+        ]);
+
+        if (!aiAdvice) {
+          console.warn(`   ${logPrefix} — Step 10: AI timed out, applying rule-based fallback...`);
+          aiAdvice = generateFallbackAdvice(metrics, owner, repo);
+        }
+
+        metrics.aiAdvice = aiAdvice.advice;
+        metrics.aiAdviceSource = aiAdvice.source;
+        metrics.aiAdviceModel = aiAdvice.source === 'gemini' ? aiAdvice.model ?? null : null;
+        console.log(`   ${logPrefix} — Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
+      } catch (aiError) {
+        console.warn(`   ${logPrefix} — Step 10: AI advice failed (non-blocking), applying fallback:`, aiError);
+        const fallback = generateFallbackAdvice(metrics, owner, repo);
+        metrics.aiAdvice = fallback.advice;
+        metrics.aiAdviceSource = fallback.source;
+        metrics.aiAdviceModel = null;
+      }
     }
 
     await job.updateProgress(85);

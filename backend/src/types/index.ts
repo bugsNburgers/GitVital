@@ -107,6 +107,7 @@ export interface JobData {
   owner: string;
   repo: string;
   userId?: string;
+  forceFallbackAdvice?: boolean;
 }
 
 export interface UserMergedPRNode {
