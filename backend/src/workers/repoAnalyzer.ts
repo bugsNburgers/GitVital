@@ -6,7 +6,7 @@
 // communicates with the API server (the waiter) through the Redis queue.
 
 import { Worker, Job, UnrecoverableError } from 'bullmq';
-import { redis } from '../config/redis';
+import { redis, getBullRedisConnection } from '../config/redis';
 import { config } from '../config';
 import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag, TimelineEntry } from '../types';
 import { generateAIAdvice, generateFallbackAdvice, type AdviceResult } from '../ai/advice';
@@ -585,12 +585,7 @@ const worker = new Worker<JobData>(
   'repo-analysis',  // Must match the queue name in the API server
   processAnalysisJob,
   {
-    connection: {
-      host: new URL(config.redisUrl).hostname || 'localhost',
-      port: parseInt(new URL(config.redisUrl).port || '6379', 10),
-      password: new URL(config.redisUrl).password ? decodeURIComponent(new URL(config.redisUrl).password) : undefined,
-      tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
-    },
+    connection: getBullRedisConnection(),
     concurrency: 2,           // Process 2 jobs at the same time
     lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1
     stalledInterval: 120_000, // Check for stalled jobs every 2 minutes — Prompt 7.1

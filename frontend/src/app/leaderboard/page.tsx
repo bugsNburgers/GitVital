@@ -13,13 +13,6 @@ const ALL_LEADERS = [
   { rank: 6, name: "Lea Verou", handle: "@leaverou", score: 94.75, lang: "CSS", repos: 92, percentile: "Top 3%", tier: "other", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuA19Otx3E8FnozX0NZbU2M0bMLrx1NVR0JTeyA2mCSl9y2yz76VD630_m4n5CEDwR6wtr9HBUVyVoRmDNN28qh_6_oQc_6q7YX1WO5fPvXhev2vP6DE0E48N7MarhLHs_JSA_AzaF0KS7h4X_WBbU0I0lN8vw2yCoxLjPDUI_ZYYtTNRqzAReJsYnMonz0mxbQ4bG0XZfMpYEOhXomwHUWo8zElmSNm_NzoiPRAVrF0tavjk1JtKpKsDF8uRSQF-Ww9GvS8wht2SFI" },
 ];
 
-const TIER_COLORS: Record<string, { border: string; medalColor: string }> = {
-  gold:   { border: "rgba(234,179,8,0.4)",  medalColor: "#eab308" },
-  silver: { border: "rgba(148,163,184,0.4)", medalColor: "#94a3b8" },
-  bronze: { border: "rgba(234,88,12,0.4)",  medalColor: "#ea580c" },
-  other:  { border: "transparent",           medalColor: "transparent" },
-};
-
 const PAGE_SIZE = 6;
 
 export default function LeaderboardPage() {
@@ -50,7 +43,8 @@ export default function LeaderboardPage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
           --bg: #080909; --bg-surface: #0f1011; --bg-card: #111314;
@@ -85,7 +79,9 @@ export default function LeaderboardPage() {
         .lb-nav-search span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 17px; }
 
         /* PAGE LAYOUT */
+        .lb-root { background: var(--bg); min-height: 100vh; color: var(--text); font-family: var(--font); }
         .lb-main { max-width: 1200px; margin: 0 auto; padding: 84px 24px 60px; }
+        .lb-profile-link { color: var(--orange) !important; }
 
         /* HERO */
         .lb-hero { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 24px; margin-bottom: 40px; }
@@ -113,6 +109,7 @@ export default function LeaderboardPage() {
 
         /* TABLE */
         .lb-table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+        .lb-table-scroll { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
         thead tr { background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); }
         thead th { padding: 14px 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); text-align: left; white-space: nowrap; }
@@ -121,15 +118,26 @@ export default function LeaderboardPage() {
         tbody tr:last-child { border-bottom: none; }
         tbody tr:hover { background: rgba(255,94,0,0.04); }
         td { padding: 18px 20px; font-size: 14px; vertical-align: middle; }
+        .lb-empty-row { text-align: center; padding: 48px; color: var(--text-muted); }
 
         .td-rank { width: 72px; }
         .rank-medal { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
         .rank-medal span { font-size: 20px; }
+        .rank-medal.rank-gold { background: rgba(234,179,8,0.12); }
+        .rank-medal.rank-silver { background: rgba(148,163,184,0.12); }
+        .rank-medal.rank-bronze { background: rgba(234,88,12,0.12); }
+        .rank-medal.rank-gold span { color: #eab308; }
+        .rank-medal.rank-silver span { color: #94a3b8; }
+        .rank-medal.rank-bronze span { color: #ea580c; }
         .rank-num { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; font-family: var(--mono); color: var(--text-muted); }
 
         .td-dev { min-width: 200px; }
         .dev-row { display: flex; align-items: center; gap: 14px; }
         .dev-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+        .dev-avatar.tier-gold { border: 2px solid rgba(234,179,8,0.4); }
+        .dev-avatar.tier-silver { border: 2px solid rgba(148,163,184,0.4); }
+        .dev-avatar.tier-bronze { border: 2px solid rgba(234,88,12,0.4); }
+        .dev-avatar.tier-other { border: 2px solid transparent; }
         .dev-name { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
         .dev-handle { font-size: 12px; color: var(--text-muted); }
 
@@ -177,7 +185,7 @@ export default function LeaderboardPage() {
         }
       ` }} />
 
-      <div style={{ background: 'var(--bg)', minHeight: '100vh', color: 'var(--text)', fontFamily: 'var(--font)' }}>
+      <div className="lb-root">
 
         {/* NAV */}
         <nav className="lb-nav">
@@ -190,7 +198,7 @@ export default function LeaderboardPage() {
               <a href="/leaderboard" className="active">Leaderboard</a>
               <a href="/compare">Compare</a>
               {user?.loggedIn ? (
-                <a href={`/${user.githubUsername}`} style={{ color: 'var(--orange)' }}>View Profile</a>
+                <a href={`/${user.githubUsername}`} className="lb-profile-link">View Profile</a>
               ) : (
                 <a href={AUTH_URL}>Login</a>
               )}
@@ -218,7 +226,12 @@ export default function LeaderboardPage() {
             <div className="lb-filter">
               <label>Filter by Language</label>
               <div className="lb-filter-wrap">
-                <select value={langFilter} onChange={(e) => { setLangFilter(e.target.value); setCurrentPage(1); }}>
+                <select
+                  value={langFilter}
+                  onChange={(e) => { setLangFilter(e.target.value); setCurrentPage(1); }}
+                  aria-label="Filter developers by language"
+                  title="Filter developers by language"
+                >
                   <option>All Languages</option>
                   <option>TypeScript</option>
                   <option>JavaScript</option>
@@ -253,7 +266,7 @@ export default function LeaderboardPage() {
 
           {/* TABLE */}
           <div className="lb-table-wrap">
-            <div style={{ overflowX: 'auto' }}>
+            <div className="lb-table-scroll">
               <table>
                 <thead>
                   <tr>
@@ -262,24 +275,23 @@ export default function LeaderboardPage() {
                     <th>Score</th>
                     <th>Language</th>
                     <th className="td-repos">Repos</th>
-                    <th style={{ textAlign: 'right' }}>Percentile</th>
+                    <th>Percentile</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paged.length === 0 ? (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                      <td colSpan={6} className="lb-empty-row">
                         No developers match your filter.
                       </td>
                     </tr>
                   ) : paged.map((leader) => {
-                    const tc = TIER_COLORS[leader.tier];
                     return (
                       <tr key={leader.handle} onClick={() => router.push(`/${leader.handle.replace("@", "")}`)}>
                         <td className="td-rank">
                           {leader.tier !== "other" ? (
-                            <div className="rank-medal" style={{ background: `${tc.medalColor}18` }}>
-                              <span className="material-symbols-outlined" style={{ color: tc.medalColor, fontSize: 20 }}>workspace_premium</span>
+                            <div className={`rank-medal rank-${leader.tier}`}>
+                              <span className="material-symbols-outlined">workspace_premium</span>
                             </div>
                           ) : (
                             <div className="rank-num">{leader.rank}</div>
@@ -289,9 +301,8 @@ export default function LeaderboardPage() {
                           <div className="dev-row">
                             <img
                               alt={leader.name}
-                              className="dev-avatar"
+                              className={`dev-avatar tier-${leader.tier}`}
                               src={leader.img}
-                              style={{ border: `2px solid ${tc.border}` }}
                             />
                             <div>
                               <div className="dev-name">{leader.name}</div>
@@ -329,13 +340,11 @@ export default function LeaderboardPage() {
           </div>
         </main>
 
-        <footer style={{ borderTop: '1px solid var(--border)', padding: '28px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, maxWidth: 1200, margin: '0 auto' }}>
-          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>© 2024 Git Vital Analytics. Build with integrity.</span>
-          <div style={{ display: 'flex', gap: 24 }}>
+        <footer className="lb-footer">
+          <span className="lb-footer-text">© 2024 Git Vital Analytics. Build with integrity.</span>
+          <div className="lb-footer-links">
             {["Privacy Policy", "Terms of Service", "Documentation"].map((l) => (
-              <a key={l} href="#" style={{ fontSize: 13, color: 'var(--text-muted)', textDecoration: 'none' }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#FFA066')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}>
+              <a key={l} href="#">
                 {l}
               </a>
             ))}

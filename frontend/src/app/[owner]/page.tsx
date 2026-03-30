@@ -50,9 +50,9 @@ export default function UserProfilePage() {
     const path = sparkPath(data);
     const areaPath = `${path} L100,40 L0,40 Z`;
     const gradId = `sg-${color.replace('#', '')}-${Math.random().toString(36).substr(2, 5)}`;
-    
+
     return (
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="spark-svg">
         <defs>
           <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stopColor={color} stopOpacity="0.25" />
@@ -67,7 +67,8 @@ export default function UserProfilePage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
           --bg: #080909; --bg-surface: #0f1011; --bg-card: #111314; --bg-card-hover: #161819;
@@ -103,6 +104,9 @@ export default function UserProfilePage() {
         .nav-search span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 16px; }
         
         .nav-icons { display: flex; align-items: center; gap: 16px; }
+        .nav-links-inline { display: flex; gap: 20px; align-items: center; margin-right: 16px; }
+        .nav-link { color: var(--text-muted); font-size: 13px; text-decoration: none; }
+        .nav-link-profile { color: var(--orange); font-size: 13px; text-decoration: none; font-weight: 700; }
         .nav-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; position: relative; transition: color 0.2s; }
         .nav-btn:hover { color: var(--text); }
         .nav-btn-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: var(--orange); border-radius: 50%; }
@@ -151,6 +155,9 @@ export default function UserProfilePage() {
         .profile-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
         .meta-item { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 500; }
         .meta-item .material-symbols-outlined { font-size: 16px; }
+        .icon-orange { color: #FF5E00; }
+        .icon-secondary { color: #0ea5e9; }
+        .icon-muted { color: #52525b; }
 
         .profile-actions { display: flex; gap: 12px; }
         .btn-primary {
@@ -172,6 +179,9 @@ export default function UserProfilePage() {
         }
         .score-summary-th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 4px; display: block; }
         .score-summary-val { font-size: 48px; font-weight: 800; line-height: 1; letter-spacing: -0.05em; color: var(--orange); margin-bottom: 12px; display: block; }
+        .score-reliability-row { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
+        .score-reliability-label { color: var(--text-muted); }
+        .score-reliability-value { color: var(--orange-light); }
         .score-summary-bar { width: 100px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; margin: 0 auto; }
         .score-summary-bar-fill { height: 100%; background: var(--orange); width: 98%; }
 
@@ -194,9 +204,22 @@ export default function UserProfilePage() {
         .badge-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
         .badge-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
         .badge-level { font-family: var(--mono); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange-light); }
+        .badge-card.tone-orange { border-top-color: #FF5E00; }
+        .badge-card.tone-secondary { border-top-color: #0ea5e9; }
+        .badge-card.tone-emerald { border-top-color: #10b981; }
+        .badge-card.tone-orange-light { border-top-color: #FFA066; }
+        .badge-card.tone-orange .badge-icon-wrapper { color: #FF5E00; background: rgba(255,94,0,0.12); }
+        .badge-card.tone-secondary .badge-icon-wrapper { color: #0ea5e9; background: rgba(14,165,233,0.12); }
+        .badge-card.tone-emerald .badge-icon-wrapper { color: #10b981; background: rgba(16,185,129,0.12); }
+        .badge-card.tone-orange-light .badge-icon-wrapper { color: #FFA066; background: rgba(255,160,102,0.12); }
+        .badge-card.tone-orange .badge-level { color: #FF5E00; }
+        .badge-card.tone-secondary .badge-level { color: #0ea5e9; }
+        .badge-card.tone-emerald .badge-level { color: #10b981; }
+        .badge-card.tone-orange-light .badge-level { color: #FFA066; }
 
         /* REPOSITORIES */
         .repo-controls { display: flex; gap: 12px; align-items: center; }
+        .repo-last-analyzed { font-size: 13px; color: var(--text-muted); }
         .repo-controls select {
           background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
           padding: 6px 12px; border-radius: 8px; font-size: 13px; outline: none; cursor: pointer;
@@ -223,6 +246,10 @@ export default function UserProfilePage() {
         .repo-foot { display: flex; justify-content: space-between; align-items: center; }
         .repo-lang { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; }
         .repo-lang-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .lang-typescript { background-color: #3b82f6; }
+        .lang-javascript { background-color: #eab308; }
+        .lang-json { background-color: #94a3b8; }
+        .lang-graphql { background-color: #ec4899; }
         .repo-stars { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-muted); }
 
         .repo-card-add {
@@ -254,6 +281,9 @@ export default function UserProfilePage() {
           box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 200;
         }
 
+        .spark-svg { width: 100%; height: 100%; overflow: visible; }
+        .profile-root { background: var(--bg); min-height: 100vh; font-family: var(--font); color: var(--text); }
+
         @media (max-width: 900px) {
           .profile-hdr { flex-direction: column; text-align: center; gap: 24px; }
           .profile-info { display: flex; flex-direction: column; align-items: center; }
@@ -268,15 +298,15 @@ export default function UserProfilePage() {
         }
       ` }} />
 
-      <div style={{ background: 'var(--bg)', minHeight: '100vh', fontFamily: 'var(--font)', color: 'var(--text)' }}>
-        
+      <div className="profile-root">
+
         {/* NAV */}
         <nav className="cmp-nav">
           <div className="cmp-nav-inner">
             <div className="cmp-logo" onClick={() => router.push("/")}>
               <img src="/gitvital_logo_fixed.svg" alt="GitVital" />
             </div>
-            
+
             <div className="nav-search">
               <span className="material-symbols-outlined">search</span>
               <input
@@ -290,15 +320,15 @@ export default function UserProfilePage() {
                 }}
               />
             </div>
-            
+
             <div className="nav-icons">
-              <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginRight: '16px' }}>
-                <a href="/" style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Explore</a>
-                <a href="/leaderboard" style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Leaderboard</a>
+              <div className="nav-links-inline">
+                <a href="/" className="nav-link">Explore</a>
+                <a href="/leaderboard" className="nav-link">Leaderboard</a>
                 {user?.loggedIn ? (
-                  <a href={`/${user.githubUsername}`} style={{ color: 'var(--orange)', fontSize: '13px', textDecoration: 'none', fontWeight: 'bold' }}>My Profile</a>
+                  <a href={`/${user.githubUsername}`} className="nav-link-profile">My Profile</a>
                 ) : (
-                  <a href={AUTH_URL} style={{ color: 'var(--text-muted)', fontSize: '13px', textDecoration: 'none' }}>Login</a>
+                  <a href={AUTH_URL} className="nav-link">Login</a>
                 )}
               </div>
               <div className="nav-user">
@@ -313,7 +343,7 @@ export default function UserProfilePage() {
           {/* PROFILE HEADER */}
           <section className="profile-hdr">
             <div className="profile-glow" />
-            
+
             <div className="profile-avatar-wrapper">
               <img
                 alt={`${owner} Avatar`}
@@ -337,20 +367,20 @@ export default function UserProfilePage() {
                 <span className="profile-tag">Top 5% Global</span>
               </div>
               <p className="profile-title">Senior Full Stack Engineer @ GitHub</p>
-              
+
               <div className="profile-meta">
-                <div className="meta-item"><span className="material-symbols-outlined" style={{ color: '#FF5E00' }}>code</span> TypeScript Expert</div>
-                <div className="meta-item"><span className="material-symbols-outlined" style={{ color: '#0ea5e9' }}>location_on</span> San Francisco, CA</div>
-                <div className="meta-item"><span className="material-symbols-outlined" style={{ color: '#52525b' }}>calendar_today</span> Joined 2011</div>
+                <div className="meta-item"><span className="material-symbols-outlined icon-orange">code</span> TypeScript Expert</div>
+                <div className="meta-item"><span className="material-symbols-outlined icon-secondary">location_on</span> San Francisco, CA</div>
+                <div className="meta-item"><span className="material-symbols-outlined icon-muted">calendar_today</span> Joined 2011</div>
               </div>
             </div>
 
             <div className="profile-score-summary hidden lg:block">
               <span className="score-summary-th">Developer Score</span>
               <span className="score-summary-val">98</span>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Reliability</span>
-                <span style={{ color: 'var(--orange-light)' }}>99%</span>
+              <div className="score-reliability-row">
+                <span className="score-reliability-label">Reliability</span>
+                <span className="score-reliability-value">99%</span>
               </div>
               <div className="score-summary-bar">
                 <div className="score-summary-bar-fill"></div>
@@ -366,18 +396,18 @@ export default function UserProfilePage() {
             </div>
             <div className="achievements-grid">
               {[
-                { title: "Code Warrior", level: "Elite Level", icon: "terminal", color: COLORS.orange, desc: "Merged 500+ Pull Requests in record time" },
-                { title: "Speed Demon", level: "Legendary", icon: "bolt", color: COLORS.secondary, desc: "Average issue resolution under 2 hours" },
-                { title: "Team Player", level: "Community Pillar", icon: "groups", color: COLORS.emerald, desc: "Contributed to 50+ open source projects" },
-                { title: "Exterminator", level: "Veteran", icon: "bug_report", color: COLORS.orangeLight, desc: "Found and fixed 10 critical security bugs" },
+                { title: "Code Warrior", level: "Elite Level", icon: "terminal", tone: "orange", desc: "Merged 500+ Pull Requests in record time" },
+                { title: "Speed Demon", level: "Legendary", icon: "bolt", tone: "secondary", desc: "Average issue resolution under 2 hours" },
+                { title: "Team Player", level: "Community Pillar", icon: "groups", tone: "emerald", desc: "Contributed to 50+ open source projects" },
+                { title: "Exterminator", level: "Veteran", icon: "bug_report", tone: "orange-light", desc: "Found and fixed 10 critical security bugs" },
               ].map((badge, i) => (
-                <div key={i} className="badge-card" style={{ borderTopColor: badge.color }}>
-                  <div className="badge-icon-wrapper" style={{ color: badge.color, backgroundColor: `${badge.color}15` }}>
+                <div key={i} className={`badge-card tone-${badge.tone}`}>
+                  <div className="badge-icon-wrapper">
                     <span className="material-symbols-outlined">{badge.icon}</span>
                   </div>
                   <h4 className="badge-title">{badge.title}</h4>
                   <p className="badge-desc">{badge.desc}</p>
-                  <span className="badge-level" style={{ color: badge.color }}>{badge.level}</span>
+                  <span className="badge-level">{badge.level}</span>
                 </div>
               ))}
             </div>
@@ -388,22 +418,22 @@ export default function UserProfilePage() {
             <div className="section-header">
               <h3 className="section-title"><span className="material-symbols-outlined">data_object</span> Analyzed Repositories</h3>
               <div className="repo-controls">
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Last analyzed: 12m ago</span>
-                <select>
+                <span className="repo-last-analyzed">Last analyzed: 12m ago</span>
+                <select aria-label="Sort analyzed repositories" title="Sort analyzed repositories">
                   <option>Health Score</option>
                   <option>Recent Activity</option>
                   <option>Popularity</option>
                 </select>
               </div>
             </div>
-            
+
             <div className="repo-grid">
               {[
-                { id: 0, icon: "description", health: "98.2", name: "Spoon-Knife", desc: "Learning fork/pull request workflow on GitHub.", lang: "TypeScript", langColor: "#3b82f6", stars: "12.4k" },
-                { id: 1, icon: "settings_suggest", health: "94.5", name: "Octo-Core", desc: "Async engine for distributed systems.", lang: "JavaScript", langColor: "#eab308", stars: "2.1k" },
-                { id: 2, icon: "auto_graph", health: "89.0", name: "Pulse-CLI", desc: "CLI for RepoPulse analytics and reporting.", lang: "TypeScript", langColor: "#3b82f6", stars: "845" },
-                { id: 3, icon: "layers", health: "97.8", name: "Lighthouse-Config", desc: "Shared linting for enterprise scale applications.", lang: "JSON", langColor: "#94a3b8", stars: "3.4k" },
-                { id: 4, icon: "api", health: "92.1", name: "Octo-Graph", desc: "GraphQL API wrapper for repository metadata.", lang: "GraphQL", langColor: "#ec4899", stars: "560" },
+                { id: 0, icon: "description", health: "98.2", name: "Spoon-Knife", desc: "Learning fork/pull request workflow on GitHub.", lang: "TypeScript", langClass: "lang-typescript", stars: "12.4k" },
+                { id: 1, icon: "settings_suggest", health: "94.5", name: "Octo-Core", desc: "Async engine for distributed systems.", lang: "JavaScript", langClass: "lang-javascript", stars: "2.1k" },
+                { id: 2, icon: "auto_graph", health: "89.0", name: "Pulse-CLI", desc: "CLI for RepoPulse analytics and reporting.", lang: "TypeScript", langClass: "lang-typescript", stars: "845" },
+                { id: 3, icon: "layers", health: "97.8", name: "Lighthouse-Config", desc: "Shared linting for enterprise scale applications.", lang: "JSON", langClass: "lang-json", stars: "3.4k" },
+                { id: 4, icon: "api", health: "92.1", name: "Octo-Graph", desc: "GraphQL API wrapper for repository metadata.", lang: "GraphQL", langClass: "lang-graphql", stars: "560" },
               ].map((r) => (
                 <div key={r.id} className="repo-card" onClick={() => router.push(`/${owner}/${r.name.toLowerCase()}`)}>
                   <div className="repo-card-top">
@@ -413,17 +443,17 @@ export default function UserProfilePage() {
                       <span className="repo-health-val">{r.health}</span>
                     </div>
                   </div>
-                  
+
                   <h4 className="repo-name">{r.name}</h4>
                   <p className="repo-desc">{r.desc}</p>
-                  
+
                   <div className="repo-spark">
                     {mkSpark(sparklineData[r.id % sparklineData.length], COLORS.orange)}
                   </div>
-                  
+
                   <div className="repo-foot">
                     <div className="repo-lang">
-                      <span className="repo-lang-dot" style={{ backgroundColor: r.langColor }}></span>
+                      <span className={`repo-lang-dot ${r.langClass}`}></span>
                       {r.lang}
                     </div>
                     <div className="repo-stars">
@@ -432,7 +462,7 @@ export default function UserProfilePage() {
                   </div>
                 </div>
               ))}
-              
+
               <div className="repo-card repo-card-add">
                 <div className="repo-add-icon"><span className="material-symbols-outlined">add</span></div>
                 <div className="repo-add-text">Connect Repository</div>

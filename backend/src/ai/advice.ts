@@ -86,7 +86,7 @@ function isModelAvailabilityOrTransientError(error: unknown): boolean {
     return /404|not found|not supported|503|service unavailable|high demand|overloaded|temporarily unavailable/.test(message);
 }
 
-function getGeminiModelCandidates(): string[] {
+export function getGeminiModelCandidates(): string[] {
     const configuredPrimary = (process.env.GEMINI_MODEL || '').trim();
     const configuredList = (process.env.GEMINI_MODEL_CANDIDATES || '')
         .split(',')

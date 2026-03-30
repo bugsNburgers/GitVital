@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { Queue } from 'bullmq';
 import { config } from '../config';
+import { getBullRedisConnection } from '../config/redis';
 import { JobData } from '../types';
 import { getGeminiQuotaCooldownInfo } from '../ai/quotaTelemetry';
 import {
@@ -29,10 +30,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 const analysisQueue = new Queue<JobData>('repo-analysis', {
-    connection: {
-        host: new URL(config.redisUrl).hostname || 'localhost',
-        port: parseInt(new URL(config.redisUrl).port || '6379', 10),
-    },
+    connection: getBullRedisConnection(),
 });
 
 function mapQueueStateToSimpleStatus(state: string): 'queued' | 'processing' | 'done' | 'failed' {
@@ -227,10 +225,10 @@ const recomputeTask = cron.schedule('0 3 * * *', () => {
 const leaderboardViewRefreshTask = cron.schedule('0 */6 * * *', () => {
     const startedAt = new Date();
     console.log(`[CRON] Refreshing leaderboard materialized view at ${startedAt.toISOString()}...`);
-    
+
     // TODO: Refresh via Prisma once DB is connected
     // await prisma.$executeRawUnsafe('REFRESH MATERIALIZED VIEW leaderboard_rankings');
-    
+
     console.log('[CRON] Leaderboard materialized view refresh finished.');
 });
 

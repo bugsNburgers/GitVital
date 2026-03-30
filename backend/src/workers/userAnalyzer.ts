@@ -1,5 +1,5 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
-import { redis } from '../config/redis';
+import { redis, getBullRedisConnection } from '../config/redis';
 import { config } from '../config';
 import { UserJobData, UserMergedPRNode, UserContributionMetrics } from '../types';
 import { GitHubClient, AuthExpiredError, RateLimitError } from '../github/client';
@@ -133,12 +133,7 @@ const userWorker = new Worker<UserJobData>(
     'user-analysis',
     processUserAnalysisJob,
     {
-        connection: {
-            host: new URL(config.redisUrl).hostname || 'localhost',
-            port: parseInt(new URL(config.redisUrl).port || '6379', 10),
-            password: new URL(config.redisUrl).password ? decodeURIComponent(new URL(config.redisUrl).password) : undefined,
-            tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
-        },
+        connection: getBullRedisConnection(),
         concurrency: 2,
         limiter: {
             max: 10,

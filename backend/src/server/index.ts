@@ -17,11 +17,11 @@ import { RedisStore } from 'connect-redis';
 
 // Our own files
 import { config } from '../config';
-import { redis } from '../config/redis';
+import { redis, getBullRedisConnection } from '../config/redis';
 import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
-import { resetGeminiCooldown } from '../ai/advice';
+import { resetGeminiCooldown, getGeminiModelCandidates } from '../ai/advice';
 
 // Start background workers in the same process to save hosting costs!
 import '../workers/repoAnalyzer';
@@ -301,13 +301,7 @@ app.use(defaultLimiter);
 // Create a BullMQ queue named "repo-analysis".
 // This is the "order ticket rail" — we add jobs here, workers pick them up.
 
-const redisUrlObj = new URL(config.redisUrl);
-const bullConnection = {
-  host: redisUrlObj.hostname || 'localhost',
-  port: parseInt(redisUrlObj.port || '6379', 10),
-  password: redisUrlObj.password ? decodeURIComponent(redisUrlObj.password) : undefined,
-  tls: config.redisUrl.startsWith('rediss://') ? {} : undefined,
-};
+const bullConnection = getBullRedisConnection();
 
 const analysisQueue = new Queue<JobData>('repo-analysis', {
   connection: bullConnection,
@@ -1225,19 +1219,12 @@ app.get('/api/admin/test-ai', async (req: Request, res: Response): Promise<void>
 
   if (!config.geminiApiKey) { res.json({ ...result, error: 'GEMINI_API_KEY missing' }); return; }
 
-  // Probe every candidate model × both API versions to find what works
-  const MODELS = [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash-001',
-    'gemini-1.5-pro',
-    'gemini-1.0-pro',
-    'gemini-pro',
-  ];
+  // Probe the same model candidates used in production AI generation.
+  const MODELS = getGeminiModelCandidates();
   const API_VERSIONS = ['v1beta', 'v1'];
   const PROMPT = 'SYSTEM: You are a code health advisor. Generate 1 sentence.\nUSER: {"health_score":75}';
+
+  result.modelCandidates = MODELS;
 
   const probeResults: Record<string, unknown>[] = [];
   let firstSuccess: string | null = null;

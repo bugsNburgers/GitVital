@@ -20,6 +20,26 @@ export const redis = new Redis(config.redisUrl, {
   maxRetriesPerRequest: null, // Required by BullMQ — it handles retries itself
 });
 
+type BullRedisConnection = {
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  tls?: Record<string, never>;
+};
+
+export function getBullRedisConnection(): BullRedisConnection {
+  const redisUrlObj = new URL(config.redisUrl);
+
+  return {
+    host: redisUrlObj.hostname || 'localhost',
+    port: parseInt(redisUrlObj.port || '6379', 10),
+    username: redisUrlObj.username ? decodeURIComponent(redisUrlObj.username) : undefined,
+    password: redisUrlObj.password ? decodeURIComponent(redisUrlObj.password) : undefined,
+    tls: redisUrlObj.protocol === 'rediss:' ? {} : undefined,
+  };
+}
+
 redis.on('connect', async () => {
   console.log(`✅ Redis connected to: ${redactRedisUrl(config.redisUrl)}`);
   try {
