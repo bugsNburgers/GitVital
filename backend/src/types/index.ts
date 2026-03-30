@@ -100,6 +100,7 @@ export interface AllMetrics {
   riskFlags: RiskFlag[];
   aiAdvice: string | null;
   aiAdviceSource?: 'gemini' | 'rule-based';
+  aiAdviceModel?: string | null;
 }
 
 export interface JobData {

@@ -9,7 +9,7 @@ import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis } from '../config/redis';
 import { config } from '../config';
 import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag, TimelineEntry } from '../types';
-import { generateAIAdvice, generateFallbackAdvice } from '../ai/advice';
+import { generateAIAdvice, generateFallbackAdvice, type AdviceResult } from '../ai/advice';
 
 // ── Real Metrics Engine imports (Prompt 8.1) ──
 import { computeBusFactor } from '../metrics/busFactor';
@@ -172,6 +172,7 @@ function computeAllMetrics(
     healthScore,
     riskFlags,      // Pre-populated with 6.1 edge case flags
     aiAdvice: null,  // Populated in Step 10 by generateAIAdvice()
+    aiAdviceModel: null,
   };
 }
 
@@ -289,6 +290,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         issueMetrics: null, churnMetrics: null, healthScore: 0,
         riskFlags: [{ level: 'info', title: 'EMPTY REPOSITORY', detail: 'This repository has no commits.' }],
         aiAdvice: null,
+        aiAdviceModel: null,
       };
       // Cache the empty result and mark job done
       await setRepoMetricsCache(owner, repo, emptyResult, config.cacheTtlSeconds);
@@ -387,6 +389,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         issueMetrics: null, churnMetrics: null, healthScore: 0,
         riskFlags: [{ level: 'danger', title: 'COMPUTATION ERROR', detail: 'Metrics computation failed. Partial results may be available.' }],
         aiAdvice: null,
+        aiAdviceModel: null,
       };
     }
     await job.updateProgress(70);
@@ -419,7 +422,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // If Gemini takes too long, we skip AI advice rather than
     // holding up the entire job.
     console.log(`   ${logPrefix} — Step 10: Generating AI advice...`);
-    let aiAdvice: { advice: string, source: 'gemini' | 'rule-based' } | null = null;
+    let aiAdvice: AdviceResult | null = null;
 
     try {
       const timeoutPromise = new Promise<null>((resolve) => {
@@ -435,15 +438,17 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         console.warn(`   ${logPrefix} — Step 10: AI timed out, applying rule-based fallback...`);
         aiAdvice = generateFallbackAdvice(metrics, owner, repo);
       }
-      
+
       metrics.aiAdvice = aiAdvice.advice;
       metrics.aiAdviceSource = aiAdvice.source;
+      metrics.aiAdviceModel = aiAdvice.source === 'gemini' ? aiAdvice.model ?? null : null;
       console.log(`   ${logPrefix} — Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
     } catch (aiError) {
       console.warn(`   ${logPrefix} — Step 10: AI advice failed (non-blocking), applying fallback:`, aiError);
       const fallback = generateFallbackAdvice(metrics, owner, repo);
       metrics.aiAdvice = fallback.advice;
       metrics.aiAdviceSource = fallback.source;
+      metrics.aiAdviceModel = null;
     }
 
     await job.updateProgress(85);

@@ -104,6 +104,92 @@ function getClientIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || 'unknown-ip';
 }
 
+function normalizeUrlToOrigin(value: string | undefined | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function getHostname(origin: string): string | null {
+  try {
+    return new URL(origin).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isApiSubdomain(hostname: string): boolean {
+  return hostname.startsWith('api.');
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+// OAuth redirects should only go to the web app, not API hosts.
+const frontendRedirectOrigins: string[] = (() => {
+  const candidates = [config.frontendUrl, ...config.corsOrigins];
+  const unique = new Set<string>();
+
+  for (const candidate of candidates) {
+    const origin = normalizeUrlToOrigin(candidate);
+    if (!origin) {
+      continue;
+    }
+
+    const hostname = getHostname(origin);
+    if (!hostname || isApiSubdomain(hostname)) {
+      continue;
+    }
+
+    unique.add(origin);
+  }
+
+  return Array.from(unique);
+})();
+
+const frontendRedirectOriginSet = new Set(frontendRedirectOrigins);
+
+const defaultFrontendRedirectOrigin: string = (() => {
+  const configuredOrigin = normalizeUrlToOrigin(config.frontendUrl);
+  if (configuredOrigin) {
+    const configuredHost = getHostname(configuredOrigin);
+    if (configuredHost && !isApiSubdomain(configuredHost)) {
+      return configuredOrigin;
+    }
+  }
+
+  const preferredNonLocal = frontendRedirectOrigins.find((origin) => {
+    const hostname = getHostname(origin);
+    return Boolean(hostname && !isLocalHostname(hostname));
+  });
+
+  if (preferredNonLocal) {
+    return preferredNonLocal;
+  }
+
+  return frontendRedirectOrigins[0] || 'http://localhost:3000';
+})();
+
+function getSafeFrontendRedirectOrigin(value: string | undefined | null): string {
+  const candidateOrigin = normalizeUrlToOrigin(value);
+  if (!candidateOrigin) {
+    return defaultFrontendRedirectOrigin;
+  }
+
+  if (frontendRedirectOriginSet.has(candidateOrigin)) {
+    return candidateOrigin;
+  }
+
+  return defaultFrontendRedirectOrigin;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // SECTION 3: MIDDLEWARE (the "security checkpoints")
 // ═══════════════════════════════════════════════════════════════
@@ -377,6 +463,23 @@ function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }
   }
 }
 
+function parseBooleanFlag(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+  }
+
+  return false;
+}
+
 function mapQueueStateToJobStatus(state: string): JobStatus {
   switch (state) {
     case 'waiting':
@@ -435,6 +538,7 @@ app.post(
       const normalizedRepo = repo.toLowerCase();
       const normalizedRepoRef = `${normalizedOwner}/${normalizedRepo}`;
       const jobId = `analyze:${normalizedOwner}:${normalizedRepo}`;
+      const forceReanalyze = parseBooleanFlag((req.body as { force?: unknown })?.force);
       const userId = (req.session as any)?.userId as string | number | undefined;
       const requesterIp = getClientIp(req);
 
@@ -483,17 +587,19 @@ app.post(
         }
       }
 
-      // Prompt 8.6: Check cache first and skip queue entirely on fresh hit.
-      const cachedMetrics = await getFreshRepoMetricsCache<unknown>(normalizedOwner, normalizedRepo);
-      if (cachedMetrics) {
-        res.status(200).json({
-          status: 'done',
-          source: 'cache',
-          cached: true,
-          cacheTtlSeconds: cachedMetrics.ttlSeconds,
-          metrics: cachedMetrics.value,
-        });
-        return;
+      // Prompt 8.6 + 11.6: Cache short-circuit unless caller explicitly forces a fresh run.
+      if (!forceReanalyze) {
+        const cachedMetrics = await getFreshRepoMetricsCache<unknown>(normalizedOwner, normalizedRepo);
+        if (cachedMetrics) {
+          res.status(200).json({
+            status: 'done',
+            source: 'cache',
+            cached: true,
+            cacheTtlSeconds: cachedMetrics.ttlSeconds,
+            metrics: cachedMetrics.value,
+          });
+          return;
+        }
       }
 
       // Prompt 8.6: Stale/missing cache path clears any old key before queueing.
@@ -925,9 +1031,10 @@ app.get('/auth/github', (req: Request, res: Response) => {
     return;
   }
 
-  // Store the origin/referer so we know where to redirect back to after login
-  const referer = req.get('Referer') || config.frontendUrl;
-  (req.session as any).returnTo = referer;
+  // Store a sanitized frontend origin so callback redirects are deterministic.
+  const queryReturnTo = typeof req.query.returnTo === 'string' ? req.query.returnTo : null;
+  const referer = queryReturnTo || req.get('Referer') || config.frontendUrl;
+  (req.session as any).returnTo = getSafeFrontendRedirectOrigin(referer);
 
   const protocol = req.get('x-forwarded-proto') || req.protocol;
   const host = req.get('host');
@@ -1008,11 +1115,10 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
     (req.session as any).userId = userData.id;
     (req.session as any).githubUsername = userData.login;
 
-    // Determine fallback redirect
-    const returnTo = (req.session as any).returnTo || config.frontendUrl;
-    // Ensure we don't redirect to something malicious
-    const safeBase = config.corsOrigins.find(o => returnTo.startsWith(o)) || config.frontendUrl;
-    const finalRedirect = `${safeBase.replace(/\/$/, '')}/${userData.login}`;
+    // Determine a frontend-only redirect destination.
+    const returnTo = getSafeFrontendRedirectOrigin((req.session as any).returnTo || config.frontendUrl);
+    delete (req.session as any).returnTo;
+    const finalRedirect = `${returnTo.replace(/\/$/, '')}/${encodeURIComponent(userData.login)}`;
 
     // Race condition prevention: Force session to save before sending 302 Redirect
     req.session.save((err) => {
@@ -1063,7 +1169,7 @@ app.get('/api/me', (req: Request, res: Response) => {
 
   const userId = (req.session as any)?.userId;
   const githubUsername = (req.session as any)?.githubUsername;
-  
+
   if (userId && githubUsername) {
     res.json({ loggedIn: true, userId, githubUsername });
   } else {

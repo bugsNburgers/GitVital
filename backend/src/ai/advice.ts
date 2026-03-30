@@ -8,9 +8,16 @@ import {
     markGeminiQuotaLimited,
 } from './quotaTelemetry';
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
 const MAX_ADVICE_CHARS = 1000;
 const LLM_ONE_CALL_TTL_SECONDS = 60 * 60 * 24;
+const DEFAULT_GEMINI_MODELS = [
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
+    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-flash',
+];
 const STRICT_SYSTEM_PROMPT = [
     'You are a code health advisor. You will receive repository metrics as structured JSON.',
     'Generate exactly 2 sentences of actionable advice.',
@@ -31,6 +38,12 @@ interface GenerateAdviceOptions {
     jobId?: string;
 }
 
+export interface AdviceResult {
+    advice: string;
+    source: 'gemini' | 'rule-based';
+    model?: string | null;
+}
+
 function hasBlockedContent(text: string): boolean {
     return /https?:\/\//i.test(text)
         || /\bwww\./i.test(text)
@@ -41,14 +54,6 @@ function hasBlockedContent(text: string): boolean {
 
 function cleanOutput(text: string): string {
     return text.replace(/\s+/g, ' ').trim();
-}
-
-function countSentences(text: string): number {
-    return text
-        .split(/[.!?]+/)
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .length;
 }
 
 function sanitizeRepoOutputSegment(input: string): string {
@@ -76,6 +81,25 @@ function isQuotaOrRateLimitError(error: unknown): boolean {
     return /quota|rate limit|429|resource exhausted|too many requests/i.test(message);
 }
 
+function isModelAvailabilityOrTransientError(error: unknown): boolean {
+    const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    return /404|not found|not supported|503|service unavailable|high demand|overloaded|temporarily unavailable/.test(message);
+}
+
+function getGeminiModelCandidates(): string[] {
+    const configuredPrimary = (process.env.GEMINI_MODEL || '').trim();
+    const configuredList = (process.env.GEMINI_MODEL_CANDIDATES || '')
+        .split(',')
+        .map((m) => m.trim())
+        .filter(Boolean);
+
+    return Array.from(new Set([
+        ...configuredList,
+        ...(configuredPrimary ? [configuredPrimary] : []),
+        ...DEFAULT_GEMINI_MODELS,
+    ]));
+}
+
 function buildPromptPayload(metrics: AllMetrics): string {
     return JSON.stringify(
         {
@@ -97,23 +121,15 @@ function getLlmGuardKey(jobId: string): string {
     return `llm:advice:job:${jobId}`;
 }
 
-async function shouldSkipLlmForJob(jobId?: string): Promise<boolean> {
-    if (!jobId) {
-        return false;
-    }
-
-    const created = await redis.set(getLlmGuardKey(jobId), '1', 'EX', LLM_ONE_CALL_TTL_SECONDS, 'NX');
-    return created !== 'OK';
-}
-
-export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo: string, options: GenerateAdviceOptions = {}): Promise<{ advice: string, source: 'gemini' | 'rule-based' } | null> {
+export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo: string, options: GenerateAdviceOptions = {}): Promise<AdviceResult | null> {
     // Guard 1: API key check
     if (!config.geminiApiKey) {
         console.error('[AI][FALLBACK] Reason: GEMINI_API_KEY is missing or empty in environment.');
-        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based', model: null };
     }
 
-    console.log(`[AI] GEMINI_API_KEY present (length=${config.geminiApiKey.length}), model=${GEMINI_MODEL}`);
+    const candidateModels = getGeminiModelCandidates();
+    console.log(`[AI] GEMINI_API_KEY present (length=${config.geminiApiKey.length}), candidates=${candidateModels.join(', ')}`);
 
     // Guard 2: Per-job dedup (only skip if this exact jobId already succeeded or was attempted)
     if (options.jobId) {
@@ -133,22 +149,22 @@ export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo:
     if (cooldown.active) {
         const remainingMins = Math.ceil(cooldown.remainingMs / 60_000);
         console.error(`[AI][FALLBACK] Reason: Gemini quota cooldown active (~${remainingMins}m remaining). Run resetGeminiCooldown() to clear.`);
-        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+        return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based', model: null };
     }
 
     const ai = new GoogleGenerativeAI(config.geminiApiKey);
-    const model = ai.getGenerativeModel({ model: GEMINI_MODEL });
 
     const prompt = [
         `SYSTEM: ${STRICT_SYSTEM_PROMPT}`,
         `USER: ${buildPromptPayload(metrics)}`,
     ].join('\n');
 
-    let attempts = 0;
-    while (attempts < 3) {
-        attempts++;
+    let sawQuotaLikeError = false;
+
+    for (const modelName of candidateModels) {
         try {
-            console.log(`[AI] Calling Gemini API (Attempt ${attempts}/3)...`);
+            console.log(`[AI] Calling Gemini API with model=${modelName}...`);
+            const model = ai.getGenerativeModel({ model: modelName });
             const result = await model.generateContent(prompt);
             const raw = result.response.text();
             const normalized = cleanOutput(raw);
@@ -157,52 +173,45 @@ export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo:
 
             if (!normalized) {
                 console.error('[AI][FALLBACK] Reason: Gemini returned empty output.');
-                return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+                continue;
             }
             if (normalized.length > MAX_ADVICE_CHARS) {
                 console.error(`[AI][FALLBACK] Reason: output too long (${normalized.length} > ${MAX_ADVICE_CHARS} chars). Raw: "${normalized.slice(0, 200)}..."`);
-                return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+                continue;
             }
             if (hasBlockedContent(normalized)) {
                 console.error(`[AI][FALLBACK] Reason: output contains blocked content (URL/code/HTML). Raw: "${normalized.slice(0, 200)}"`);
-                return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+                continue;
             }
 
-            console.log('[AI] Gemini advice accepted ✓');
-            return { advice: formatAdviceForOutput(normalized, owner, repo), source: 'gemini' };
+            console.log(`[AI] Gemini advice accepted ✓ model=${modelName}`);
+            return { advice: formatAdviceForOutput(normalized, owner, repo), source: 'gemini', model: modelName };
 
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
-            console.warn(`[AI] Attempt ${attempts} failed: ${errMsg.substring(0, 150)}...`);
-
-            if (isQuotaOrRateLimitError(error) && attempts < 3) {
-                let waitSeconds = 30; // default 30s
-                const retryMatch = errMsg.match(/Please retry in ([\d\.]+)s/i);
-                if (retryMatch && retryMatch[1]) {
-                    waitSeconds = Math.ceil(parseFloat(retryMatch[1]));
-                }
-                // Cap waiting to 60s max per attempt so the job doesn't stall indefinitely
-                waitSeconds = Math.min(waitSeconds, 60);
-
-                console.warn(`[AI] Rate limited. Sleeping worker for ${waitSeconds} seconds before trying again...`);
-                await new Promise(r => setTimeout(r, waitSeconds * 1000));
-                continue; // Retry loop
-            }
-
             if (isQuotaOrRateLimitError(error)) {
-                await markGeminiQuotaLimited();
-                console.error(`[AI][FALLBACK] Reason: Gemini quota/rate-limit hit after 3 attempts. Error: ${errMsg}`);
-                return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+                sawQuotaLikeError = true;
+                console.warn(`[AI] Model ${modelName} quota/rate-limited. Trying next model... ${errMsg.substring(0, 180)}`);
+                continue;
             }
 
-            console.error(`[AI][FALLBACK] Reason: Gemini threw unexpected error: ${errMsg}`, error);
-            return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+            if (isModelAvailabilityOrTransientError(error)) {
+                console.warn(`[AI] Model ${modelName} unavailable/transient error. Trying next model... ${errMsg.substring(0, 180)}`);
+                continue;
+            }
+
+            console.warn(`[AI] Model ${modelName} failed unexpectedly. Trying next model... ${errMsg.substring(0, 180)}`);
         }
     }
-    
-    return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+
+    if (sawQuotaLikeError) {
+        await markGeminiQuotaLimited();
+    }
+
+    console.error('[AI][FALLBACK] Reason: No Gemini model candidate returned acceptable advice output.');
+    return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based', model: null };
 }
 
-export function generateFallbackAdvice(metrics: AllMetrics, owner: string, repo: string): { advice: string, source: 'rule-based' } {
-    return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based' };
+export function generateFallbackAdvice(metrics: AllMetrics, owner: string, repo: string): AdviceResult {
+    return { advice: formatAdviceForOutput(generateRuleBasedAdvice(metrics), owner, repo), source: 'rule-based', model: null };
 }

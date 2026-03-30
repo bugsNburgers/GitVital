@@ -56,6 +56,7 @@ interface RepoMetrics {
   riskFlags: RiskFlag[];
   aiAdvice: string | null;
   aiAdviceSource?: string | null;
+  aiAdviceModel?: string | null;
   metadata?: RepoMetadata;
 }
 
@@ -236,7 +237,7 @@ export default function RepoDashboardPage() {
 
         if (!qr.ok) {
           let errText = `Failed to start analysis (HTTP ${qr.status}).`;
-          try { const err = await qr.json(); errText = err.error || errText; } catch {}
+          try { const err = await qr.json(); errText = err.error || errText; } catch { }
           if (!cancelled) { setErrorMsg(errText); setLoadState("error"); }
           return;
         }
@@ -280,13 +281,13 @@ export default function RepoDashboardPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ owner, repo }),
+      body: JSON.stringify({ owner, repo, force: true }),
     })
       .then((r) => r.json())
       .then((q) => {
-        if (q.status === "done" && q.metrics) { 
-          setMetrics(q.metrics); 
-          setLoadState("done"); 
+        if (q.status === "done" && q.metrics) {
+          setMetrics(q.metrics);
+          setLoadState("done");
         } else if (q.jobId) {
           startPolling(q.jobId);
         } else {
@@ -324,8 +325,8 @@ export default function RepoDashboardPage() {
   // Filter by range
   const rangeWeeks =
     activeRange === "30D" ? allWeeks.slice(-4) :
-    activeRange === "6M" ? allWeeks.slice(-26) :
-    allWeeks.slice(-52);
+      activeRange === "6M" ? allWeeks.slice(-26) :
+        allWeeks.slice(-52);
 
   const chartPath = buildSparkPath(rangeWeeks.length > 1 ? rangeWeeks : [0, 0]);
   const chartMax = Math.max(...rangeWeeks, 1);
@@ -339,6 +340,7 @@ export default function RepoDashboardPage() {
   // Parse AI advice into summary + recommendations
   let aiSummary = metrics?.aiAdvice ?? null;
   const aiSource = metrics?.aiAdviceSource;
+  const aiModel = metrics?.aiAdviceModel;
   let aiRecs: string[] = [];
   if (aiSummary) {
     const recs: string[] = [];
@@ -368,7 +370,8 @@ export default function RepoDashboardPage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
@@ -655,9 +658,9 @@ export default function RepoDashboardPage() {
               </div>
               {/* Stars / Forks from real data */}
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginRight: "8px" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                 {meta ? fmt(meta.stars) : "—"}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>
                 {meta ? fmt(meta.forks) : "—"}
               </div>
               <button className="btn-ghost" onClick={() => router.push("/compare")}>⇄ Compare</button>
@@ -665,7 +668,7 @@ export default function RepoDashboardPage() {
                 {reanalyzing ? "Analyzing…" : "↻ Re-analyze"}
               </button>
               <button className="btn-icon" onClick={() => navigator.clipboard.writeText(window.location.href)} title="Copy link">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
               </button>
             </div>
           </div>
@@ -914,8 +917,8 @@ export default function RepoDashboardPage() {
                 {activeRange === "30D"
                   ? ["Week 1", "Week 2", "Week 3", "Week 4"].map((l) => <span key={l}>{l}</span>)
                   : activeRange === "6M"
-                  ? ["6M ago", "5M", "4M", "3M", "2M", "1M", "Now"].map((l) => <span key={l}>{l}</span>)
-                  : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((m) => <span key={m}>{m}</span>)
+                    ? ["6M ago", "5M", "4M", "3M", "2M", "1M", "Now"].map((l) => <span key={l}>{l}</span>)
+                    : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((m) => <span key={m}>{m}</span>)
                 }
               </div>
             </div>
@@ -939,15 +942,15 @@ export default function RepoDashboardPage() {
             <div className="card card-pad ai-panel">
               <div className="ai-panel-header">
                 <div className="ai-icon-box">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <h3>AI Deep Analysis</h3>
                   {aiSource && (
-                    <span style={{ 
-                      fontSize: '11px', 
-                      padding: '3px 8px', 
-                      borderRadius: '12px', 
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '3px 8px',
+                      borderRadius: '12px',
                       backgroundColor: aiSource === 'gemini' ? 'rgba(66, 133, 244, 0.15)' : 'rgba(255, 255, 255, 0.05)',
                       color: aiSource === 'gemini' ? '#8ab4f8' : 'var(--text-muted)',
                       border: '1px solid',
@@ -957,7 +960,7 @@ export default function RepoDashboardPage() {
                       alignItems: 'center',
                       gap: '4px'
                     }}>
-                      {aiSource === 'gemini' ? '✨ Gemini 1.5 Pro' : '⚙️ Fallback Engine'}
+                      {aiSource === 'gemini' ? `✨ Gemini${aiModel ? ` (${aiModel})` : ''}` : '⚙️ Fallback Engine'}
                     </span>
                   )}
                 </div>
@@ -986,7 +989,7 @@ export default function RepoDashboardPage() {
             {/* VITAL BADGES */}
             <div className="card card-pad">
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
                 <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Vital Badges</span>
               </div>
               <div className="badge-section-grid">

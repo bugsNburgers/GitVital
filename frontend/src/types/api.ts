@@ -80,6 +80,8 @@ export interface ReadonlyAllMetrics {
   readonly healthScore: number;
   readonly riskFlags: ReadonlyArray<ReadonlyRiskFlag>;
   readonly aiAdvice: string | null;
+  readonly aiAdviceSource?: 'gemini' | 'rule-based';
+  readonly aiAdviceModel?: string | null;
 }
 
 export interface ReadonlyJobData {

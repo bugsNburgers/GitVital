@@ -20,8 +20,23 @@ const getApiBase = () => {
   return process.env.NODE_ENV === 'production' ? 'https://api.gitvital.com' : 'http://localhost:8080';
 };
 
+const getSiteUrl = () => {
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `${window.location.protocol}//${window.location.host}`;
+    }
+    return 'https://gitvital.com';
+  }
+
+  return process.env.NODE_ENV === 'production' ? 'https://gitvital.com' : 'http://localhost:3000';
+};
+
 export const API_BASE = getApiBase();
-export const AUTH_URL = `${API_BASE}/auth/github`;
-export const SITE_URL = typeof window !== 'undefined'
-  ? (window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://gitvital.com')
-  : 'https://gitvital.com';
+export const SITE_URL = getSiteUrl();
+
+export const getAuthUrl = (returnTo: string = SITE_URL) => {
+  const params = new URLSearchParams({ returnTo });
+  return `${API_BASE}/auth/github?${params.toString()}`;
+};
+
+export const AUTH_URL = getAuthUrl();
