@@ -27,24 +27,72 @@ interface RepoMetrics {
 
 interface ComparisonEntry { owner: string; repo: string; metrics: RepoMetrics | null; }
 
+interface AnalyzeResponse {
+  status?: "queued" | "processing" | "done" | "failed";
+  jobId?: string;
+  metrics?: RepoMetrics;
+  error?: string;
+}
+
+interface JobStatusResponse {
+  status?: "queued" | "processing" | "done" | "failed";
+  error?: string | null;
+}
+
+interface PolledJobResult {
+  done: boolean;
+  error?: string;
+}
+
+const REPO_REF_REGEX = /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/;
+
+function parseRepoRef(value: string): { owner: string; repo: string } | null {
+  const match = REPO_REF_REGEX.exec(value.trim());
+  if (!match) return null;
+  return { owner: match[1], repo: match[2] };
+}
+
+function repoRefKey(owner: string, repo: string): string {
+  return `${owner.toLowerCase()}/${repo.toLowerCase()}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Per-slot fallback sparklines (weekly commit counts)
 const FALLBACK_SPARKS = [
-  [42,55,48,61,74,69,83,77,88,82,91,85,78,92],
-  [38,44,51,47,60,58,65,72,68,75,71,81,74,88],
-  [29,35,41,38,52,49,56,60,55,63,59,70,65,76],
-  [18,25,22,31,28,35,32,40,38,45,42,50,47,55],
+  [42, 55, 48, 61, 74, 69, 83, 77, 88, 82, 91, 85, 78, 92],
+  [38, 44, 51, 47, 60, 58, 65, 72, 68, 75, 71, 81, 74, 88],
+  [29, 35, 41, 38, 52, 49, 56, 60, 55, 63, 59, 70, 65, 76],
+  [18, 25, 22, 31, 28, 35, 32, 40, 38, 45, 42, 50, 47, 55],
 ];
 
 // Orange-family palette
-const COLORS = ["#22c55e","#eab308","#FFA066","#FFDACC"];
-const STROKES = ["rgba(34,197,94,0.18)","rgba(234,179,8,0.18)","rgba(255,160,102,0.18)","rgba(255,218,204,0.18)"];
+const COLORS = ["#22c55e", "#eab308", "#FFA066", "#FFDACC"];
+const STROKES = ["rgba(34,197,94,0.18)", "rgba(234,179,8,0.18)", "rgba(255,160,102,0.18)", "rgba(255,218,204,0.18)"];
 
 // Pentagon vertex points per repo (shrinking)
 const OUTER_PENTAGON = "200,20 371,144 306,345 94,345 29,144";
 const PENTAGON_SCALES = [1, 0.76, 0.55, 0.38];
+const PENTAGON_VERTICES: Array<{ x: number; y: number }> = [
+  { x: 200, y: 20 },
+  { x: 371, y: 144 },
+  { x: 306, y: 345 },
+  { x: 94, y: 345 },
+  { x: 29, y: 144 },
+];
+const PENTAGON_AXIS_LABELS: Array<{ title: string; subtitle: string; x: number; y: number; dx: number; dy: number; anchor: "start" | "middle" | "end" }> = [
+  { title: "PR Median", subtitle: "median hrs", x: 200, y: 20, dx: 0, dy: -20, anchor: "middle" },
+  { title: "Activity", subtitle: "commits/30d", x: 371, y: 144, dx: 22, dy: -6, anchor: "start" },
+  { title: "Resilience", subtitle: "bus factor", x: 306, y: 345, dx: 12, dy: 24, anchor: "start" },
+  { title: "Issue Response", subtitle: "unresponded %", x: 94, y: 345, dx: -12, dy: 24, anchor: "end" },
+  { title: "Stability", subtitle: "avg churn", x: 29, y: 144, dx: -18, dy: -6, anchor: "end" },
+];
+
 function scaledPentagon(scale: number): string {
-  const pts = [[200,20],[371,144],[306,345],[94,345],[29,144]];
-  return pts.map(([x,y]) => `${200+(x-200)*scale},${200+(y-200)*scale}`).join(" ");
+  const pts = [[200, 20], [371, 144], [306, 345], [94, 345], [29, 144]];
+  return pts.map(([x, y]) => `${200 + (x - 200) * scale},${200 + (y - 200) * scale}`).join(" ");
 }
 
 // ── Metric helpers ──
@@ -113,9 +161,17 @@ function normalize(val: number | null, min: number, max: number, higherIsBetter 
   const pct = (clamped - min) / (max - min);
   return higherIsBetter ? pct * 100 : (1 - pct) * 100;
 }
+
+function normalizeLog(val: number | null, max: number, higherIsBetter = true): number {
+  if (val == null) return 50;
+  const clamped = Math.max(0, Math.min(max, val));
+  const pct = Math.log10(clamped + 1) / Math.log10(max + 1);
+  return higherIsBetter ? pct * 100 : (1 - pct) * 100;
+}
+
 // Pentagon SVG points for 5 axes given 5 scores 0-100
 function pentagonPoints(scores: number[]): string {
-  const angles = [-90, -90+72, -90+144, -90+216, -90+288].map(d => d * Math.PI / 180);
+  const angles = [-90, -90 + 72, -90 + 144, -90 + 216, -90 + 288].map(d => d * Math.PI / 180);
   const maxR = 155; // outer radius in viewBox (200 center, touches 20-380)
   return scores.map((s, i) => {
     const r = (s / 100) * maxR;
@@ -128,7 +184,7 @@ function pentagonPoints(scores: number[]): string {
 function sparkPath(data: number[]): string {
   const max = Math.max(...data, 1);
   const w = 100 / Math.max(data.length - 1, 1);
-  return data.map((v,i) => `${i===0?'M':'L'}${(i*w).toFixed(1)},${(40-(v/max)*36).toFixed(1)}`).join(" ");
+  return data.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * w).toFixed(1)},${(40 - (v / max) * 36).toFixed(1)}`).join(" ");
 }
 
 const DEFAULT_REPOS = ["facebook/react", "vuejs/core", "sveltejs/svelte"];
@@ -138,22 +194,148 @@ export default function RepoComparePage() {
   const [repos, setRepos] = useState(DEFAULT_REPOS);
   const [comparison, setComparison] = useState<ComparisonEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fetchComparison = useCallback(async (repoList: string[]) => {
-    const valid = repoList.filter(r => r.includes("/") && r.split("/").filter(Boolean).length === 2);
-    if (valid.length < 2) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/api/compare?repos=${valid.join(",")}`, { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json() as { comparisons: ComparisonEntry[] };
-        setComparison(data.comparisons ?? []);
+  const pollJobUntilDone = useCallback(async (jobId: string): Promise<PolledJobResult> => {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      try {
+        const statusRes = await fetch(`${API}/api/status/${jobId}`, { credentials: "include" });
+        if (!statusRes.ok) {
+          if (statusRes.status === 404) {
+            return { done: false, error: `Job ${jobId} was not found.` };
+          }
+          await sleep(2500);
+          continue;
+        }
+
+        const payload = await statusRes.json() as JobStatusResponse;
+        if (payload.status === "done") {
+          return { done: true };
+        }
+
+        if (payload.status === "failed") {
+          return { done: false, error: payload.error ?? `Analysis job ${jobId} failed.` };
+        }
+      } catch {
+        // Temporary network issue; keep polling.
       }
-    } catch { /* offline – show fallbacks */ }
-    finally { setLoading(false); }
+
+      await sleep(2500);
+    }
+
+    return { done: false, error: "Timed out while waiting for analysis jobs." };
   }, []);
 
-  useEffect(() => { fetchComparison(repos); }, [repos, fetchComparison]);
+  const fetchComparison = useCallback(async (repoList: string[]) => {
+    const valid = repoList
+      .map((repoRef) => parseRepoRef(repoRef))
+      .filter((repo): repo is { owner: string; repo: string } => repo !== null);
+
+    if (valid.length < 2) {
+      setComparison([]);
+      setStatusMsg(null);
+      setErrorMsg(null);
+      return;
+    }
+
+    const reposParam = valid.map(({ owner, repo }) => `${owner}/${repo}`).join(",");
+
+    async function loadCompareSnapshot(): Promise<ComparisonEntry[]> {
+      const res = await fetch(`${API}/api/compare?repos=${encodeURIComponent(reposParam)}`, { credentials: "include" });
+      if (!res.ok) {
+        throw new Error(`Compare request failed with status ${res.status}`);
+      }
+      const data = await res.json() as { comparisons?: ComparisonEntry[] };
+      const rows = Array.isArray(data.comparisons) ? data.comparisons : [];
+      setComparison(rows);
+      return rows;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+    setStatusMsg("Fetching comparison data...");
+
+    try {
+      const initial = await loadCompareSnapshot();
+      const missing = initial.filter((entry) => entry.metrics === null);
+
+      if (missing.length > 0) {
+        setStatusMsg(`Queueing analysis for ${missing.length} repo${missing.length === 1 ? "" : "s"}...`);
+
+        const queuedJobIds: string[] = [];
+        const queueErrors: string[] = [];
+
+        await Promise.all(
+          missing.map(async ({ owner, repo }) => {
+            try {
+              const analyzeRes = await fetch(`${API}/api/analyze`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ owner, repo }),
+              });
+
+              let payload: AnalyzeResponse = {};
+              try {
+                payload = await analyzeRes.json() as AnalyzeResponse;
+              } catch {
+                payload = {};
+              }
+
+              if (!analyzeRes.ok) {
+                queueErrors.push(`${owner}/${repo}: ${payload.error ?? `HTTP ${analyzeRes.status}`}`);
+                return;
+              }
+
+              if (payload.status === "done") {
+                return;
+              }
+
+              if (typeof payload.jobId === "string" && payload.jobId.length > 0) {
+                queuedJobIds.push(payload.jobId);
+                return;
+              }
+
+              queueErrors.push(`${owner}/${repo}: missing job id from analyze response`);
+            } catch {
+              queueErrors.push(`${owner}/${repo}: network error while queueing analysis`);
+            }
+          }),
+        );
+
+        if (queueErrors.length > 0) {
+          setErrorMsg(queueErrors[0]);
+        }
+
+        if (queuedJobIds.length > 0) {
+          setStatusMsg(`Analyzing ${queuedJobIds.length} repo${queuedJobIds.length === 1 ? "" : "s"}...`);
+          const pollResults = await Promise.all(queuedJobIds.map((jobId) => pollJobUntilDone(jobId)));
+          const failedJob = pollResults.find((result) => !result.done);
+          if (failedJob) {
+            setErrorMsg(failedJob.error ?? "One or more analyses failed.");
+          }
+        }
+
+        setStatusMsg("Refreshing comparison data...");
+        await loadCompareSnapshot();
+      }
+
+      setStatusMsg("Comparison updated.");
+    } catch {
+      setStatusMsg(null);
+      setErrorMsg(`Could not connect to the GitVital API at ${API}. Check if the backend is running.`);
+    }
+    finally { setLoading(false); }
+  }, [pollJobUntilDone]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void fetchComparison(repos);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [repos, fetchComparison]);
 
   function updateRepo(idx: number, val: string) {
     setRepos(prev => prev.map((r, i) => i === idx ? val : r));
@@ -165,50 +347,69 @@ export default function RepoComparePage() {
     if (repos.length < 4) setRepos(prev => [...prev, ""]);
   }
 
-  const validRepos = repos.filter(r => r.includes("/") && r.split("/").filter(Boolean).length === 2);
-  const slotCount = Math.max(validRepos.length, 2); // always show ≥2 slots for layout
+  const validRepos = repos.filter((repoRef) => parseRepoRef(repoRef) !== null);
+  const comparisonLookup = new Map(
+    comparison.map((entry) => [repoRefKey(entry.owner, entry.repo), entry]),
+  );
 
-  // Pentagon scores per repo: [Health, Activity, PR Speed, Bus Factor, Issue Health]
-  const pentagonScores = comparison.map(e => [
-    normalize(getHealth(e), 0, 100),
-    normalize(getActivity(e), -50, 50),
-    normalize(getPRAvgDays(e), 0, 14, false), // lower days = better
-    normalize(getBusFactor(e), 1, 15),
-    normalize(getOpenIssues(e), 0, 500, false), // fewer issues = better
-  ]);
+  function entryForRepo(repoRef: string): ComparisonEntry | undefined {
+    const parsed = parseRepoRef(repoRef);
+    if (!parsed) return undefined;
+    return comparisonLookup.get(repoRefKey(parsed.owner, parsed.repo));
+  }
+
+  // Radar uses fetched metrics only: [PR Median Hrs, Commits 30d, Bus Factor, Unresponded %, Avg Weekly Churn]
+  const radarSeries = validRepos.slice(0, 4).map((repoRef, idx) => {
+    const entry = entryForRepo(repoRef);
+    if (!entry?.metrics) {
+      return { repoRef, idx, scores: null as number[] | null };
+    }
+
+    return {
+      repoRef,
+      idx,
+      scores: [
+        normalizeLog(getPRMedianHrs(entry), 720, false), // lower median merge time is better
+        normalize(getCommits30(entry), 0, 220),
+        normalize(getBusFactor(entry), 1, 10),
+        normalize(getUnresponded(entry), 0, 100, false), // lower unresponded issue % is better
+        normalizeLog(getAvgChurn(entry), 12000, false), // lower churn is more stable
+      ],
+    };
+  });
 
   // Runner-up pentagon (fallback ring sizes from PENTAGON_SCALES when no data)
-  const useLivePentagon = comparison.length >= 2 && comparison.some(e => e.metrics !== null);
+  const useLivePentagon = radarSeries.some((series) => series.scores !== null);
 
   // Comparison table rows: label, getter, unit, lowerIsBetter
   const TABLE_ROWS: { label: string; get: (e?: ComparisonEntry) => number | null; fmt?: (v: number) => string; lowerBetter?: boolean }[] = [
-    { label: "HEALTH_SCORE",        get: getHealth,       fmt: v => v.toFixed(1) },
-    { label: "BUS_FACTOR",          get: getBusFactor },
-    { label: "TOP_CONTRIB_%",       get: getTopContrib,   fmt: v => `${v.toFixed(1)}%`, lowerBetter: true },
-    { label: "CONTRIBUTORS",        get: getContribCount },
-    { label: "COMMITS_30D",         get: getCommits30 },
-    { label: "WEEKS_ACTIVE",        get: getWeeklyActive },
-    { label: "PR_AVG_DAYS",         get: getPRAvgDays,    fmt: v => `${v.toFixed(1)}d`, lowerBetter: true },
-    { label: "PR_MEDIAN_HRS",       get: getPRMedianHrs,  fmt: v => `${v.toFixed(0)}h`, lowerBetter: true },
-    { label: "TOTAL_PRS",           get: getPRTotal },
-    { label: "OPEN_ISSUES",         get: getOpenIssues,   lowerBetter: true },
-    { label: "ISSUE_AGE_AVG_DAYS",  get: getIssueAge,     fmt: v => `${v.toFixed(0)}d`, lowerBetter: true },
-    { label: "UNRESPONDED_ISSUES%", get: getUnresponded,  fmt: v => `${v}%`, lowerBetter: true },
-    { label: "CHURN_SCORE",         get: getChurnScore,   lowerBetter: true },
-    { label: "AVG_WEEKLY_CHURN",    get: getAvgChurn,     lowerBetter: true },
-    { label: "DANGER_FLAGS",        get: getDangerFlags,  lowerBetter: true },
+    { label: "HEALTH_SCORE", get: getHealth, fmt: v => v.toFixed(1) },
+    { label: "BUS_FACTOR", get: getBusFactor },
+    { label: "TOP_CONTRIB_%", get: getTopContrib, fmt: v => `${v.toFixed(1)}%`, lowerBetter: true },
+    { label: "CONTRIBUTORS", get: getContribCount },
+    { label: "COMMITS_30D", get: getCommits30 },
+    { label: "WEEKS_ACTIVE", get: getWeeklyActive },
+    { label: "PR_AVG_DAYS", get: getPRAvgDays, fmt: v => `${v.toFixed(1)}d`, lowerBetter: true },
+    { label: "PR_MEDIAN_HRS", get: getPRMedianHrs, fmt: v => `${v.toFixed(0)}h`, lowerBetter: true },
+    { label: "TOTAL_PRS", get: getPRTotal },
+    { label: "OPEN_ISSUES", get: getOpenIssues, lowerBetter: true },
+    { label: "ISSUE_AGE_AVG_DAYS", get: getIssueAge, fmt: v => `${v.toFixed(0)}d`, lowerBetter: true },
+    { label: "UNRESPONDED_ISSUES%", get: getUnresponded, fmt: v => `${v}%`, lowerBetter: true },
+    { label: "CHURN_SCORE", get: getChurnScore, lowerBetter: true },
+    { label: "AVG_WEEKLY_CHURN", get: getAvgChurn, lowerBetter: true },
+    { label: "DANGER_FLAGS", get: getDangerFlags, lowerBetter: true },
   ];
 
   // For best/worst coloring per row
   function rowBest(row: typeof TABLE_ROWS[0]): number {
-    const vals = comparison.slice(0, validRepos.length).map(e => row.get(e));
+    const vals = validRepos.map((repoRef) => row.get(entryForRepo(repoRef)));
     const nums = vals.filter((v): v is number => v !== null);
     if (!nums.length) return -1;
     const extreme = row.lowerBetter ? Math.min(...nums) : Math.max(...nums);
     return vals.findIndex(v => v === extreme);
   }
   function rowWorst(row: typeof TABLE_ROWS[0]): number {
-    const vals = comparison.slice(0, validRepos.length).map(e => row.get(e));
+    const vals = validRepos.map((repoRef) => row.get(entryForRepo(repoRef)));
     const nums = vals.filter((v): v is number => v !== null);
     if (nums.length < 2) return -1;
     const extreme = row.lowerBetter ? Math.max(...nums) : Math.min(...nums);
@@ -217,7 +418,8 @@ export default function RepoComparePage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
           --bg: #080909; --bg-surface: #0f1011; --bg-card: #111314; --bg-card-hover: #161819;
@@ -352,6 +554,7 @@ export default function RepoComparePage() {
         .float-bar-text strong { color: var(--orange-light); }
         .float-bar-btn { font-family: var(--font); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--orange-light); background: rgba(255,94,0,0.1); border: 1px solid rgba(255,94,0,0.25); border-radius: 8px; padding: 7px 14px; cursor: pointer; transition: background 0.15s; white-space: nowrap; }
         .float-bar-btn:hover { background: rgba(255,94,0,0.18); }
+        .float-bar-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
         /* RESPONSIVE */
         @media (max-width: 900px) { .input-grid { grid-template-columns: 1fr 1fr; } .nav-links { display: none; } }
@@ -382,6 +585,12 @@ export default function RepoComparePage() {
             <div className="cmp-heading">
               <h1>Compare <span>Repositories</span></h1>
               <p>Full metric breakdown across {validRepos.length} repos — health, activity, bus factor, PR speed, issue health, churn.</p>
+              {statusMsg && (
+                <p style={{ marginTop: 10, fontSize: 12, color: 'var(--orange-light)' }}>{statusMsg}</p>
+              )}
+              {errorMsg && (
+                <p style={{ marginTop: 6, fontSize: 12, color: 'var(--red)' }}>{errorMsg}</p>
+              )}
             </div>
 
             {/* INPUT CARDS */}
@@ -406,9 +615,8 @@ export default function RepoComparePage() {
                 <div>
                   <div className="spark-section-label">Weekly Commit Activity</div>
                   <div className="spark-grid" style={{ gridTemplateColumns: gridCols }}>
-                    {repos.slice(0, 4).map((r, idx) => {
-                      if (!r.includes("/")) return null;
-                      const entry = comparison[idx];
+                    {validRepos.slice(0, 4).map((r, idx) => {
+                      const entry = entryForRepo(r);
                       const data = getSparkline(entry, idx);
                       const commits30 = getCommits30(entry);
                       const velocity = getActivity(entry);
@@ -454,69 +662,78 @@ export default function RepoComparePage() {
               <div className="radar-scanner" />
               <div className="radar-header">
                 <div className="radar-title"><div className="radar-pulse" /> Multidimensional Health Analysis</div>
-                <div className="radar-sys-tag">5-axis // real-time_sync</div>
+                <div className="radar-sys-tag">5-axis // fetched_metrics</div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
-                <div style={{ width: '100%', maxWidth: 440, aspectRatio: '1', position: 'relative' }}>
-                  <svg style={{ width: '100%', height: '100%' }} viewBox="0 0 400 400">
+                <div style={{ width: '100%', maxWidth: 500, aspectRatio: '1', position: 'relative' }}>
+                  <svg style={{ width: '100%', height: '100%' }} viewBox="-50 -40 500 500">
                     <defs>
                       <filter id="oglow"><feGaussianBlur result="blur" stdDeviation="2.5" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
                     </defs>
 
                     {/* Grid pentagons */}
                     {[1, 0.75, 0.5, 0.25].map((s, i) => (
-                      <polygon key={i} points={scaledPentagon(s)} fill="none" stroke={`rgba(255,94,0,${0.18 - i*0.04})`} strokeWidth="1" />
+                      <polygon key={i} points={scaledPentagon(s)} fill="none" stroke={`rgba(255,94,0,${0.18 - i * 0.04})`} strokeWidth="1" />
                     ))}
 
                     {/* Axes */}
-                    {[[200,20],[371,144],[306,345],[94,345],[29,144]].map(([x,y], i) => (
+                    {PENTAGON_VERTICES.map(({ x, y }, i) => (
                       <line key={i} x1="200" y1="200" x2={x} y2={y} stroke="rgba(255,94,0,0.2)" strokeWidth="1" strokeDasharray="3 3" />
                     ))}
 
                     {/* Data polygons — live if available, else concentric fallback */}
                     {useLivePentagon
-                      ? pentagonScores.slice(0, validRepos.length).map((scores, i) => (
-                          <polygon key={i} points={pentagonPoints(scores)}
-                            fill={STROKES[i]} stroke={COLORS[i]} strokeWidth="2" filter="url(#oglow)" />
-                        ))
-                      : repos.slice(0, 4).map((r, i) => r.includes("/") ? (
-                          <polygon key={i} points={scaledPentagon(PENTAGON_SCALES[i])}
-                            fill={STROKES[i]} stroke={COLORS[i]} strokeWidth="2" />
-                        ) : null)
+                      ? radarSeries.map((series) => (
+                        series.scores ? (
+                          <polygon key={series.idx} points={pentagonPoints(series.scores)}
+                            fill={STROKES[series.idx]} stroke={COLORS[series.idx]} strokeWidth="2" filter="url(#oglow)" />
+                        ) : null
+                      ))
+                      : validRepos.slice(0, 4).map((_, i) => (
+                        <polygon key={i} points={scaledPentagon(PENTAGON_SCALES[i])}
+                          fill={STROKES[i]} stroke={COLORS[i]} strokeWidth="2" />
+                      ))
                     }
 
                     {/* Vertex dots (first repo) */}
-                    {[[200,20],[371,144],[306,345],[94,345],[29,144]].map(([x,y], i) => (
+                    {PENTAGON_VERTICES.map(({ x, y }, i) => (
                       <circle key={i} cx={x} cy={y} r="4" fill={COLORS[0]}
                         style={{ filter: `drop-shadow(0 0 5px ${COLORS[0]})` }} />
                     ))}
-                  </svg>
 
-                  {/* Axis labels */}
-                  <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translate(-50%,-10px)', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em' }}>
-                    <span style={{ background: 'rgba(255,94,0,0.1)', border: '1px solid rgba(255,94,0,0.25)', padding: '2px 7px', borderRadius: 4, color: 'var(--orange-light)' }}>Health</span>
-                  </div>
-                  <div style={{ position: 'absolute', top: '28%', right: 0, transform: 'translate(44px,0)', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'right', lineHeight: 1.5 }}>
-                    Activity<br /><span style={{ color: 'var(--orange-light)', fontFamily: 'var(--mono)' }}>vel Δ</span>
-                  </div>
-                  <div style={{ position: 'absolute', bottom: '28%', right: 0, transform: 'translate(38px,22px)', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'right', lineHeight: 1.5 }}>
-                    PR Speed<br /><span style={{ color: 'var(--orange-light)', fontFamily: 'var(--mono)' }}>avg days</span>
-                  </div>
-                  <div style={{ position: 'absolute', bottom: 0, left: '50%', transform: 'translate(-50%,16px)', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Bus Factor</div>
-                  <div style={{ position: 'absolute', bottom: '28%', left: 0, transform: 'translate(-38px,22px)', fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textAlign: 'left', lineHeight: 1.5 }}>
-                    Issue<br /><span style={{ color: 'var(--orange-light)', fontFamily: 'var(--mono)' }}>health</span>
-                  </div>
+                    {/* Axis labels tied directly to graph vertices */}
+                    {PENTAGON_AXIS_LABELS.map((label, i) => (
+                      <g key={i}>
+                        <text
+                          x={label.x + label.dx}
+                          y={label.y + label.dy}
+                          textAnchor={label.anchor}
+                          style={{ fontSize: 10, fontWeight: 700, fill: 'var(--text-muted)' }}
+                        >
+                          {label.title}
+                        </text>
+                        <text
+                          x={label.x + label.dx}
+                          y={label.y + label.dy + 14}
+                          textAnchor={label.anchor}
+                          style={{ fontSize: 10, fontWeight: 700, fill: 'var(--orange-light)', fontFamily: 'var(--mono)' }}
+                        >
+                          {label.subtitle}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
                 </div>
               </div>
 
               {/* Legend */}
               <div className="radar-legend">
-                {repos.slice(0, 4).map((r, i) => r.includes("/") ? (
+                {validRepos.slice(0, 4).map((r, i) => (
                   <div key={i} className="radar-legend-item">
                     <div className="radar-legend-dot" style={{ background: COLORS[i], boxShadow: `0 0 6px ${COLORS[i]}` }} />
                     {(r.split("/")[1] ?? r).toUpperCase()}.sys
                   </div>
-                ) : null)}
+                ))}
               </div>
             </div>
 
@@ -531,7 +748,7 @@ export default function RepoComparePage() {
                   <thead>
                     <tr>
                       <th>Metric</th>
-                      {repos.slice(0, 4).map((r, i) => !r.includes("/") ? null : (
+                      {validRepos.slice(0, 4).map((r, i) => (
                         <th key={i}>
                           <div className="repo-col-head">
                             <div className="repo-col-icon" style={{ background: `${STROKES[i]}`, border: `1px solid ${COLORS[i]}55`, color: COLORS[i] }}>
@@ -550,7 +767,8 @@ export default function RepoComparePage() {
                       return (
                         <tr key={ri}>
                           <td className="td-metric">{row.label}</td>
-                          {comparison.slice(0, validRepos.length).map((e, ci) => {
+                          {validRepos.map((repoRef, ci) => {
+                            const e = entryForRepo(repoRef);
                             const v = row.get(e);
                             const fmted = v != null ? (row.fmt ? row.fmt(v) : String(v)) : "—";
                             const cls = v == null ? "td-null" : ci === best ? "td-best" : ci === worst ? "td-worst" : "td-mid";
@@ -561,10 +779,6 @@ export default function RepoComparePage() {
                               </td>
                             );
                           })}
-                          {/* Fill empty columns when backend hasn't returned data yet */}
-                          {Array.from({ length: Math.max(0, validRepos.length - comparison.length) }).map((_, ci) => (
-                            <td key={`empty-${ci}`}><span className="td-null">—</span></td>
-                          ))}
                         </tr>
                       );
                     })}
@@ -579,17 +793,19 @@ export default function RepoComparePage() {
         <div className="float-bar">
           <div className="float-bar-left">
             <div className="float-bar-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
             </div>
             <div>
               <div className="float-bar-tag">Git Vital Intelligence</div>
               <div className="float-bar-text">
                 Comparing <strong>{validRepos.length} repos</strong> across 15 metrics.
-                {loading ? " Fetching live data…" : " Data from cache."}
+                {loading ? ` ${statusMsg ?? 'Fetching live data…'}` : ` ${statusMsg ?? 'Data sourced from backend.'}`}
               </div>
             </div>
           </div>
-          <button className="float-bar-btn" onClick={() => fetchComparison(repos)}>↻ Refresh</button>
+          <button className="float-bar-btn" onClick={() => fetchComparison(repos)} disabled={loading}>
+            {loading ? "Refreshing..." : "↻ Refresh"}
+          </button>
         </div>
       </div>
     </>

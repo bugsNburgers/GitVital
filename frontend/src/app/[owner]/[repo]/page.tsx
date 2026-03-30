@@ -79,7 +79,7 @@ function healthLabel(score: number): string {
 function healthDesc(score: number, owner: string, repo: string): string {
   if (score >= 80) return `${owner}/${repo} is in excellent health with active maintainers and controlled technical debt.`;
   if (score >= 60) return `${owner}/${repo} is in good health but has some areas that could use attention.`;
-  if (score >= 40) return `${owner}/${repo} needs some work — consider improving contribution diversity and PR velocity.`;
+  if (score >= 40) return `${owner}/${repo} needs some work - consider improving contribution diversity and PR velocity.`;
   return `${owner}/${repo} is in poor health. Multiple signals suggest maintenance issues.`;
 }
 
@@ -742,7 +742,7 @@ export default function RepoDashboardPage() {
                 </div>
 
                 <div className="health-meta">
-                  <h2>Repository Health Score — {healthLabel(score)}</h2>
+                  <h2>Repository Health Score - {healthLabel(score)}</h2>
                   <p>{healthDesc(score, owner, repo)}</p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
                     {meta?.language && <span className="meta-pill">🔵 {meta.language}</span>}
