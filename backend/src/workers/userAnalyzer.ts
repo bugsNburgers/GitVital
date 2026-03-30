@@ -4,6 +4,7 @@ import { config } from '../config';
 import { UserJobData, UserMergedPRNode, UserContributionMetrics } from '../types';
 import { GitHubClient, AuthExpiredError, RateLimitError } from '../github/client';
 import { fetchUserMergedPRs as fetchUserMergedPRsFromGitHub } from '../github/fetchUserMergedPRs';
+import { setUserContributionCache, UserContributionMetricsCacheValue } from '../cache/userCache';
 
 const MAX_USER_PRS = 500;
 
@@ -88,15 +89,15 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         const metrics = computeUserContributionMetrics(username, mergedPRs);
         await job.updateProgress(80);
 
-        // Step 6: Persist metrics to users table (TODO Prisma wiring in later prompt).
-        // await prisma.user.update({
-        //   where: { username },
-        //   data: {
-        //     externalPrCount: metrics.externalPRCount,
-        //     externalMergedPrCount: metrics.externalMergedPRCount,
-        //     contributionAcceptanceRate: metrics.contributionAcceptanceRate,
-        //   },
-        // });
+        // Step 6: Persist metrics to Redis cache so /api/user/:username can serve real data.
+        const cachePayload: UserContributionMetricsCacheValue = {
+            username: username.toLowerCase(),
+            externalPRCount: metrics.externalPRCount,
+            externalMergedPRCount: metrics.externalMergedPRCount,
+            contributionAcceptanceRate: metrics.contributionAcceptanceRate,
+            analyzedAt: new Date().toISOString(),
+        };
+        await setUserContributionCache(username, cachePayload, config.cacheTtlSeconds);
 
         await job.updateProgress(95);
 

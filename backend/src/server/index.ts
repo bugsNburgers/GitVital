@@ -19,6 +19,11 @@ import { RedisStore } from 'connect-redis';
 import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
 import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
+import {
+  clearUserContributionCache,
+  getFreshUserContributionCache,
+  UserContributionMetricsCacheValue,
+} from '../cache/userCache';
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
 import { resetGeminiCooldown, getGeminiModelCandidates } from '../ai/advice';
@@ -50,6 +55,8 @@ const MAX_GEMINI_ANALYSES_PER_USER_PER_DAY = 20;
 const MAX_GEMINI_ANALYSES_PER_IP_PER_DAY = 10;
 const RAPID_FIRE_WINDOW_SECONDS = 60;
 const RAPID_FIRE_ALERT_THRESHOLD = 8;
+const GITHUB_REST_BASE_URL = 'https://api.github.com';
+const MAX_USER_PROFILE_REPOS = 9;
 const SENSITIVE_RESPONSE_KEYS = new Set([
   'access_token',
   'accessToken',
@@ -507,6 +514,281 @@ function mapQueueStateToJobStatus(state: string): JobStatus {
   }
 }
 
+type UserBadgeTone = 'orange' | 'secondary' | 'emerald' | 'orange-light';
+
+interface GitHubUserApiResponse {
+  login: string;
+  name: string | null;
+  avatar_url: string;
+  bio: string | null;
+  location: string | null;
+  company: string | null;
+  blog: string;
+  twitter_username: string | null;
+  followers: number;
+  following: number;
+  public_repos: number;
+  html_url: string;
+  created_at: string;
+}
+
+interface GitHubRepoApiResponse {
+  name: string;
+  full_name: string;
+  description: string | null;
+  language: string | null;
+  stargazers_count: number;
+  forks_count: number;
+  updated_at: string;
+  private: boolean;
+  html_url: string;
+  fork: boolean;
+}
+
+interface UserProfileRepoResponse {
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  language: string | null;
+  stars: number;
+  forks: number;
+  updatedAt: string;
+  healthScore: number | null;
+  url: string;
+}
+
+interface UserProfileBadgeResponse {
+  title: string;
+  desc: string;
+  level: string;
+  icon: string;
+  tone: UserBadgeTone;
+}
+
+interface UserProfileApiResponse {
+  username: string;
+  displayName: string;
+  avatarUrl: string;
+  bio: string | null;
+  location: string | null;
+  company: string | null;
+  blog: string | null;
+  twitterUsername: string | null;
+  profileUrl: string;
+  joinedAt: string;
+  followers: number;
+  following: number;
+  publicRepos: number;
+  topLanguage: string | null;
+  developerScore: number;
+  reliabilityPct: number;
+  percentile: string;
+  needsAnalysis: boolean;
+  contribution: {
+    externalPRCount: number;
+    externalMergedPRCount: number;
+    contributionAcceptanceRate: number;
+    analyzedAt: string | null;
+  };
+  badges: UserProfileBadgeResponse[];
+  repos: UserProfileRepoResponse[];
+  lastAnalyzedAt: string | null;
+}
+
+function getServiceGitHubToken(): string | null {
+  return process.env.GITHUB_TOKEN || process.env.GITHUB_ACCESS_TOKEN || null;
+}
+
+async function getPreferredGitHubTokenForRequest(req: Request, username: string): Promise<string | null> {
+  const sessionUserId = (req.session as any)?.userId as number | string | undefined;
+  const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
+
+  if (sessionUserId !== undefined && sessionUserId !== null && typeof sessionUsername === 'string') {
+    if (sessionUsername.toLowerCase() === username.toLowerCase()) {
+      const personalToken = await getDecryptedGitHubToken(sessionUserId);
+      if (personalToken) {
+        return personalToken;
+      }
+    }
+  }
+
+  return getServiceGitHubToken();
+}
+
+async function buildGitHubRestHeaders(req: Request, username: string): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'GitVital/1.0',
+  };
+
+  const token = await getPreferredGitHubTokenForRequest(req, username);
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+function normalizeJobStatus(status: string | null): JobStatus | null {
+  if (status === 'queued' || status === 'processing' || status === 'done' || status === 'failed') {
+    return status;
+  }
+  return null;
+}
+
+function computeAverage(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  return values.reduce((acc, value) => acc + value, 0) / values.length;
+}
+
+function computePercentileLabel(score: number): string {
+  if (score >= 95) return 'Top 1% Global';
+  if (score >= 90) return 'Top 5% Global';
+  if (score >= 80) return 'Top 10% Global';
+  if (score >= 70) return 'Top 20% Global';
+  if (score >= 60) return 'Top 35% Global';
+  return 'Top 50% Global';
+}
+
+function computeDeveloperScore(
+  repoScores: number[],
+  contribution: UserContributionMetricsCacheValue | null,
+  followers: number,
+  publicRepos: number,
+): number {
+  const repoHealthScore = computeAverage(repoScores);
+  const contributionScore = contribution
+    ? Math.min(
+      100,
+      contribution.contributionAcceptanceRate * 0.4 + Math.min(contribution.externalPRCount, 80) * 0.75,
+    )
+    : 0;
+  const socialScore = Math.min(
+    100,
+    (Math.log10(followers + publicRepos + 1) / Math.log10(1000)) * 100,
+  );
+
+  const weightedScore = repoScores.length > 0
+    ? repoHealthScore * 0.7 + contributionScore * 0.2 + socialScore * 0.1
+    : contributionScore > 0
+      ? contributionScore * 0.75 + socialScore * 0.25
+      : socialScore * 0.8;
+
+  return Number(Math.max(0, Math.min(100, weightedScore)).toFixed(2));
+}
+
+function computeReliabilityPct(analyzedRepoCount: number, hasContributionData: boolean): number {
+  const reliability = 55 + Math.min(analyzedRepoCount, 6) * 7 + (hasContributionData ? 12 : 0);
+  return Math.max(45, Math.min(99, reliability));
+}
+
+function getTopLanguage(repos: GitHubRepoApiResponse[]): string | null {
+  const languageCounts = new Map<string, number>();
+
+  for (const repo of repos) {
+    if (!repo.language) {
+      continue;
+    }
+    languageCounts.set(repo.language, (languageCounts.get(repo.language) || 0) + 1);
+  }
+
+  let topLanguage: string | null = null;
+  let topCount = 0;
+
+  for (const [language, count] of languageCounts.entries()) {
+    if (count > topCount) {
+      topLanguage = language;
+      topCount = count;
+    }
+  }
+
+  return topLanguage;
+}
+
+function buildUserBadges(
+  score: number,
+  contribution: UserContributionMetricsCacheValue | null,
+  repos: UserProfileRepoResponse[],
+  followers: number,
+  publicRepos: number,
+): UserProfileBadgeResponse[] {
+  const badges: UserProfileBadgeResponse[] = [];
+
+  if (contribution && contribution.externalPRCount >= 50) {
+    badges.push({
+      title: 'Open Source Pillar',
+      level: 'Legendary',
+      icon: 'public',
+      tone: 'orange',
+      desc: `Merged ${contribution.externalPRCount}+ external PRs across public projects.`,
+    });
+  } else if (contribution && contribution.externalPRCount >= 10) {
+    badges.push({
+      title: 'External Contributor',
+      level: 'Active',
+      icon: 'handshake',
+      tone: 'secondary',
+      desc: `Contributed ${contribution.externalPRCount} merged PRs outside owned repositories.`,
+    });
+  }
+
+  const highHealthRepoCount = repos.filter((repo) => repo.healthScore !== null && repo.healthScore >= 85).length;
+  if (highHealthRepoCount >= 3) {
+    badges.push({
+      title: 'Healthy Maintainer',
+      level: 'Elite',
+      icon: 'verified',
+      tone: 'emerald',
+      desc: `${highHealthRepoCount} repositories are scoring in the high-health band.`,
+    });
+  }
+
+  if (followers >= 100) {
+    badges.push({
+      title: 'Community Magnet',
+      level: 'Popular',
+      icon: 'groups',
+      tone: 'orange-light',
+      desc: `Built a GitHub audience of ${followers} followers.`,
+    });
+  }
+
+  if (publicRepos >= 25) {
+    badges.push({
+      title: 'Prolific Builder',
+      level: 'Veteran',
+      icon: 'inventory_2',
+      tone: 'secondary',
+      desc: `Published ${publicRepos} public repositories.`,
+    });
+  }
+
+  if (score >= 85) {
+    badges.push({
+      title: 'Quality Champion',
+      level: 'Top Tier',
+      icon: 'workspace_premium',
+      tone: 'orange',
+      desc: 'Maintains a consistently high composite developer score.',
+    });
+  }
+
+  if (badges.length === 0) {
+    badges.push({
+      title: 'Emerging Maintainer',
+      level: 'Rising',
+      icon: 'rocket_launch',
+      tone: 'secondary',
+      desc: 'Run profile analysis to unlock deeper contribution insights.',
+    });
+  }
+
+  return badges.slice(0, 4);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // SECTION 6: ROUTES
 // ═══════════════════════════════════════════════════════════════
@@ -862,20 +1144,53 @@ app.get(
 
 app.post(
   '/api/user/analyze',
-  [body('username').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_-]+$/)],
+  [
+    body('username').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_-]+$/),
+    body('force').optional().isBoolean().toBoolean(),
+  ],
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
       const username = String(req.body.username).trim();
-      const jobId = `analyze-user:${username.toLowerCase()}`;
+      const normalizedUsername = username.toLowerCase();
+      const forceReanalyze = parseBooleanFlag((req.body as { force?: unknown })?.force);
 
-      const existingJob = await userAnalysisQueue.getJob(jobId);
-      if (existingJob) {
-        const existingState = await existingJob.getState();
-        const existingStatus = mapQueueStateToJobStatus(existingState);
-        if (existingStatus === 'queued' || existingStatus === 'processing') {
-          res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
+      if (!forceReanalyze) {
+        const cached = await getFreshUserContributionCache<UserContributionMetricsCacheValue>(normalizedUsername);
+        if (cached) {
+          res.status(200).json({
+            status: 'done',
+            source: 'cache',
+            cached: true,
+            cacheTtlSeconds: cached.ttlSeconds,
+            metrics: cached.value,
+          });
           return;
+        }
+      } else {
+        await clearUserContributionCache(normalizedUsername);
+      }
+
+      const dedupeJobId = `analyze-user:${normalizedUsername}`;
+      const jobId = forceReanalyze
+        ? `reanalyze-user:${normalizedUsername}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+        : dedupeJobId;
+
+      if (!forceReanalyze) {
+        const existingJob = await userAnalysisQueue.getJob(dedupeJobId);
+        if (existingJob) {
+          const existingState = await existingJob.getState();
+          const existingStatus = mapQueueStateToJobStatus(existingState);
+          if (existingStatus === 'queued' || existingStatus === 'processing') {
+            res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
+            return;
+          }
+
+          try {
+            await existingJob.remove();
+          } catch {
+            // Ignore race-condition cleanup failures.
+          }
         }
       }
 
@@ -891,7 +1206,15 @@ app.post(
         },
       );
 
-      res.status(202).json({ jobId: job.id, status: 'queued' });
+      if (!job.id) {
+        res.status(500).json({ error: 'Failed to create user analysis job. Please try again.' });
+        return;
+      }
+
+      await redis.set(`userjobstatus:${job.id}`, 'queued', 'EX', 3600);
+      await redis.del(`userjoberror:${job.id}`);
+
+      res.status(202).json({ jobId: job.id, status: 'queued', forced: forceReanalyze });
     } catch (error) {
       console.error('Error queuing user analysis job:', error);
       res.status(500).json({ error: 'Failed to queue user analysis' });
@@ -901,7 +1224,58 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6f. GET /api/user/:username — Get a developer's profile/score
+// 6f. GET /api/user/status/:jobId — Check user-analysis job status
+// ─────────────────────────────────────────────────────────────
+
+app.get(
+  '/api/user/status/:jobId',
+  [param('jobId').isString().trim().notEmpty()],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const jobId = req.params.jobId as string;
+      const job = await userAnalysisQueue.getJob(jobId);
+
+      if (job) {
+        const state = await job.getState();
+        const status = mapQueueStateToJobStatus(state);
+
+        res.json({
+          jobId,
+          status,
+          progress: job.progress,
+          error: state === 'failed' ? job.failedReason : null,
+        });
+        return;
+      }
+
+      const [cachedStatusRaw, cachedError] = await Promise.all([
+        redis.get(`userjobstatus:${jobId}`),
+        redis.get(`userjoberror:${jobId}`),
+      ]);
+
+      const cachedStatus = normalizeJobStatus(cachedStatusRaw);
+      if (cachedStatus) {
+        res.json({
+          jobId,
+          status: cachedStatus,
+          progress: cachedStatus === 'done' ? 100 : 0,
+          error: cachedError || null,
+        });
+        return;
+      }
+
+      res.status(404).json({ error: 'User analysis job not found' });
+    } catch (error) {
+      console.error('Error checking user analysis job status:', error);
+      res.status(500).json({ error: 'Failed to check user analysis job status' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6g. GET /api/user/:username — Get a developer's profile/score
 // ─────────────────────────────────────────────────────────────
 // Returns: developer score, badges, percentile ranking
 
@@ -912,15 +1286,125 @@ app.get(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const username = req.params.username as string;
+      const headers = await buildGitHubRestHeaders(req, username);
 
-      // TODO: Fetch from Prisma when user profile schema is set up
-      // const profile = await prisma.developerProfile.findUnique({
-      //   where: { githubUsername: username },
-      // });
+      const [userResponse, reposResponse, contributionCache] = await Promise.all([
+        fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
+        fetch(
+          `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`,
+          { headers },
+        ),
+        getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+      ]);
 
-      res.status(404).json({
-        error: `Developer profile for "${username}" not found. Analyze their repos first.`,
+      if (userResponse.status === 404) {
+        res.status(404).json({ error: `GitHub user "${username}" was not found.` });
+        return;
+      }
+
+      if (!userResponse.ok) {
+        res.status(502).json({ error: `Failed to fetch GitHub profile (HTTP ${userResponse.status}).` });
+        return;
+      }
+
+      const githubUser = await userResponse.json() as GitHubUserApiResponse;
+
+      let githubRepos: GitHubRepoApiResponse[] = [];
+      if (reposResponse.ok) {
+        const reposPayload = await reposResponse.json() as unknown;
+        if (Array.isArray(reposPayload)) {
+          githubRepos = reposPayload.filter((entry) => {
+            return Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry);
+          }) as GitHubRepoApiResponse[];
+        }
+      }
+
+      const publicRepos = githubRepos
+        .filter((repo) => !repo.private)
+        .slice(0, MAX_USER_PROFILE_REPOS);
+
+      const reposWithMetrics = await Promise.all(
+        publicRepos.map(async (repo): Promise<UserProfileRepoResponse> => {
+          const ownerFromFullName = repo.full_name.split('/')[0] || username;
+          const cached = await getFreshRepoMetricsCache<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
+          const healthScore = cached && typeof cached.value?.healthScore === 'number'
+            ? Number(cached.value.healthScore)
+            : null;
+
+          return {
+            owner: ownerFromFullName,
+            name: repo.name,
+            fullName: repo.full_name,
+            description: repo.description,
+            language: repo.language,
+            stars: repo.stargazers_count,
+            forks: repo.forks_count,
+            updatedAt: repo.updated_at,
+            healthScore,
+            url: repo.html_url,
+          };
+        }),
+      );
+
+      reposWithMetrics.sort((a, b) => {
+        if (a.healthScore === null && b.healthScore !== null) return 1;
+        if (a.healthScore !== null && b.healthScore === null) return -1;
+        if (a.healthScore !== null && b.healthScore !== null) return b.healthScore - a.healthScore;
+        return b.stars - a.stars;
       });
+
+      const analyzedScores = reposWithMetrics
+        .map((repo) => repo.healthScore)
+        .filter((score): score is number => score !== null);
+
+      const contribution = contributionCache?.value ?? null;
+      const developerScore = computeDeveloperScore(
+        analyzedScores,
+        contribution,
+        githubUser.followers,
+        githubUser.public_repos,
+      );
+
+      const reliabilityPct = computeReliabilityPct(analyzedScores.length, Boolean(contribution));
+      const badges = buildUserBadges(
+        developerScore,
+        contribution,
+        reposWithMetrics,
+        githubUser.followers,
+        githubUser.public_repos,
+      );
+
+      const profile: UserProfileApiResponse = {
+        username: githubUser.login,
+        displayName: githubUser.name || githubUser.login,
+        avatarUrl: githubUser.avatar_url,
+        bio: githubUser.bio,
+        location: githubUser.location,
+        company: githubUser.company,
+        blog: githubUser.blog || null,
+        twitterUsername: githubUser.twitter_username,
+        profileUrl: githubUser.html_url,
+        joinedAt: githubUser.created_at,
+        followers: githubUser.followers,
+        following: githubUser.following,
+        publicRepos: githubUser.public_repos,
+        topLanguage: getTopLanguage(publicRepos),
+        developerScore,
+        reliabilityPct,
+        percentile: computePercentileLabel(developerScore),
+        needsAnalysis: !contribution,
+        contribution: {
+          externalPRCount: contribution?.externalPRCount ?? 0,
+          externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
+          contributionAcceptanceRate: contribution?.contributionAcceptanceRate ?? 0,
+          analyzedAt: contribution?.analyzedAt ?? null,
+        },
+        badges,
+        repos: reposWithMetrics,
+        lastAnalyzedAt: contribution?.analyzedAt ?? null,
+      };
+
+      res.json(profile);
     } catch (error) {
       console.error('Error fetching user profile:', error);
       res.status(500).json({ error: 'Failed to fetch user profile' });
@@ -930,7 +1414,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6g. GET /api/leaderboard — Get top developers
+// 6h. GET /api/leaderboard — Get top developers
 // ─────────────────────────────────────────────────────────────
 // Optional filter: ?lang=typescript (filter by primary language)
 // Returns: top 100 developers sorted by their developer score
