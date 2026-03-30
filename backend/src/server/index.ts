@@ -531,8 +531,11 @@ app.post(
       const normalizedOwner = owner.toLowerCase();
       const normalizedRepo = repo.toLowerCase();
       const normalizedRepoRef = `${normalizedOwner}/${normalizedRepo}`;
-      const jobId = `analyze:${normalizedOwner}:${normalizedRepo}`;
+      const dedupeJobId = `analyze:${normalizedOwner}:${normalizedRepo}`;
       const forceReanalyze = parseBooleanFlag((req.body as { force?: unknown })?.force);
+      const jobId = forceReanalyze
+        ? `reanalyze:${normalizedOwner}:${normalizedRepo}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+        : dedupeJobId;
       const userId = (req.session as any)?.userId as string | number | undefined;
       const requesterIp = getClientIp(req);
 
@@ -599,18 +602,21 @@ app.post(
       // Prompt 8.6: Stale/missing cache path clears any old key before queueing.
       await clearRepoMetricsCache(normalizedOwner, normalizedRepo);
 
-      // Idempotency: reuse in-flight job for the same repo.
-      const existingJob = await analysisQueue.getJob(jobId);
-      if (existingJob) {
-        const existingState = await existingJob.getState();
-        const existingStatus = mapQueueStateToJobStatus(existingState);
-        if (existingStatus === 'queued' || existingStatus === 'processing') {
-          res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
-          return;
+      // Idempotency (normal analyze): reuse an in-flight job for the same repo.
+      // Force reanalyze explicitly skips dedupe so each click runs a fresh GitHub fetch.
+      if (!forceReanalyze) {
+        const existingJob = await analysisQueue.getJob(dedupeJobId);
+        if (existingJob) {
+          const existingState = await existingJob.getState();
+          const existingStatus = mapQueueStateToJobStatus(existingState);
+          if (existingStatus === 'queued' || existingStatus === 'processing') {
+            res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
+            return;
+          }
+          // Terminal state (failed/completed but not yet removed) — remove it so
+          // BullMQ can create a fresh job with the same deterministic ID.
+          try { await existingJob.remove(); } catch { /* ignore */ }
         }
-        // Terminal state (failed/completed but not yet removed) — remove it so
-        // BullMQ can create a fresh job with the same ID instead of no-op'ing.
-        try { await existingJob.remove(); } catch { /* ignore */ }
       }
 
       // ── CREATE NEW JOB ──
@@ -633,7 +639,7 @@ app.post(
 
       await redis.set(`jobstatus:${job.id}`, 'queued', 'EX', 3600);
 
-      res.status(202).json({ jobId: job.id, status: 'queued' });
+      res.status(202).json({ jobId: job.id, status: 'queued', forced: forceReanalyze });
     } catch (error) {
       console.error('Error queuing analysis job:', error);
       res.status(500).json({ error: 'Failed to queue analysis' });
