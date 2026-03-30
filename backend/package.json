@@ -35,7 +35,7 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.10.0",
     "node-cron": "^4.2.1",
-    "prisma": "^6.19.2",
+    "prisma": "^7.6.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
