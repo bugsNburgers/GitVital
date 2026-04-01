@@ -24,6 +24,7 @@
     "@types/express-session": "^1.18.2",
     "@types/node": "^25.5.0",
     "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.20.0",
     "bullmq": "^5.71.0",
     "connect-redis": "^9.0.0",
     "cors": "^2.8.6",
@@ -35,6 +36,7 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.10.0",
     "node-cron": "^4.2.1",
+    "pg": "^8.20.0",
     "prisma": "^6.19.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

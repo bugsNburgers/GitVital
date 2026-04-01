@@ -44,6 +44,8 @@ export interface LeaderboardRow {
     developer_score: string;
     global_rank: number | null;
     percentile: string | null;
+    primary_language: string | null;
+    repos_count: number;
 }
 
 export const GET_LATEST_REPO_METRICS_SQL = `
@@ -60,13 +62,50 @@ LIMIT 1;
 `;
 
 export const GET_LEADERBOARD_WITH_LANGUAGE_FILTER_SQL = `
-SELECT u.username, u.avatar_url, u.developer_score, u.global_rank, u.percentile
-FROM users u
-JOIN repo_metrics rm ON rm.repo_id IN (SELECT id FROM repos WHERE owner = u.username)
+WITH repo_totals AS (
+    SELECT r.owner AS username, COUNT(*)::int AS repos_count
+    FROM repos r
+    GROUP BY r.owner
+),
+repo_language_counts AS (
+    SELECT
+        r.owner AS username,
+        COALESCE(NULLIF(r.language, ''), 'Unknown') AS language,
+        COUNT(*)::int AS language_count
+    FROM repos r
+    GROUP BY r.owner, COALESCE(NULLIF(r.language, ''), 'Unknown')
+),
+primary_languages AS (
+    SELECT username, language
+    FROM (
+        SELECT
+            rlc.username,
+            rlc.language,
+            ROW_NUMBER() OVER (
+                PARTITION BY rlc.username
+                ORDER BY rlc.language_count DESC, rlc.language ASC
+            ) AS row_num
+        FROM repo_language_counts rlc
+    ) ranked_languages
+    WHERE ranked_languages.row_num = 1
+)
+SELECT
+    lr.username,
+    lr.avatar_url,
+    lr.developer_score::text AS developer_score,
+    lr.global_rank,
+    lr.percentile::text AS percentile,
+    pl.language AS primary_language,
+    COALESCE(rt.repos_count, 0) AS repos_count
+FROM leaderboard_rankings lr
+LEFT JOIN repo_totals rt ON rt.username = lr.username
+LEFT JOIN primary_languages pl ON pl.username = lr.username
 WHERE ($1::text IS NULL OR EXISTS (
-  SELECT 1 FROM repos r WHERE r.owner = u.username AND r.language = $1
+    SELECT 1
+    FROM repos r
+    WHERE r.owner = lr.username AND LOWER(COALESCE(r.language, '')) = LOWER($1)
 ))
-ORDER BY u.developer_score DESC
+ORDER BY lr.developer_score DESC
 LIMIT 100;
 `;
 

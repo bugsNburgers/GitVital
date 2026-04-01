@@ -14,10 +14,12 @@ import { rateLimit } from 'express-rate-limit';
 import { body, param, query, validationResult } from 'express-validator';
 import { Queue } from 'bullmq';
 import { RedisStore } from 'connect-redis';
+import { Pool } from 'pg';
 
 // Our own files
 import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
+import { getLeaderboardWithLanguageFilter, type Queryable } from '../db';
 import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
 import {
   clearUserContributionCache,
@@ -65,6 +67,27 @@ const SENSITIVE_RESPONSE_KEYS = new Set([
   'client_secret',
   'clientSecret',
 ]);
+
+const databaseUrl = process.env.DATABASE_URL?.trim() || null;
+const databaseRequiresSsl = databaseUrl ? databaseUrl.includes('sslmode=require') : false;
+const pgPool = databaseUrl
+  ? new Pool({
+    connectionString: databaseUrl,
+    ssl: databaseRequiresSsl ? { rejectUnauthorized: false } : undefined,
+  })
+  : null;
+
+const sqlDb: Queryable | null = pgPool
+  ? {
+    async query<T>(sql: string, params?: readonly unknown[]) {
+      const queryResult = await pgPool.query(sql, params ? [...params] : []);
+      return {
+        rows: queryResult.rows as T[],
+        rowCount: queryResult.rowCount ?? undefined,
+      };
+    },
+  }
+  : null;
 
 function getTokenCacheKeyForUser(userId: number | string): string {
   return `oauth:github:token:user:${String(userId)}`;
@@ -594,6 +617,60 @@ interface UserProfileApiResponse {
   badges: UserProfileBadgeResponse[];
   repos: UserProfileRepoResponse[];
   lastAnalyzedAt: string | null;
+}
+
+type LeaderboardTier = 'gold' | 'silver' | 'bronze' | 'other';
+
+interface LeaderboardApiEntry {
+  rank: number;
+  name: string;
+  handle: string;
+  score: number;
+  lang: string;
+  repos: number;
+  percentile: string;
+  tier: LeaderboardTier;
+  img: string;
+}
+
+function parseScore(value: string | number | null | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Number(value.toFixed(2));
+  }
+
+  const parsed = Number.parseFloat(String(value ?? '0'));
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Number(parsed.toFixed(2));
+}
+
+function getTierFromRank(rank: number): LeaderboardTier {
+  if (rank === 1) {
+    return 'gold';
+  }
+
+  if (rank === 2) {
+    return 'silver';
+  }
+
+  if (rank === 3) {
+    return 'bronze';
+  }
+
+  return 'other';
+}
+
+function formatPercentileForLeaderboard(percentileRaw: string | null, score: number): string {
+  const parsed = Number.parseFloat(String(percentileRaw ?? ''));
+  if (!Number.isFinite(parsed)) {
+    return computePercentileLabel(score).replace(' Global', '');
+  }
+
+  const topPercent = Math.max(0.1, Math.min(99.9, Number((100 - parsed).toFixed(1))));
+  const display = Number.isInteger(topPercent) ? String(topPercent) : topPercent.toFixed(1);
+  return `Top ${display}%`;
 }
 
 function getServiceGitHubToken(): string | null {
@@ -1428,14 +1505,31 @@ app.get(
     try {
       const lang = req.query.lang as string | undefined;
 
-      // TODO: Fetch precomputed leaderboard from Prisma
-      // const leaderboard = await prisma.leaderboardEntry.findMany({
-      //   where: lang ? { primaryLanguage: lang } : {},
-      //   orderBy: { score: 'desc' },
-      //   take: 100,
-      // });
+      if (!sqlDb) {
+        res.status(503).json({ error: 'Database is unavailable for leaderboard requests.' });
+        return;
+      }
 
-      res.json({ leaderboard: [], filter: lang || 'all' });
+      const normalizedLang = lang && lang.toLowerCase() !== 'all languages' ? lang : undefined;
+      const rows = await getLeaderboardWithLanguageFilter(sqlDb, normalizedLang);
+
+      const leaderboard: LeaderboardApiEntry[] = rows.map((row, index) => {
+        const rank = row.global_rank ?? index + 1;
+        const score = parseScore(row.developer_score);
+        return {
+          rank,
+          name: row.username,
+          handle: `@${row.username}`,
+          score,
+          lang: row.primary_language || 'Unknown',
+          repos: row.repos_count,
+          percentile: formatPercentileForLeaderboard(row.percentile, score),
+          tier: getTierFromRank(rank),
+          img: row.avatar_url || `https://github.com/${row.username}.png`,
+        };
+      });
+
+      res.json({ leaderboard, filter: normalizedLang || 'all' });
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
       res.status(500).json({ error: 'Failed to fetch leaderboard' });
@@ -1833,7 +1927,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
   redis.disconnect();
   console.log('   ✅ Redis disconnected');
 
-  // 5. Close Prisma (database) connection
+  // 5. Close PostgreSQL connection pool if enabled
+  if (pgPool) {
+    await pgPool.end();
+    console.log('   ✅ PostgreSQL pool disconnected');
+  }
+
+  // 6. Close Prisma (database) connection
   // TODO: Uncomment when Prisma is set up
   // await prisma.$disconnect();
   // console.log('   ✅ Prisma disconnected');

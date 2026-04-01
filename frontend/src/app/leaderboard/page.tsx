@@ -4,14 +4,22 @@ import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE, AUTH_URL } from "@/config";
 
-const ALL_LEADERS = [
-  { rank: 1, name: "Sarah Drasner", handle: "@sdras", score: 98.42, lang: "TypeScript", repos: 142, percentile: "Top 0.1%", tier: "gold", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuCVeEhn4a9onTKoxR9BossCjCG93QhNm6nCP8FVDRShBX0orgX-qUum39-FmVKWC-8WFY2UVqvdOQcetR6qT9SoeJCcBiamxyrsmNgAu1o_ePy6les3koOzGPPHLhyacM5Kh0NK4R6HpS_WytpDuAAAT6gA2tN1zFipEhKVD-QPH47e14gILmGTqTrh4oG3VxeFSLQ0-hnEaQzyDdcujJPP-cAR4AP-d4N-fHXnhnl261Yp1lVImTPapDj1her2nVHhEnD3GmxWMSk" },
-  { rank: 2, name: "Guillermo Rauch", handle: "@rauchg", score: 97.88, lang: "JavaScript", repos: 89, percentile: "Top 0.5%", tier: "silver", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuDFXktmnwLk-tpnLLudaOs881mjhXhuWINqXUBv7QfBIZhZ9689pxorB21b1_vyJKC463L2OOyS3CwtKZr6lNnNXFlrgEjZZ0EGPQbqaMqKhZ2JQNHk1ORSCV-CRsew9jw0KMUTa9ftA5pMgfqFYtydNnbhknfNmU276kSHwTzJlDQXjK7Q-1p-IrMB9McAs9kgD9FuWwSqFs08dThxEkMcEdsRq5hgp-eSsdIwtEifw0YcWAt0q-bST5OWuHWKRnzqxsRYfyVQKjE" },
-  { rank: 3, name: "Kelsey Hightower", handle: "@kelseyhightower", score: 97.15, lang: "Go", repos: 114, percentile: "Top 1%", tier: "bronze", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuAmTa2OyqZunjQsZv0euTMA6Hov1fmWTmjKrMo4-cVkEuu3iwqUDy_2L6vYwQZ4F8ug0S8kklnVB_1cEIj4hAirKzBvMaPYHQdXnn1umYIOwfiFG4heIY761N7J2w_7xXavxeN1ivkjy954VRbDAw7jOWszH2cGaPgoKA0cTG9VyUzQWY52FqhEJDMjhvn9IKdw9aQJeC-5JDxD47e0rYgT8b8ogkg6hMpwXKUUWhhbJJOO5dasAysvaYjlGGi6cvVdNFDqZQjVRS0" },
-  { rank: 4, name: "Dan Abramov", handle: "@gaearon", score: 95.82, lang: "React", repos: 230, percentile: "Top 2%", tier: "other", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuC3ZhMgjgtaI0_qhz1eXtENouW5Vc-yJac6lLx4bt8I0u8euFCGJpd4f0BlZHYo040Rd7ZnZ6gIy5llXS8ioXGSx5T-ediT1LBc0BVkkkrZqyyLCYbep_zvq2YV1qnTy3HY67R-rS-NfUaio-GxDKmE5pcXaXioUS87IREVWtOhbL9OjKb7GoSroUkwX7zM7ug1Qd7Zp_McuwvSLqwnb_niUarPSj2HhaRibsVBY-t65oG9dkp-cFBLric_CM8H36-_Nky62ekSocQ" },
-  { rank: 5, name: "Evan You", handle: "@yyx990803", score: 95.21, lang: "Vue", repos: 167, percentile: "Top 2%", tier: "other", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuA0xfmc-aNFDuHFZJGmbma3gYifJjprgEhr5CGM9FheY2gc9hQgYaV7P1nFaYDSAXfzA3kG9dg-tKl23VUImWutSqQar3CwDYR_wzXHgBPm7JgRLGVO9vq5x793JELLKWtME9Om6Om1ecGVIw3tjjITjaqi3W9PxRSKQM13477x8-dNgmlBnJ5glyjprpAhPblxWdP6P6sZRZZ0SW1tV9y2mw1QSJLMo3bjTsI3Ifjiip5ePdkce_Ztgd62iSkI7zygllL4jptrBfI" },
-  { rank: 6, name: "Lea Verou", handle: "@leaverou", score: 94.75, lang: "CSS", repos: 92, percentile: "Top 3%", tier: "other", img: "https://lh3.googleusercontent.com/aida-public/AB6AXuA19Otx3E8FnozX0NZbU2M0bMLrx1NVR0JTeyA2mCSl9y2yz76VD630_m4n5CEDwR6wtr9HBUVyVoRmDNN28qh_6_oQc_6q7YX1WO5fPvXhev2vP6DE0E48N7MarhLHs_JSA_AzaF0KS7h4X_WBbU0I0lN8vw2yCoxLjPDUI_ZYYtTNRqzAReJsYnMonz0mxbQ4bG0XZfMpYEOhXomwHUWo8zElmSNm_NzoiPRAVrF0tavjk1JtKpKsDF8uRSQF-Ww9GvS8wht2SFI" },
-];
+type LeaderboardEntry = {
+  rank: number;
+  name: string;
+  handle: string;
+  score: number;
+  lang: string;
+  repos: number;
+  percentile: string;
+  tier: "gold" | "silver" | "bronze" | "other";
+  img: string;
+};
+
+type LeaderboardApiResponse = {
+  leaderboard: LeaderboardEntry[];
+  filter: string;
+};
 
 const PAGE_SIZE = 6;
 
@@ -21,6 +29,7 @@ export default function LeaderboardPage() {
   const [langFilter, setLangFilter] = useState("All Languages");
   const [currentPage, setCurrentPage] = useState(1);
   const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+  const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/me`, { credentials: 'include' })
@@ -29,14 +38,30 @@ export default function LeaderboardPage() {
       .catch(() => setUser({ loggedIn: false }));
   }, []);
 
+  useEffect(() => {
+    fetch(`${API_BASE}/api/leaderboard`, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Failed to fetch leaderboard");
+        }
+        return res.json() as Promise<LeaderboardApiResponse>;
+      })
+      .then((data) => {
+        setLeaders(Array.isArray(data.leaderboard) ? data.leaderboard : []);
+      })
+      .catch(() => {
+        setLeaders([]);
+      });
+  }, []);
+
   const filtered = useMemo(() => {
-    return ALL_LEADERS.filter((l) => {
+    return leaders.filter((l) => {
       const q = searchQuery.toLowerCase();
       const matchesSearch = l.name.toLowerCase().includes(q) || l.handle.toLowerCase().includes(q);
       const matchesLang = langFilter === "All Languages" || l.lang === langFilter;
       return matchesSearch && matchesLang;
     });
-  }, [searchQuery, langFilter]);
+  }, [leaders, searchQuery, langFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
