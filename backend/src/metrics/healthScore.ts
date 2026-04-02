@@ -21,7 +21,7 @@ export interface HealthScoreInput {
   prMetrics: PRMetricsResult | null;
   issueMetrics: IssueMetricsResult | null;
   churnMetrics: ChurnMetricsResult | null;
-  isArchived?: boolean;     // Prompt 6.1: cap health score at 30 for archived repos
+  isArchived?: boolean;     // cap health score at 30 for archived repos
   stars?: number;           // Used by computeIssueScore for ratio-based scoring (default 0)
   commitsPerWeek?: number;  // Used by computeChurnScore for per-commit churn (default 0)
   contributorCount?: number; // Used by computeContributorScore for depth scoring (default 1)

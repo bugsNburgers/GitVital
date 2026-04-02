@@ -62,8 +62,20 @@ query RepoIssues($owner: String!, $name: String!, $cursor: String) {
         closedAt
         state
         comments { totalCount }
+        title
+        url
+        labels(first: 10) { nodes { name } }
       }
     }
+  }
+  rateLimit { remaining, resetAt }
+}
+`;
+
+export const CLOSED_ISSUE_COUNT_QUERY = `
+query RepoClosedIssueCount($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    issues(states: CLOSED) { totalCount }
   }
   rateLimit { remaining, resetAt }
 }

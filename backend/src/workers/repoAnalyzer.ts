@@ -30,6 +30,7 @@ import { fetchCommits as fetchCommitsFromGitHub } from '../github/fetchCommits';
 import { fetchPRs as fetchPRsFromGitHub } from '../github/fetchPRs';
 import { fetchIssues as fetchIssuesFromGitHub } from '../github/fetchIssues';
 import { fetchMetadata as fetchRepoMetadata } from '../github/fetchMetadata';
+import { CLOSED_ISSUE_COUNT_QUERY } from '../github/queries';
 import { setRepoMetricsCache } from '../cache/repoCache';
 import { decryptAccessToken } from '../security/tokenCrypto';
 
@@ -67,6 +68,9 @@ function computeAllMetrics(
   prs: PRNode[],
   issues: IssueNode[],
   metadata: RepoMetadata,
+  owner: string,
+  repo: string,
+  closedIssueCount: number,
 ): AllMetrics {
   const riskFlags: RiskFlag[] = [];
 
@@ -99,7 +103,7 @@ function computeAllMetrics(
   }
 
   // ── Issue & Churn Metrics — Prompt 8.2 ──
-  const issueMetrics = computeIssueMetrics(issues);
+  const issueMetrics = computeIssueMetrics(issues, owner, repo, closedIssueCount);
   const churnMetrics = computeChurnMetrics(commits);
 
   // ── Prompt 6.1: Unusual commit patterns ──
@@ -160,7 +164,10 @@ function computeAllMetrics(
     prMetrics,
     issueMetrics,
     churnMetrics,
-    isArchived: metadata.isArchived, // Prompt 6.1: cap at 30 for archived
+    isArchived: metadata.isArchived,
+    stars: metadata.stars,
+    commitsPerWeek: activityMetrics ? activityMetrics.commitsLast30Days / 4.3 : 0,
+    contributorCount: busFactor ? busFactor.contributors.length : 1,
   });
 
   return {
@@ -346,13 +353,29 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
 
 
     // ──────────────────────────────────────────────
+    // Step 5.5: Fetch closed issue count (lightweight, partial failure OK)
+    // ──────────────────────────────────────────────
+    let closedIssueCount = 0;
+    try {
+      console.log(`   ${logPrefix} — Step 5.5: Fetching closed issue count...`);
+      const closedResponse = await client.query<{
+        repository: { issues: { totalCount: number } };
+      }>(CLOSED_ISSUE_COUNT_QUERY, { owner, name: repo });
+      closedIssueCount = closedResponse.repository?.issues?.totalCount ?? 0;
+      console.log(`   ${logPrefix} — Step 5.5: Closed issues = ${closedIssueCount} ✓`);
+    } catch (closedErr) {
+      console.warn(`   ${logPrefix} — Step 5.5: Closed issue count fetch failed (defaulting to 0):`, closedErr);
+    }
+
+
+    // ──────────────────────────────────────────────
     // Step 6: Run Metrics Engine (pure functions, in-memory)
     // ──────────────────────────────────────────────
     // Prompt 6.1: Wrap entire metrics computation in try/catch → on error, save partial results
     console.log(`   ${logPrefix} — Step 6: Computing metrics...`);
     let metrics: AllMetrics;
     try {
-      metrics = computeAllMetrics(commits, prs, issues, metadata);
+      metrics = computeAllMetrics(commits, prs, issues, metadata, owner, repo, closedIssueCount);
 
       // ── Prompt 6.1: Data integrity — scrub NaN/Infinity ──
       if (!Number.isFinite(metrics.healthScore)) {

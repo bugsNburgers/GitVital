@@ -23,6 +23,15 @@ export interface IssueNode {
   closedAt: string | null;
   state: 'OPEN' | 'CLOSED';
   comments: { totalCount: number };
+  title: string;
+  url: string;
+  labels: { nodes: { name: string }[] };
+}
+
+export interface IssueLabelBreakdown {
+  label: string;
+  count: number;
+  githubFilterUrl: string;
 }
 
 export interface RateLimit {
@@ -75,6 +84,9 @@ export interface IssueMetricsResult {
   openIssueCount: number;
   avgIssueAgeDays: number;
   unrespondedIssuePct: number;
+  closedIssueCount: number;
+  totalIssueCount: number;
+  labelBreakdown: IssueLabelBreakdown[];
 }
 
 export interface ChurnMetricsResult {
