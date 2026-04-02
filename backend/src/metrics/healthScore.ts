@@ -21,50 +21,80 @@ export interface HealthScoreInput {
   prMetrics: PRMetricsResult | null;
   issueMetrics: IssueMetricsResult | null;
   churnMetrics: ChurnMetricsResult | null;
-  isArchived?: boolean; // Prompt 6.1: cap health score at 30 for archived repos
+  isArchived?: boolean;     // Prompt 6.1: cap health score at 30 for archived repos
+  stars?: number;           // Used by computeIssueScore for ratio-based scoring (default 0)
+  commitsPerWeek?: number;  // Used by computeChurnScore for per-commit churn (default 0)
+  contributorCount?: number; // Used by computeContributorScore for depth scoring (default 1)
 }
 
 /**
  * Base weights for each sub-score (must sum to 1.0).
  */
 const BASE_WEIGHTS = {
-  activity: 0.30,
-  contributor: 0.25,
-  pr: 0.20,
-  issue: 0.15,
+  activity: 0.28,
+  contributor: 0.22,
+  pr: 0.22,
+  issue: 0.18,
   churn: 0.10,
 } as const;
 
-/**
- * Normalize activity to 0-100.
- * Formula: min(commits_last_30_days / 30, 1) * 100, modified by velocity.
- * Velocity modifier: clamp velocity_change to [-50, 50] and shift score ±10%.
- */
-function computeActivityScore(metrics: ActivityMetricsResult): number {
-  const baseScore = Math.min(metrics.commitsLast30Days / 30, 1) * 100;
-
-  // Modify by velocity: clamp to [-50, 50] range, then scale to ±10 points
-  const clampedVelocity = Math.max(-50, Math.min(50, metrics.velocityChange));
-  const velocityModifier = (clampedVelocity / 50) * 10; // -10 to +10
-
-  return Math.max(0, Math.min(100, baseScore + velocityModifier));
+/** Clamp a value to [min, max]. */
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 /**
- * Normalize contributor diversity to 0-100.
- * Formula: (1 - topContributorPct/100) * 100
- * 100% by one person → 0 score. Evenly distributed → high score.
+ * Normalize activity to 0-100 using a log scale so large/active repos are not penalized.
+ *
+ * Formula:
+ *   base = min(log10(commitsLast30Days + 1) / log10(200), 1) * 80
+ *   velocityModifier = clamp(velocityChange, -50, 50) / 50 * 20
+ *   return clamp(base + velocityModifier, 0, 100)
+ *
+ * A repo with 200+ commits/month hits the 80-point base ceiling.
+ * The velocity modifier can shift the score up or down by up to 20 points.
  */
-function computeContributorScore(metrics: BusFactorResult): number {
-  return (1 - metrics.topContributorPct / 100) * 100;
+function computeActivityScore(metrics: ActivityMetricsResult): number {
+  const base = Math.min(
+    Math.log10(metrics.commitsLast30Days + 1) / Math.log10(200),
+    1,
+  ) * 80;
+
+  const velocityModifier = clamp(metrics.velocityChange, -50, 50) / 50 * 20;
+
+  return clamp(base + velocityModifier, 0, 100);
+}
+
+/**
+ * Normalize contributor diversity + depth to 0-100.
+ *
+ * Formula:
+ *   diversityScore = (1 - topContributorPct / 100) * 70
+ *   depthScore     = min(log10(contributorCount + 1) / log10(50), 1) * 30
+ *   return diversityScore + depthScore
+ *
+ * Diversity (70 pts): heavily penalizes single-contributor dominance.
+ * Depth (30 pts): rewards having many contributors (log-scaled, caps at 50 contributors).
+ */
+function computeContributorScore(
+  metrics: BusFactorResult,
+  contributorCount: number,
+): number {
+  const diversityScore = (1 - metrics.topContributorPct / 100) * 70;
+  const depthScore = Math.min(
+    Math.log10(contributorCount + 1) / Math.log10(50),
+    1,
+  ) * 30;
+
+  return diversityScore + depthScore;
 }
 
 /**
  * Normalize PR merge speed to 0-100.
  * Tiered by average merge time in DAYS:
- *   < 1 day  = 100
- *   < 3 days = 85
- *   < 7 days = 65
+ *   < 1 day   = 100
+ *   < 3 days  = 85
+ *   < 7 days  = 65
  *   < 14 days = 40
  *   >= 14 days = 15
  */
@@ -78,42 +108,70 @@ function computePRScore(metrics: PRMetricsResult): number {
 }
 
 /**
- * Normalize issue health to 0-100.
- * Formula: max(0, 100 - (openIssues / 10))
- * 0 open issues → 100. 1000 open issues → 0.
+ * Normalize issue health to 0-100 using a ratio-based approach.
+ * Rewards fast response, doesn't unfairly penalize large popular repos.
+ *
+ * Formula:
+ *   issueRatio  = openIssueCount / max(stars, 100)
+ *   ratioScore  = max(0, 100 - issueRatio * 500)
+ *   responseScore = 100 - unrespondedIssuePct
+ *   return ratioScore * 0.4 + responseScore * 0.6
+ *
+ * A repo with 1000 open issues but 100k stars has a ratio of 0.01 → ratioScore ≈ 95.
  */
-function computeIssueScore(metrics: IssueMetricsResult): number {
-  return Math.max(0, 100 - (metrics.openIssueCount / 10));
+function computeIssueScore(metrics: IssueMetricsResult, stars: number): number {
+  const issueRatio = metrics.openIssueCount / Math.max(stars, 100);
+  const ratioScore = Math.max(0, 100 - issueRatio * 500);
+  const responseScore = 100 - metrics.unrespondedIssuePct;
+
+  return ratioScore * 0.4 + responseScore * 0.6;
 }
 
 /**
- * Normalize code churn to 0-100.
- * Formula: max(0, 100 - (avgWeeklyChurn / 100))
- * Low churn → high score. Very high churn → low score.
+ * Normalize code churn to 0-100 using per-commit churn, not raw churn.
+ * Active development with proportional churn is not penalized.
+ *
+ * Formula:
+ *   churnPerCommit = avgWeeklyChurn / max(commitsPerWeek, 1)
+ *   return max(0, 100 - min(churnPerCommit / 50, 1) * 100)
+ *
+ * A repo churning 1000 lines/week but committing 20 times has churnPerCommit = 50 → score = 0.
+ * A repo churning 100 lines/week committing 10 times has churnPerCommit = 10 → score = 80.
  */
-function computeChurnScore(metrics: ChurnMetricsResult): number {
-  return Math.max(0, 100 - (metrics.avgWeeklyChurn / 100));
+function computeChurnScore(
+  metrics: ChurnMetricsResult,
+  commitsPerWeek: number,
+): number {
+  const churnPerCommit = metrics.avgWeeklyChurn / Math.max(commitsPerWeek, 1);
+  return Math.max(0, 100 - Math.min(churnPerCommit / 50, 1) * 100);
 }
 
 /**
  * Compute the composite health score.
  *
  * Formula:
- *   health = (activity * 0.30) + (contributor * 0.25) + (pr * 0.20) + (issue * 0.15) + (churn * 0.10)
+ *   health = (activity * 0.28) + (contributor * 0.22) + (pr * 0.22) + (issue * 0.18) + (churn * 0.10)
  *
  * If any sub-metric is null (insufficient data):
  *   - Redistribute its weight proportionally to remaining metrics
- *   - Example: if PR metrics null (weight 0.20), redistribute:
- *     activity gets 0.30 + (0.30/0.80 * 0.20) = 0.375, etc.
+ *   - Example: if PR metrics null (weight 0.22), redistribute:
+ *     activity gets 0.28 + (0.28/0.78 * 0.22) = ~0.359, etc.
+ *
+ * Special null overrides (Prompt 6.1):
+ *   - PR null  → fixed score of 50 (neutral, do NOT penalize)
+ *   - Issue null → fixed score of 75 (slightly positive — clean tracker)
+ *   - All other nulls → redistribute weight proportionally
  *
  * Final score: clamp to [0, 100], round to 1 decimal place.
+ * Archived repos: capped at 30.
  */
 export function computeHealthScore(input: HealthScoreInput): number {
+  // Resolve optional contextual parameters with safe defaults
+  const stars = input.stars ?? 0;
+  const commitsPerWeek = input.commitsPerWeek ?? 0;
+  const contributorCount = input.contributorCount ?? 1;
+
   // Build pairs of [score, baseWeight] for each sub-metric.
-  // Prompt 6.1 overrides:
-  //   - PR null → fixed score of 50 (neutral, do NOT penalize)
-  //   - Issue null → fixed score of 75 (slightly positive — clean tracker)
-  //   - All other nulls → redistribute weight proportionally
   const scorePairs: Array<{ score: number; baseWeight: number }> = [];
 
   // ── Activity ──
@@ -127,7 +185,7 @@ export function computeHealthScore(input: HealthScoreInput): number {
   // ── Contributor ──
   if (input.contributorMetrics !== null) {
     scorePairs.push({
-      score: computeContributorScore(input.contributorMetrics),
+      score: computeContributorScore(input.contributorMetrics, contributorCount),
       baseWeight: BASE_WEIGHTS.contributor,
     });
   }
@@ -149,7 +207,7 @@ export function computeHealthScore(input: HealthScoreInput): number {
   // ── Issue: null → force score 75 (Prompt 6.1: "slightly positive") ──
   if (input.issueMetrics !== null) {
     scorePairs.push({
-      score: computeIssueScore(input.issueMetrics),
+      score: computeIssueScore(input.issueMetrics, stars),
       baseWeight: BASE_WEIGHTS.issue,
     });
   } else {
@@ -163,7 +221,7 @@ export function computeHealthScore(input: HealthScoreInput): number {
   // ── Churn ──
   if (input.churnMetrics !== null) {
     scorePairs.push({
-      score: computeChurnScore(input.churnMetrics),
+      score: computeChurnScore(input.churnMetrics, commitsPerWeek),
       baseWeight: BASE_WEIGHTS.churn,
     });
   }
