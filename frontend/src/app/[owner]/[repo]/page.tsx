@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { API_BASE, AUTH_URL } from "@/config";
+import InfoTooltip from "@/components/InfoTooltip";
 
 // ── Types matching backend AllMetrics + metadata ──
 interface BusFactorResult {
@@ -23,10 +24,18 @@ interface ActivityMetricsResult {
   weeklyBreakdown: Array<{ week: string; count: number }>;
   totalWeeksActive: number;
 }
+interface IssueLabelBreakdown {
+  label: string;
+  count: number;
+  githubFilterUrl: string;
+}
 interface IssueMetricsResult {
   openIssueCount: number;
   avgIssueAgeDays: number;
   unrespondedIssuePct: number;
+  closedIssueCount?: number;
+  totalIssueCount?: number;
+  labelBreakdown?: IssueLabelBreakdown[];
 }
 interface ChurnMetricsResult {
   churnScore: number;
@@ -112,6 +121,14 @@ function churnLabel(churnScore: number): string {
   return "High";
 }
 
+function issueLabelAccent(label: string): string | null {
+  const normalized = label.toLowerCase();
+  if (normalized.includes("good first issue") || normalized.includes("beginner")) return "var(--green)";
+  if (normalized.includes("help wanted")) return "var(--orange-light)";
+  if (normalized.includes("bug")) return "var(--red)";
+  return null;
+}
+
 function flagCardClass(level: string): string {
   if (level === "danger") return "flag-card danger";
   if (level === "warning") return "flag-card warn";
@@ -164,6 +181,7 @@ export default function RepoDashboardPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Fetch current user ──
@@ -742,7 +760,11 @@ export default function RepoDashboardPage() {
                 </div>
 
                 <div className="health-meta">
-                  <h2>Repository Health Score - {healthLabel(score)}</h2>
+                  <h2 style={{ display: "inline-flex", alignItems: "center" }}>
+                    Repository Health Score
+                    <InfoTooltip metricKey="healthScore" />
+                    <span style={{ marginLeft: 6 }}>- {healthLabel(score)}</span>
+                  </h2>
                   <p>{healthDesc(score, owner, repo)}</p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
                     {meta?.language && <span className="meta-pill">🔵 {meta.language}</span>}
@@ -752,14 +774,20 @@ export default function RepoDashboardPage() {
                   </div>
                   <div className="health-stats">
                     <div>
-                      <div className="hstat-label">Bus Factor</div>
+                      <div className="hstat-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                        Bus Factor
+                        <InfoTooltip metricKey="busFactor" />
+                      </div>
                       <div className="hstat-val">{busf?.busFactor ?? "—"}</div>
                       <div className={`hstat-sub ${busf && busf.busFactor >= 3 ? "" : "orange"}`}>
                         {busf ? (busf.busFactor >= 3 ? "Stable" : "At Risk") : "N/A"}
                       </div>
                     </div>
                     <div>
-                      <div className="hstat-label">Velocity</div>
+                      <div className="hstat-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                        Velocity Change
+                        <InfoTooltip metricKey="velocityChange" />
+                      </div>
                       <div className="hstat-val">
                         {activity ? (activity.velocityChange >= 0 ? "+" : "") + Math.round(activity.velocityChange) + "%" : "—"}
                       </div>
@@ -776,7 +804,10 @@ export default function RepoDashboardPage() {
                     </div>
                     {activity && (
                       <div>
-                        <div className="hstat-label">30-Day Commits</div>
+                        <div className="hstat-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                          Commits (30d)
+                          <InfoTooltip metricKey="commitsLast30Days" />
+                        </div>
                         <div className="hstat-val">{activity.commitsLast30Days}</div>
                         <div className="hstat-sub muted">recent activity</div>
                       </div>
@@ -790,7 +821,10 @@ export default function RepoDashboardPage() {
             <div className="metrics-4">
               {/* Bus Factor */}
               <div className="metric-card">
-                <div className="metric-card-label">Bus Factor</div>
+                <div className="metric-card-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                  Bus Factor
+                  <InfoTooltip metricKey="busFactor" />
+                </div>
                 <div className="metric-card-bars">
                   {(busf ? busf.contributors.slice(0, 6).map((c) => c.pct) : busBarHeights).map((h, i) => (
                     <span key={i} style={{ height: `${Math.min(h, 100)}%` }}
@@ -799,13 +833,21 @@ export default function RepoDashboardPage() {
                 </div>
                 <div className="metric-card-val">{busf ? busf.busFactor : "—"}</div>
                 <div className="metric-card-sub">
-                  {busf ? `Top contributor: ${Math.round(busf.topContributorPct)}% of commits` : "Insufficient data"}
+                  {busf ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Top Contributor %
+                      <InfoTooltip metricKey="topContributorPct" />
+                      <span>: {Math.round(busf.topContributorPct)}% of commits</span>
+                    </span>
+                  ) : "Insufficient data"}
                 </div>
               </div>
 
               {/* PR Velocity */}
               <div className="metric-card">
-                <div className="metric-card-label">PR Velocity</div>
+                <div className="metric-card-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                  PR Velocity
+                </div>
                 <div className="metric-chart">
                   <svg viewBox="0 0 100 40" preserveAspectRatio="none">
                     {pr && (
@@ -818,9 +860,27 @@ export default function RepoDashboardPage() {
                   </svg>
                 </div>
                 <div className="metric-card-val">{pr ? prVelocityLabel(pr.avgMergeDays) : "N/A"}</div>
-                <div className="metric-card-sub" style={{ color: pr && pr.avgMergeDays < 3 ? "var(--green)" : "var(--text-muted)" }}>
-                  {pr ? `Avg ${pr.avgMergeDays.toFixed(1)}d merge · ${pr.totalPRs} PRs` : "No PR workflow detected"}
-                </div>
+                {pr ? (
+                  <div className="metric-card-sub" style={{ color: pr.avgMergeDays < 3 ? "var(--green)" : "var(--text-muted)", display: "grid", gap: 4 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Avg PR Merge Time
+                      <InfoTooltip metricKey="avgMergeDays" />
+                      <span>: {pr.avgMergeDays.toFixed(1)}d</span>
+                    </div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Median Merge Hours
+                      <InfoTooltip metricKey="medianMergeHrs" />
+                      <span>: {pr.medianMergeHrs.toFixed(1)}h</span>
+                    </div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Total PRs
+                      <InfoTooltip metricKey="totalPRs" />
+                      <span>: {pr.totalPRs}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="metric-card-sub">No PR workflow detected</div>
+                )}
               </div>
 
               {/* Issue Health */}
@@ -841,14 +901,35 @@ export default function RepoDashboardPage() {
                   </div>
                 </div>
                 <div className="metric-card-val">{issue ? issueHealthLabel(issue.unrespondedIssuePct, issue.openIssueCount) : "N/A"}</div>
-                <div className="metric-card-sub">
-                  {issue ? `${issue.openIssueCount} open · avg ${issue.avgIssueAgeDays.toFixed(0)}d age` : "No issue data"}
-                </div>
+                {issue ? (
+                  <div className="metric-card-sub" style={{ display: "grid", gap: 4 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Open Issues
+                      <InfoTooltip metricKey="openIssueCount" />
+                      <span>: {issue.openIssueCount}</span>
+                    </div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Avg Issue Age
+                      <InfoTooltip metricKey="avgIssueAgeDays" />
+                      <span>: {issue.avgIssueAgeDays.toFixed(0)}d</span>
+                    </div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Unresponded %
+                      <InfoTooltip metricKey="unrespondedIssuePct" />
+                      <span>: {issue.unrespondedIssuePct.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="metric-card-sub">No issue data</div>
+                )}
               </div>
 
               {/* Code Churn */}
               <div className="metric-card">
-                <div className="metric-card-label">Code Churn</div>
+                <div className="metric-card-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                  Churn Score
+                  <InfoTooltip metricKey="churnScore" />
+                </div>
                 <div className="metric-chart">
                   <svg viewBox="0 0 100 40" preserveAspectRatio="none">
                     {churn && (
@@ -867,9 +948,105 @@ export default function RepoDashboardPage() {
                 </div>
                 <div className="metric-card-val">{churn ? churnLabel(churn.churnScore) : "—"}</div>
                 <div className="metric-card-sub" style={{ color: churn && churn.churnScore < 30 ? "var(--green)" : "var(--text-muted)" }}>
-                  {churn ? `Avg ${Math.round(churn.avgWeeklyChurn)} lines/wk churn` : "No data"}
+                  {churn ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      Avg Weekly Churn
+                      <InfoTooltip metricKey="avgWeeklyChurn" />
+                      <span>: {Math.round(churn.avgWeeklyChurn)} lines/wk</span>
+                    </span>
+                  ) : "No data"}
                 </div>
               </div>
+            </div>
+
+            {/* ISSUE METRICS */}
+            <div className="card card-pad">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Issue Metrics</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
+                    Open Issues
+                    <InfoTooltip metricKey="openIssueCount" />
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? issue.openIssueCount : "—"}</div>
+                </div>
+                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
+                    Avg Issue Age
+                    <InfoTooltip metricKey="avgIssueAgeDays" />
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.avgIssueAgeDays.toFixed(1)}d` : "—"}</div>
+                </div>
+                <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
+                    Unresponded %
+                    <InfoTooltip metricKey="unrespondedIssuePct" />
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.unrespondedIssuePct.toFixed(1)}%` : "—"}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* OPEN ISSUES BY LABEL */}
+            <div className="card card-pad">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41 11 3H4v7l9.59 9.59a2 2 0 0 0 2.82 0l4.18-4.18a2 2 0 0 0 0-2.82Z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>
+                <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>Open Issues by Label</span>
+              </div>
+              {issue?.labelBreakdown && issue.labelBreakdown.length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                  {issue.labelBreakdown.map((labelItem) => {
+                    const accent = issueLabelAccent(labelItem.label);
+                    const isHover = hoveredLabel === labelItem.label;
+                    return (
+                      <div
+                        key={labelItem.label}
+                        onMouseEnter={() => setHoveredLabel(labelItem.label)}
+                        onMouseLeave={() => setHoveredLabel(null)}
+                        onClick={() => window.open(labelItem.githubFilterUrl, "_blank")}
+                        style={{
+                          background: "var(--bg-card)",
+                          border: `1px solid ${isHover ? "var(--border-hover)" : "var(--border)"}`,
+                          borderRadius: 10,
+                          padding: "12px 16px",
+                          cursor: "pointer",
+                          transform: isHover ? "translateY(-1px)" : "translateY(0)",
+                          transition: "border-color 0.15s ease, transform 0.15s ease",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          {accent && (
+                            <span
+                              style={{
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                background: accent,
+                                boxShadow: `0 0 0 2px ${accent === "var(--green)"
+                                  ? "rgba(34,197,94,0.15)"
+                                  : accent === "var(--orange-light)"
+                                    ? "rgba(255,94,0,0.15)"
+                                    : "rgba(239,68,68,0.15)"}`,
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{labelItem.label}</div>
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: "var(--orange-light)", lineHeight: 1.1 }}>
+                          {labelItem.count}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>open issues</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 2px" }}>No labeled issues found</div>
+              )}
             </div>
 
             {/* COMMITS TIMELINE */}
