@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE } from "@/config";
+import InfoTooltip from "@/components/InfoTooltip";
 
 const API = API_BASE;
 
@@ -382,21 +383,21 @@ export default function RepoComparePage() {
   const useLivePentagon = radarSeries.some((series) => series.scores !== null);
 
   // Comparison table rows: label, getter, unit, lowerIsBetter
-  const TABLE_ROWS: { label: string; get: (e?: ComparisonEntry) => number | null; fmt?: (v: number) => string; lowerBetter?: boolean }[] = [
-    { label: "HEALTH_SCORE", get: getHealth, fmt: v => v.toFixed(1) },
-    { label: "BUS_FACTOR", get: getBusFactor },
-    { label: "TOP_CONTRIB_%", get: getTopContrib, fmt: v => `${v.toFixed(1)}%`, lowerBetter: true },
-    { label: "CONTRIBUTORS", get: getContribCount },
-    { label: "COMMITS_30D", get: getCommits30 },
-    { label: "WEEKS_ACTIVE", get: getWeeklyActive },
-    { label: "PR_AVG_DAYS", get: getPRAvgDays, fmt: v => `${v.toFixed(1)}d`, lowerBetter: true },
-    { label: "PR_MEDIAN_HRS", get: getPRMedianHrs, fmt: v => `${v.toFixed(0)}h`, lowerBetter: true },
-    { label: "TOTAL_PRS", get: getPRTotal },
-    { label: "OPEN_ISSUES", get: getOpenIssues, lowerBetter: true },
-    { label: "ISSUE_AGE_AVG_DAYS", get: getIssueAge, fmt: v => `${v.toFixed(0)}d`, lowerBetter: true },
-    { label: "UNRESPONDED_ISSUES%", get: getUnresponded, fmt: v => `${v}%`, lowerBetter: true },
-    { label: "CHURN_SCORE", get: getChurnScore, lowerBetter: true },
-    { label: "AVG_WEEKLY_CHURN", get: getAvgChurn, lowerBetter: true },
+  const TABLE_ROWS: { label: string; metricKey?: string; get: (e?: ComparisonEntry) => number | null; fmt?: (v: number) => string; lowerBetter?: boolean }[] = [
+    { label: "HEALTH_SCORE", metricKey: "healthScore", get: getHealth, fmt: v => v.toFixed(1) },
+    { label: "BUS_FACTOR", metricKey: "busFactor", get: getBusFactor },
+    { label: "TOP_CONTRIB_%", metricKey: "topContributorPct", get: getTopContrib, fmt: v => `${v.toFixed(1)}%`, lowerBetter: true },
+    { label: "CONTRIBUTORS", metricKey: "busFactor", get: getContribCount },
+    { label: "COMMITS_30D", metricKey: "commitsLast30Days", get: getCommits30 },
+    { label: "WEEKS_ACTIVE", metricKey: "velocityChange", get: getWeeklyActive },
+    { label: "PR_AVG_DAYS", metricKey: "avgMergeDays", get: getPRAvgDays, fmt: v => `${v.toFixed(1)}d`, lowerBetter: true },
+    { label: "PR_MEDIAN_HRS", metricKey: "medianMergeHrs", get: getPRMedianHrs, fmt: v => `${v.toFixed(0)}h`, lowerBetter: true },
+    { label: "TOTAL_PRS", metricKey: "totalPRs", get: getPRTotal },
+    { label: "OPEN_ISSUES", metricKey: "openIssueCount", get: getOpenIssues, lowerBetter: true },
+    { label: "ISSUE_AGE_AVG_DAYS", metricKey: "avgIssueAgeDays", get: getIssueAge, fmt: v => `${v.toFixed(0)}d`, lowerBetter: true },
+    { label: "UNRESPONDED_ISSUES%", metricKey: "unrespondedIssuePct", get: getUnresponded, fmt: v => `${v}%`, lowerBetter: true },
+    { label: "CHURN_SCORE", metricKey: "churnScore", get: getChurnScore, lowerBetter: true },
+    { label: "AVG_WEEKLY_CHURN", metricKey: "avgWeeklyChurn", get: getAvgChurn, lowerBetter: true },
     { label: "DANGER_FLAGS", get: getDangerFlags, lowerBetter: true },
   ];
 
@@ -766,7 +767,12 @@ export default function RepoComparePage() {
                       const worst = rowWorst(row);
                       return (
                         <tr key={ri}>
-                          <td className="td-metric">{row.label}</td>
+                          <td className="td-metric">
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              {row.label}
+                              {row.metricKey && <InfoTooltip metricKey={row.metricKey} />}
+                            </span>
+                          </td>
                           {validRepos.map((repoRef, ci) => {
                             const e = entryForRepo(repoRef);
                             const v = row.get(e);
