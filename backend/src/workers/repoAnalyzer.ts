@@ -20,6 +20,7 @@ import { computeChurnMetrics } from '../metrics/churnMetrics';
 import { computeHealthScore } from '../metrics/healthScore';
 import { generateRiskFlags as generatePromptRiskFlags } from '../metrics/riskFlags';
 import { computeTimeline } from '../metrics/timeline';
+import { computeCommunityMetrics } from '../metrics/communityMetrics';
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 1: IMPORTS — Real fetchers + remaining stubs
@@ -106,6 +107,9 @@ function computeAllMetrics(
   const issueMetrics = computeIssueMetrics(issues, owner, repo, closedIssueCount);
   const churnMetrics = computeChurnMetrics(commits);
 
+  // ── Community Metrics ──
+  const communityMetrics = computeCommunityMetrics(metadata, prMetrics, issueMetrics, prs);
+
   // ── Prompt 6.1: Unusual commit patterns ──
   if (commits.length > 0) {
     // All commits in a single day → IRREGULAR COMMIT PATTERN
@@ -176,10 +180,12 @@ function computeAllMetrics(
     activityMetrics,
     issueMetrics,
     churnMetrics,
+    communityMetrics,
     healthScore,
     riskFlags,      // Pre-populated with 6.1 edge case flags
     aiAdvice: null,  // Populated in Step 10 by generateAIAdvice()
     aiAdviceModel: null,
+    metadata,
   };
 }
 
@@ -294,7 +300,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
       console.log(`   ${logPrefix} — Step 2: Empty repo (no default branch)`);
       const emptyResult: AllMetrics = {
         busFactor: null, prMetrics: null, activityMetrics: null,
-        issueMetrics: null, churnMetrics: null, healthScore: 0,
+        issueMetrics: null, churnMetrics: null, communityMetrics: null, healthScore: 0,
         riskFlags: [{ level: 'info', title: 'EMPTY REPOSITORY', detail: 'This repository has no commits.' }],
         aiAdvice: null,
         aiAdviceModel: null,
@@ -409,7 +415,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
       console.error(`   ${logPrefix} — Step 6: Metrics computation failed (saving partial):`, metricsError);
       metrics = {
         busFactor: null, prMetrics: null, activityMetrics: null,
-        issueMetrics: null, churnMetrics: null, healthScore: 0,
+        issueMetrics: null, churnMetrics: null, communityMetrics: null, healthScore: 0,
         riskFlags: [{ level: 'danger', title: 'COMPUTATION ERROR', detail: 'Metrics computation failed. Partial results may be available.' }],
         aiAdvice: null,
         aiAdviceModel: null,

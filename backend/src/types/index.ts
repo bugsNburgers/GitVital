@@ -95,6 +95,13 @@ export interface ChurnMetricsResult {
   totalChurn: number;
 }
 
+export interface CommunityMetricsResult {
+  starsToForksRatio: number;    // stars / max(forks, 1)
+  avgReviewsPerPR: number;      // avg reviews.totalCount across merged PRs
+  issueResponseScore: number;   // 100 - unrespondedIssuePct
+  communityScore: number;       // composite 0-100
+}
+
 export interface TimelineEntry {
   period: string;
   healthScore: number;
@@ -108,11 +115,13 @@ export interface AllMetrics {
   activityMetrics: ActivityMetricsResult | null;
   issueMetrics: IssueMetricsResult | null;
   churnMetrics: ChurnMetricsResult | null;
+  communityMetrics: CommunityMetricsResult | null;
   healthScore: number;
   riskFlags: RiskFlag[];
   aiAdvice: string | null;
   aiAdviceSource?: 'gemini' | 'rule-based';
   aiAdviceModel?: string | null;
+  metadata?: RepoMetadata;
 }
 
 export interface JobData {
