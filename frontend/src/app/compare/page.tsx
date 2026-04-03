@@ -45,6 +45,21 @@ interface PolledJobResult {
   error?: string;
 }
 
+interface RepoCompareInsight {
+  repo: string;
+  pros: string[];
+  cons: string[];
+  bestFor: string;
+  avoidIf: string;
+  verdict: string;
+}
+
+interface CompareInsightsResult {
+  repoInsights: RepoCompareInsight[];
+  overallRecommendation: string;
+  source: 'gemini' | 'rule-based';
+}
+
 const REPO_REF_REGEX = /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/;
 
 function parseRepoRef(value: string): { owner: string; repo: string } | null {
@@ -197,6 +212,10 @@ export default function RepoComparePage() {
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [aiInsights, setAiInsights] = useState<CompareInsightsResult | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiRequested, setAiRequested] = useState(false);
 
   const pollJobUntilDone = useCallback(async (jobId: string): Promise<PolledJobResult> => {
     for (let attempt = 0; attempt < 120; attempt += 1) {
@@ -352,6 +371,38 @@ export default function RepoComparePage() {
   const comparisonLookup = new Map(
     comparison.map((entry) => [repoRefKey(entry.owner, entry.repo), entry]),
   );
+
+  // Repos that have metrics in cache (enabled for AI)
+  const reposWithMetrics = validRepos.filter((repoRef) => {
+    const parsed = parseRepoRef(repoRef);
+    if (!parsed) return false;
+    return comparisonLookup.get(repoRefKey(parsed.owner, parsed.repo))?.metrics !== null;
+  });
+
+  async function handleAiCompare() {
+    if (aiLoading || reposWithMetrics.length < 2) return;
+    setAiRequested(true);
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch(`${API}/api/compare/insights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ repos: reposWithMetrics }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error || `AI compare request failed (HTTP ${res.status})`);
+      }
+      const data = await res.json() as CompareInsightsResult;
+      setAiInsights(data);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Failed to generate AI comparison.');
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   function entryForRepo(repoRef: string): ComparisonEntry | undefined {
     const parsed = parseRepoRef(repoRef);
@@ -560,7 +611,62 @@ export default function RepoComparePage() {
         /* RESPONSIVE */
         @media (max-width: 900px) { .input-grid { grid-template-columns: 1fr 1fr; } .nav-links { display: none; } }
         @media (max-width: 600px) { .input-grid { grid-template-columns: 1fr; } .cmp-main { padding: 24px 16px 120px; } .float-bar { flex-direction: column; gap: 12px; bottom: 16px; } }
-      ` }} />
+
+        /* AI INSIGHTS */
+        .ai-cmp-btn {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: linear-gradient(135deg, rgba(255,94,0,0.18), rgba(255,160,102,0.10));
+          border: 1px solid rgba(255,94,0,0.40); color: var(--orange-light);
+          border-radius: 12px; padding: 11px 24px; font-size: 14px; font-weight: 700;
+          cursor: pointer; transition: all 0.2s; font-family: var(--font); letter-spacing: -0.01em;
+        }
+        .ai-cmp-btn:hover:not(:disabled) {
+          background: linear-gradient(135deg, rgba(255,94,0,0.28), rgba(255,160,102,0.18));
+          border-color: rgba(255,94,0,0.65); box-shadow: 0 0 24px rgba(255,94,0,0.22);
+        }
+        .ai-cmp-btn:disabled { opacity: 0.48; cursor: not-allowed; }
+        .ai-cmp-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+        .ai-cmp-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+        .ai-cmp-grid { display: grid; gap: 14px; }
+        .ai-repo-card {
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 20px; display: flex; flex-direction: column; gap: 14px;
+          transition: border-color 0.2s;
+        }
+        .ai-repo-card:hover { border-color: var(--border-hover); }
+        .ai-repo-name { font-family: var(--mono); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 4px; }
+        .ai-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+        .ai-ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+        .ai-ul li { font-size: 12.5px; line-height: 1.5; display: flex; align-items: flex-start; gap: 8px; }
+        .ai-ul li::before { content: ''; flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; }
+        .ai-pros-label { color: var(--green); }
+        .ai-pros-list li { color: rgba(34,197,94,0.85); }
+        .ai-pros-list li::before { background: var(--green); }
+        .ai-cons-label { color: var(--red); }
+        .ai-cons-list li { color: rgba(239,68,68,0.85); }
+        .ai-cons-list li::before { background: var(--red); }
+        .ai-bestfor-label { color: #22d3ee; }
+        .ai-bestfor-text { font-size: 12.5px; color: rgba(34,211,238,0.8); line-height: 1.55; }
+        .ai-avoidif-label { color: var(--yellow); }
+        .ai-avoidif-text { font-size: 12.5px; color: rgba(234,179,8,0.8); line-height: 1.55; }
+        .ai-verdict-label { color: var(--text-secondary); }
+        .ai-verdict-text { font-size: 13px; color: var(--text); line-height: 1.6; font-style: italic; }
+        .ai-overall-card {
+          background: var(--bg-card); border: 1px solid rgba(255,94,0,0.22); border-radius: 14px;
+          padding: 24px;
+          background-image: linear-gradient(135deg, rgba(255,94,0,0.06) 0%, transparent 55%);
+          position: relative; overflow: hidden;
+        }
+        .ai-overall-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,94,0,0.45), transparent); }
+        .ai-overall-title { font-size: 14px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; display: flex; align-items: center; gap: 7px; }
+        .ai-overall-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.65; }
+        .ai-source-badge { font-family: var(--mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 6px; border: 1px solid; }
+        .ai-source-gemini { color: var(--orange-light); border-color: rgba(255,160,102,0.3); background: rgba(255,160,102,0.06); }
+        .ai-source-rule { color: var(--text-muted); border-color: var(--border); background: transparent; }
+        .ai-skel-row { height: 13px; border-radius: 6px; background: rgba(255,255,255,0.06); animation: aiPulse 1.4s ease-in-out infinite; margin-bottom: 8px; }
+        @keyframes aiPulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+        .ai-error { font-size: 13px; color: var(--red); margin-top: 4px; }
+      `, }} />
 
       <div className="cmp-page">
         {/* NAV */}
@@ -792,6 +898,124 @@ export default function RepoComparePage() {
                 </table>
               </div>
             </div>
+          </div>
+
+          {/* AI COMPARISON INSIGHTS */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+            <div className="ai-cmp-header">
+              <div>
+                <div className="ai-cmp-label">AI-powered analysis</div>
+                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.03em', marginTop: 2 }}>
+                  Contribution Intelligence
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {aiInsights && (
+                  <span className={`ai-source-badge ${aiInsights.source === 'gemini' ? 'ai-source-gemini' : 'ai-source-rule'}`}>
+                    {aiInsights.source === 'gemini' ? '✦ Gemini' : 'Rule-Based'}
+                  </span>
+                )}
+                <button
+                  id="ai-compare-btn"
+                  className="ai-cmp-btn"
+                  onClick={handleAiCompare}
+                  disabled={aiLoading || reposWithMetrics.length < 2}
+                  aria-label="Generate AI comparison insights"
+                >
+                  {aiLoading ? (
+                    <>
+                      <span style={{ display: 'inline-block', animation: 'aiPulse 1s infinite', fontSize: 16 }}>⏳</span>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>✨ Generate AI Comparison</>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {!aiRequested && !aiInsights && (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0' }}>
+                Click &ldquo;Generate AI Comparison&rdquo; to get a Gemini-powered analysis of the repositories above.
+                {reposWithMetrics.length < 2 && (
+                  <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
+                    Analyze at least 2 repos first.
+                  </span>
+                )}
+              </div>
+            )}
+
+            {aiError && <p className="ai-error">{aiError}</p>}
+
+            {aiRequested && aiLoading && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(reposWithMetrics.length, 4)}, 1fr)`, gap: 14 }}>
+                  {reposWithMetrics.slice(0, 4).map((_, i) => (
+                    <div key={i} className="ai-repo-card">
+                      <div className="ai-skel-row" style={{ width: '50%' }} />
+                      <div className="ai-skel-row" style={{ width: '80%' }} />
+                      <div className="ai-skel-row" style={{ width: '65%' }} />
+                      <div className="ai-skel-row" style={{ width: '90%' }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="ai-overall-card">
+                  <div className="ai-skel-row" style={{ width: '40%', marginBottom: 16 }} />
+                  <div className="ai-skel-row" style={{ width: '85%' }} />
+                  <div className="ai-skel-row" style={{ width: '70%' }} />
+                </div>
+              </>
+            )}
+
+            {aiInsights && !aiLoading && (() => {
+              const cols = Math.min(aiInsights.repoInsights.length, 4);
+              const gridCols = cols === 1 ? '1fr' : cols === 2 ? '1fr 1fr' : cols === 3 ? '1fr 1fr 1fr' : '1fr 1fr 1fr 1fr';
+              return (
+                <>
+                  <div className="ai-cmp-grid" style={{ gridTemplateColumns: gridCols }}>
+                    {aiInsights.repoInsights.map((insight, i) => (
+                      <div key={i} className="ai-repo-card">
+                        <div className="ai-repo-name">{insight.repo}</div>
+
+                        <div>
+                          <div className="ai-section-label ai-pros-label">▲ Pros</div>
+                          <ul className="ai-ul ai-pros-list">
+                            {insight.pros.map((p, pi) => <li key={pi}>{p}</li>)}
+                          </ul>
+                        </div>
+
+                        <div>
+                          <div className="ai-section-label ai-cons-label">▼ Cons</div>
+                          <ul className="ai-ul ai-cons-list">
+                            {insight.cons.map((c, ci) => <li key={ci}>{c}</li>)}
+                          </ul>
+                        </div>
+
+                        <div>
+                          <div className="ai-section-label ai-bestfor-label">● Best For</div>
+                          <p className="ai-bestfor-text">{insight.bestFor}</p>
+                        </div>
+
+                        <div>
+                          <div className="ai-section-label ai-avoidif-label">⚠ Avoid If</div>
+                          <p className="ai-avoidif-text">{insight.avoidIf}</p>
+                        </div>
+
+                        <div>
+                          <div className="ai-section-label ai-verdict-label">◆ Verdict</div>
+                          <p className="ai-verdict-text">{insight.verdict}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="ai-overall-card">
+                    <div className="ai-overall-title"><span>✨</span> AI Recommendation</div>
+                    <p className="ai-overall-text">{aiInsights.overallRecommendation}</p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </main>
 

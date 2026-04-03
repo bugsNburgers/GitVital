@@ -33,6 +33,8 @@ import { generateUserInsights } from '../ai/userInsights';
 import type { UserProfileData } from '../ai/userInsights';
 import { generateIssueRecommendations } from '../ai/issueRecommender';
 import type { RepoIssue, UserProfileSnippet } from '../ai/issueRecommender';
+import { generateCompareInsights } from '../ai/compareInsights';
+import type { RepoMetricsForCompare } from '../ai/compareInsights';
 
 // Start background workers in the same process to save hosting costs!
 import '../workers/repoAnalyzer';
@@ -347,6 +349,15 @@ const issueRecommendationsLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Issue recommendations rate limit exceeded. Please wait a minute.' },
+});
+
+const compareInsightsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `compare-insights:${getClientIp(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Compare insights rate limit exceeded. Please wait a minute before trying again.' },
 });
 
 app.use(defaultLimiter);
@@ -1771,7 +1782,66 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6k. GET /api/leaderboard — Get top developers
+// 6k. POST /api/compare/insights — AI-powered repo comparison
+// ─────────────────────────────────────────────────────────────
+// Body: { repos: string[] }  (2–4 "owner/repo" strings)
+// Looks up each repo from Redis cache, passes metrics to Gemini.
+
+app.post(
+  '/api/compare/insights',
+  compareInsightsLimiter,
+  [body('repos').isArray({ min: 2, max: 4 }).withMessage('repos must be an array of 2-4 repo strings')],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const rawRepos = req.body.repos as unknown[];
+
+      // Validate each repo string format
+      const repoPattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+      const validRepos = rawRepos
+        .map((r) => String(r).trim())
+        .filter((r) => repoPattern.test(r))
+        .slice(0, 4);
+
+      if (validRepos.length < 2) {
+        res.status(400).json({ error: 'At least 2 valid "owner/repo" strings are required.' });
+        return;
+      }
+
+      // Fetch metrics from cache for each repo
+      const metricsEntries = await Promise.all(
+        validRepos.map(async (repoRef) => {
+          const [owner, repoName] = repoRef.split('/');
+          if (!owner || !repoName) return null;
+          const cached = await getFreshRepoMetricsCache<object>(owner, repoName);
+          if (!cached) return null;
+          return { repo: repoRef, metrics: cached.value } as RepoMetricsForCompare;
+        }),
+      );
+
+      const validEntries = metricsEntries.filter((e): e is RepoMetricsForCompare => e !== null);
+
+      if (validEntries.length < 2) {
+        res.status(400).json({
+          error: 'At least 2 repositories must have been analyzed before generating compare insights. Analyze the missing repos first.',
+          analyzedCount: validEntries.length,
+          requestedCount: validRepos.length,
+        });
+        return;
+      }
+
+      const result = await generateCompareInsights(validEntries);
+      res.json(result);
+    } catch (error) {
+      console.error('[AI][Compare] Error generating compare insights:', error);
+      res.status(500).json({ error: 'Failed to generate comparison insights' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6l. GET /api/leaderboard — Get top developers
 // ─────────────────────────────────────────────────────────────
 // Optional filter: ?lang=typescript (filter by primary language)
 // Returns: top 100 developers sorted by their developer score
