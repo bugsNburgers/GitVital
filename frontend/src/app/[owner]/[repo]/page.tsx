@@ -1206,7 +1206,7 @@ export default function RepoDashboardPage() {
                         <button
                           id="rec-find-btn"
                           className="rec-find-btn"
-                          onClick={fetchIssueRecommendations}
+                          onClick={() => fetchIssueRecommendations()}
                           disabled={recLoading}
                         >
                           ✨ Find Issues For Me
