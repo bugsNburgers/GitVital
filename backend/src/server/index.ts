@@ -29,6 +29,8 @@ import {
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
 import { resetGeminiCooldown, getGeminiModelCandidates } from '../ai/advice';
+import { generateUserInsights } from '../ai/userInsights';
+import type { UserProfileData } from '../ai/userInsights';
 
 // Start background workers in the same process to save hosting costs!
 import '../workers/repoAnalyzer';
@@ -325,6 +327,15 @@ const badgeLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Badge rate limit exceeded. Try again shortly.' },
+});
+
+const aiInsightsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `ai-insights:${getClientIp(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'AI insights rate limit exceeded. Please wait a minute before trying again.' },
 });
 
 app.use(defaultLimiter);
@@ -1517,7 +1528,105 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6h. GET /api/leaderboard — Get top developers
+// 6h. POST /api/user/:username/ai-insights — Gemini profile analysis
+// ─────────────────────────────────────────────────────────────
+// Returns AI-generated summary, strengths, areas for growth,
+// contribution style, and recommended focus areas. Cached 24h.
+
+app.post(
+  '/api/user/:username/ai-insights',
+  aiInsightsLimiter,
+  [param('username').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_-]+$/)],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const username = req.params.username as string;
+      const headers = await buildGitHubRestHeaders(req, username);
+
+      // Fetch GitHub user + repos + contribution cache in parallel
+      const [userResponse, reposResponse, contributionCache] = await Promise.all([
+        fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
+        fetch(
+          `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`,
+          { headers },
+        ),
+        getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+      ]);
+
+      if (userResponse.status === 404) {
+        res.status(404).json({ error: `GitHub user "${username}" was not found.` });
+        return;
+      }
+
+      if (!userResponse.ok) {
+        res.status(502).json({ error: `Failed to fetch GitHub profile (HTTP ${userResponse.status}).` });
+        return;
+      }
+
+      const githubUser = await userResponse.json() as GitHubUserApiResponse;
+
+      let githubRepos: GitHubRepoApiResponse[] = [];
+      if (reposResponse.ok) {
+        const reposPayload = await reposResponse.json() as unknown;
+        if (Array.isArray(reposPayload)) {
+          githubRepos = reposPayload.filter((entry) =>
+            Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry),
+          ) as GitHubRepoApiResponse[];
+        }
+      }
+
+      const publicRepos = githubRepos
+        .filter((repo) => !repo.private)
+        .slice(0, MAX_USER_PROFILE_REPOS);
+
+      // Pull health scores from cache for each repo
+      const repoHealthScores: number[] = [];
+      const repoNames: string[] = [];
+      const repoLanguages: (string | null)[] = [];
+
+      await Promise.all(
+        publicRepos.map(async (repo) => {
+          repoNames.push(repo.name);
+          repoLanguages.push(repo.language);
+          const ownerFromFullName = repo.full_name.split('/')[0] || username;
+          const cached = await getFreshRepoMetricsCache<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
+          if (cached && typeof cached.value?.healthScore === 'number') {
+            repoHealthScores.push(Number(cached.value.healthScore));
+          }
+        }),
+      );
+
+      const contribution = contributionCache?.value ?? null;
+
+      const profileData: UserProfileData = {
+        username: githubUser.login,
+        publicRepos: githubUser.public_repos,
+        followers: githubUser.followers,
+        following: githubUser.following,
+        topLanguage: getTopLanguage(publicRepos),
+        externalPRCount: contribution?.externalPRCount ?? 0,
+        externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
+        contributionAcceptanceRate: contribution?.contributionAcceptanceRate ?? 0,
+        issuesOpened: 0, // Not fetched again here — use cached value if available
+        issuesClosed: 0,
+        repoHealthScores,
+        repoNames,
+        repoLanguages,
+      };
+
+      const insights = await generateUserInsights(profileData);
+
+      res.json(insights);
+    } catch (error) {
+      console.error('[AI][UserInsights] Error generating user insights:', error);
+      res.status(500).json({ error: 'Failed to generate AI profile insights' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6i. GET /api/leaderboard — Get top developers
 // ─────────────────────────────────────────────────────────────
 // Optional filter: ?lang=typescript (filter by primary language)
 // Returns: top 100 developers sorted by their developer score
