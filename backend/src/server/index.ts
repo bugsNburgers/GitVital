@@ -608,6 +608,9 @@ interface UserProfileApiResponse {
   reliabilityPct: number;
   percentile: string;
   needsAnalysis: boolean;
+  issuesOpened: number;
+  issuesClosed: number;
+  issuesOpen: number;
   contribution: {
     externalPRCount: number;
     externalMergedPRCount: number;
@@ -1374,6 +1377,26 @@ app.get(
         getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
       ]);
 
+      // Fetch user issue stats (opened + closed)
+      let issuesOpened = 0;
+      let issuesClosed = 0;
+      try {
+        const [openedRes, closedRes] = await Promise.all([
+          fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue&per_page=1`, { headers }),
+          fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue+is:closed&per_page=1`, { headers }),
+        ]);
+        if (openedRes.ok) {
+          const data = await openedRes.json() as { total_count?: number };
+          issuesOpened = data.total_count ?? 0;
+        }
+        if (closedRes.ok) {
+          const data = await closedRes.json() as { total_count?: number };
+          issuesClosed = data.total_count ?? 0;
+        }
+      } catch (e) {
+        console.warn('[UserProfile] Failed to fetch issue stats:', e);
+      }
+
       if (userResponse.status === 404) {
         res.status(404).json({ error: `GitHub user "${username}" was not found.` });
         return;
@@ -1470,6 +1493,9 @@ app.get(
         reliabilityPct,
         percentile: computePercentileLabel(developerScore),
         needsAnalysis: !contribution,
+        issuesOpened,
+        issuesClosed,
+        issuesOpen: Math.max(0, issuesOpened - issuesClosed),
         contribution: {
           externalPRCount: contribution?.externalPRCount ?? 0,
           externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,

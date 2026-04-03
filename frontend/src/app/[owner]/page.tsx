@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { API_BASE, AUTH_URL } from "@/config";
+import InfoTooltip from "@/components/InfoTooltip";
 
 type BadgeTone = "orange" | "secondary" | "emerald" | "orange-light";
 type LoadState = "checking" | "queuing" | "polling" | "done" | "error";
@@ -47,6 +48,9 @@ interface UserProfileResponse {
     reliabilityPct: number;
     percentile: string;
     needsAnalysis: boolean;
+    issuesOpened: number;
+    issuesClosed: number;
+    issuesOpen: number;
     contribution: {
         externalPRCount: number;
         externalMergedPRCount: number;
@@ -207,6 +211,15 @@ export default function UserProfilePage() {
     const [jobProgress, setJobProgress] = useState(0);
     const [repoSort, setRepoSort] = useState<"health" | "activity" | "stars">("health");
     const [showAllRepos, setShowAllRepos] = useState(false);
+    const [aiInsights, setAiInsights] = useState<{
+        strengths: string;
+        areasForGrowth: string;
+        contributionStyle: string;
+        recommendedFocus: string;
+    } | null>(null);
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiError, setAiError] = useState<string | null>(null);
+    const [aiRequested, setAiRequested] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const score = Math.round(profile?.developerScore ?? 0);
@@ -412,6 +425,34 @@ export default function UserProfilePage() {
     const loadingOnly = loadState === "checking" && !profile;
     const hardError = loadState === "error" && !profile;
     const lastAnalyzed = profile?.lastAnalyzedAt ? formatRelativeTime(profile.lastAnalyzedAt) : "Not analyzed yet";
+
+    async function handleAiInsights() {
+        if (aiLoading) return;
+        setAiRequested(true);
+        setAiLoading(true);
+        setAiError(null);
+        try {
+            const res = await fetch(`${API_BASE}/api/user/${encodeURIComponent(owner)}/ai-insights`, {
+                method: "POST",
+                credentials: "include",
+            });
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({})) as { error?: string };
+                throw new Error(payload.error || `AI insights request failed (HTTP ${res.status}).`);
+            }
+            const data = await res.json() as {
+                strengths: string;
+                areasForGrowth: string;
+                contributionStyle: string;
+                recommendedFocus: string;
+            };
+            setAiInsights(data);
+        } catch (err) {
+            setAiError(err instanceof Error ? err.message : "Failed to generate AI insights.");
+        } finally {
+            setAiLoading(false);
+        }
+    }
 
     const statusTitle = loadState === "queuing"
         ? "Queueing profile analysis"
@@ -640,6 +681,51 @@ export default function UserProfilePage() {
         }
         .btn-view-all-repos .material-symbols-outlined { font-size: 18px; }
 
+        .issue-stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+        .issue-stat-card {
+          flex: 1; min-width: 120px; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+          border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+        }
+        .issue-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+        .issue-stat-value { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; color: var(--text); }
+        .issue-stat-value.opened { color: var(--orange-light); }
+        .issue-stat-value.closed { color: var(--green); }
+        .issue-stat-value.open { color: var(--secondary, #0ea5e9); }
+
+        .ai-insights-btn {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: linear-gradient(135deg, rgba(255,94,0,0.15), rgba(255,160,102,0.1));
+          border: 1px solid rgba(255,94,0,0.35); color: var(--orange-light);
+          border-radius: 12px; padding: 10px 20px; font-size: 14px; font-weight: 600;
+          cursor: pointer; transition: all 0.2s; font-family: var(--font);
+        }
+        .ai-insights-btn:hover:not(:disabled) {
+          background: linear-gradient(135deg, rgba(255,94,0,0.25), rgba(255,160,102,0.18));
+          border-color: rgba(255,94,0,0.6); box-shadow: 0 0 20px rgba(255,94,0,0.2);
+        }
+        .ai-insights-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .ai-insights-card {
+          background: var(--bg-card); border-radius: 20px; padding: 28px;
+          border: 1px solid rgba(255,94,0,0.2);
+          background-image: linear-gradient(135deg, rgba(255,94,0,0.05) 0%, transparent 60%);
+          margin-top: 4px;
+        }
+        .ai-insights-title {
+          font-size: 17px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 20px;
+          display: flex; align-items: center; gap: 8px;
+        }
+        .ai-insights-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .ai-insight-section { display: flex; flex-direction: column; gap: 6px; }
+        .ai-insight-subtitle { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--orange-light); margin-bottom: 2px; }
+        .ai-insight-text { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+        .ai-insights-loading { display: flex; flex-direction: column; gap: 10px; }
+        .ai-skel { height: 14px; border-radius: 6px; background: rgba(255,255,255,0.06); animation: pulse 1.5s ease-in-out infinite; }
+        .ai-skel.wide { width: 80%; }
+        .ai-skel.medium { width: 60%; }
+        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+        .ai-error-msg { font-size: 13px; color: var(--red, #ef4444); padding: 12px 0; }
+
         .site-footer {
           margin-top: 60px; padding: 30px 24px; border-top: 1px solid var(--border);
           display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;
@@ -799,14 +885,43 @@ export default function UserProfilePage() {
                                 </div>
 
                                 <div className="profile-score-summary">
-                                    <span className="score-summary-th">Developer Score</span>
+                                    <span className="score-summary-th">Developer Score <InfoTooltip metricKey="developerScore" /></span>
                                     <span className="score-summary-val">{score}</span>
                                     <div className="score-reliability-row">
-                                        <span className="score-reliability-label">Reliability</span>
+                                        <span className="score-reliability-label">Reliability <InfoTooltip metricKey="reliabilityPct" /></span>
                                         <span className="score-reliability-value">{reliability}%</span>
                                     </div>
                                     <div className="score-summary-bar">
                                         <div className="score-summary-bar-fill" style={{ width: `${reliability}%` }} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="profile-section">
+                                <div className="section-header">
+                                    <h3 className="section-title"><span className="material-symbols-outlined">alt_route</span> Issue Activity</h3>
+                                </div>
+                                <div className="issue-stats-row">
+                                    <div className="issue-stat-card">
+                                        <span className="issue-stat-label">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>add_circle</span>
+                                            Issues Opened
+                                        </span>
+                                        <span className="issue-stat-value opened">{(profile.issuesOpened ?? 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="issue-stat-card">
+                                        <span className="issue-stat-label">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>check_circle</span>
+                                            Issues Closed
+                                        </span>
+                                        <span className="issue-stat-value closed">{(profile.issuesClosed ?? 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="issue-stat-card">
+                                        <span className="issue-stat-label">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>radio_button_unchecked</span>
+                                            Currently Open
+                                        </span>
+                                        <span className="issue-stat-value open">{(profile.issuesOpen ?? 0).toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
@@ -833,6 +948,78 @@ export default function UserProfilePage() {
                                                 <span className="badge-level">{badge.level}</span>
                                             </div>
                                         ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* AI Profile Insights Section */}
+                            <div className="profile-section">
+                                <div className="section-header">
+                                    <h3 className="section-title"><span className="material-symbols-outlined">auto_awesome</span> AI Profile Insights</h3>
+                                    <button
+                                        id="ai-insights-btn"
+                                        className="ai-insights-btn"
+                                        onClick={handleAiInsights}
+                                        disabled={aiLoading}
+                                        aria-label="Generate AI profile insights"
+                                    >
+                                        {aiLoading ? (
+                                            <>
+                                                <span className="material-symbols-outlined" style={{ fontSize: "16px", animation: "pulse 1.2s infinite" }}>hourglass_top</span>
+                                                Analyzing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                ✨ Generate AI Insights
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+
+                                {!aiRequested && !aiInsights && (
+                                    <div className="section-empty" style={{ fontStyle: "italic" }}>
+                                        Click &ldquo;Generate AI Insights&rdquo; to get a Gemini-powered analysis of this developer profile.
+                                    </div>
+                                )}
+
+                                {aiRequested && aiLoading && (
+                                    <div className="ai-insights-card">
+                                        <div className="ai-insights-loading">
+                                            <div className="ai-skel wide" />
+                                            <div className="ai-skel medium" />
+                                            <div className="ai-skel wide" />
+                                            <div className="ai-skel" style={{ width: "40%" }} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {aiError && (
+                                    <p className="ai-error-msg">{aiError}</p>
+                                )}
+
+                                {aiInsights && (
+                                    <div className="ai-insights-card">
+                                        <div className="ai-insights-title">
+                                            <span>✨</span> AI Profile Insights
+                                        </div>
+                                        <div className="ai-insights-grid">
+                                            <div className="ai-insight-section">
+                                                <span className="ai-insight-subtitle">Strengths</span>
+                                                <p className="ai-insight-text">{aiInsights.strengths}</p>
+                                            </div>
+                                            <div className="ai-insight-section">
+                                                <span className="ai-insight-subtitle">Areas for Growth</span>
+                                                <p className="ai-insight-text">{aiInsights.areasForGrowth}</p>
+                                            </div>
+                                            <div className="ai-insight-section">
+                                                <span className="ai-insight-subtitle">Contribution Style</span>
+                                                <p className="ai-insight-text">{aiInsights.contributionStyle}</p>
+                                            </div>
+                                            <div className="ai-insight-section">
+                                                <span className="ai-insight-subtitle">Recommended Focus</span>
+                                                <p className="ai-insight-text">{aiInsights.recommendedFocus}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
