@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE } from "@/config";
+import { API_BASE, AUTH_URL } from "@/config";
 import InfoTooltip from "@/components/InfoTooltip";
 
 const API = API_BASE;
@@ -215,7 +215,16 @@ export default function RepoComparePage() {
   const [aiInsights, setAiInsights] = useState<CompareInsightsResult | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiErrorCode, setAiErrorCode] = useState<string | null>(null);
   const [aiRequested, setAiRequested] = useState(false);
+  const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/me`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setUser(d as { loggedIn: boolean; githubUsername?: string }))
+      .catch(() => setUser({ loggedIn: false }));
+  }, []);
 
   const pollJobUntilDone = useCallback(async (jobId: string): Promise<PolledJobResult> => {
     for (let attempt = 0; attempt < 120; attempt += 1) {
@@ -384,6 +393,7 @@ export default function RepoComparePage() {
     setAiRequested(true);
     setAiLoading(true);
     setAiError(null);
+    setAiErrorCode(null);
     try {
       const res = await fetch(`${API}/api/compare/insights`, {
         method: 'POST',
@@ -392,7 +402,8 @@ export default function RepoComparePage() {
         body: JSON.stringify({ repos: reposWithMetrics }),
       });
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({})) as { error?: string };
+        const payload = await res.json().catch(() => ({})) as { error?: string; code?: string };
+        setAiErrorCode(payload.code ?? null);
         throw new Error(payload.error || `AI compare request failed (HTTP ${res.status})`);
       }
       const data = await res.json() as CompareInsightsResult;
@@ -666,6 +677,30 @@ export default function RepoComparePage() {
         .ai-skel-row { height: 13px; border-radius: 6px; background: rgba(255,255,255,0.06); animation: aiPulse 1.4s ease-in-out infinite; margin-bottom: 8px; }
         @keyframes aiPulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
         .ai-error { font-size: 13px; color: var(--red); margin-top: 4px; }
+        .ai-quota-banner {
+          background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.3);
+          border-radius: 12px; padding: 16px 20px;
+          display: flex; align-items: center; gap: 12px; font-size: 13px; color: rgba(234,179,8,0.9);
+        }
+        .ai-login-wall {
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+          padding: 36px; display: flex; flex-direction: column; align-items: center;
+          gap: 14px; text-align: center; position: relative; overflow: hidden;
+        }
+        .ai-login-wall::before { content: ''; position: absolute; inset: 0;
+          background: radial-gradient(ellipse at 50% 0%, rgba(255,94,0,0.08) 0%, transparent 65%);
+          pointer-events: none; }
+        .ai-login-wall-icon { font-size: 32px; }
+        .ai-login-wall-title { font-size: 16px; font-weight: 800; letter-spacing: -0.02em; }
+        .ai-login-wall-desc { font-size: 13px; color: var(--text-secondary); max-width: 400px; line-height: 1.6; }
+        .ai-login-btn {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: var(--orange); color: #fff;
+          border: 1px solid rgba(255,94,0,0.5); border-radius: 12px;
+          padding: 11px 24px; font-size: 14px; font-weight: 700;
+          cursor: pointer; text-decoration: none; transition: background 0.2s, box-shadow 0.2s;
+        }
+        .ai-login-btn:hover { background: #D94E00; box-shadow: 0 0 24px rgba(255,94,0,0.35); }
       `, }} />
 
       <div className="cmp-page">
@@ -909,43 +944,62 @@ export default function RepoComparePage() {
                   Contribution Intelligence
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {aiInsights && (
-                  <span className={`ai-source-badge ${aiInsights.source === 'gemini' ? 'ai-source-gemini' : 'ai-source-rule'}`}>
-                    {aiInsights.source === 'gemini' ? '✦ Gemini' : 'Rule-Based'}
-                  </span>
-                )}
-                <button
-                  id="ai-compare-btn"
-                  className="ai-cmp-btn"
-                  onClick={handleAiCompare}
-                  disabled={aiLoading || reposWithMetrics.length < 2}
-                  aria-label="Generate AI comparison insights"
-                >
-                  {aiLoading ? (
-                    <>
-                      <span style={{ display: 'inline-block', animation: 'aiPulse 1s infinite', fontSize: 16 }}>⏳</span>
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>✨ Generate AI Comparison</>
+              {user?.loggedIn && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {aiInsights && (
+                    <span className={`ai-source-badge ${aiInsights.source === 'gemini' ? 'ai-source-gemini' : 'ai-source-rule'}`}>
+                      {aiInsights.source === 'gemini' ? '✦ Gemini' : 'Rule-Based'}
+                    </span>
                   )}
-                </button>
-              </div>
+                  <button
+                    id="ai-compare-btn"
+                    className="ai-cmp-btn"
+                    onClick={handleAiCompare}
+                    disabled={aiLoading || reposWithMetrics.length < 2}
+                    aria-label="Generate AI comparison insights"
+                  >
+                    {aiLoading ? (
+                      <><span style={{ display: 'inline-block', animation: 'aiPulse 1s infinite', fontSize: 16 }}>⏳</span>Analyzing...</>
+                    ) : (
+                      <>✨ {aiInsights ? 'Re-generate' : 'Generate AI Comparison'}</>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {!aiRequested && !aiInsights && (
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0' }}>
-                Click &ldquo;Generate AI Comparison&rdquo; to get a Gemini-powered analysis of the repositories above.
-                {reposWithMetrics.length < 2 && (
-                  <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
-                    Analyze at least 2 repos first.
-                  </span>
-                )}
+            {/* Login wall for unauthenticated users */}
+            {!user?.loggedIn && (
+              <div className="ai-login-wall">
+                <div className="ai-login-wall-icon">🔒</div>
+                <div className="ai-login-wall-title">Sign in to unlock AI Comparison</div>
+                <p className="ai-login-wall-desc">
+                  Get Gemini-powered pros, cons, and verdicts for every repo — tailored to help you choose the right project to contribute to.
+                </p>
+                <a href={AUTH_URL} className="ai-login-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                  Sign In with GitHub
+                </a>
               </div>
             )}
 
-            {aiError && <p className="ai-error">{aiError}</p>}
+            {/* Quota exceeded banner */}
+            {user?.loggedIn && aiErrorCode === 'QUOTA_EXCEEDED' && (
+              <div className="ai-quota-banner">
+                🌅 Daily AI limit reached. Your quota resets at midnight UTC. Come back tomorrow!
+              </div>
+            )}
+
+            {user?.loggedIn && aiError && aiErrorCode !== 'QUOTA_EXCEEDED' && <p className="ai-error">{aiError}</p>}
+
+            {user?.loggedIn && !aiRequested && !aiInsights && (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic', padding: '12px 0' }}>
+                Click &ldquo;Generate AI Comparison&rdquo; to get a Gemini-powered analysis of the repositories above.
+                {reposWithMetrics.length < 2 && (
+                  <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>Analyze at least 2 repos first.</span>
+                )}
+              </div>
+            )}
 
             {aiRequested && aiLoading && (
               <>
