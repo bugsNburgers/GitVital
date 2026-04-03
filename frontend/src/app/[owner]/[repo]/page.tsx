@@ -69,6 +69,14 @@ interface RepoMetrics {
   metadata?: RepoMetadata;
 }
 
+interface IssueRecommendation {
+  issueTitle: string;
+  labels: string[];
+  reason: string;
+  difficultyMatch: 'easy' | 'medium' | 'hard';
+  githubUrl: string;
+}
+
 type LoadState = "idle" | "checking" | "queuing" | "polling" | "done" | "error";
 
 // ── Helper to format numbers ──
@@ -183,6 +191,12 @@ export default function RepoDashboardPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Issue recommendation state
+  const [issueRecommendations, setIssueRecommendations] = useState<IssueRecommendation[] | null>(null);
+  const [recLoading, setRecLoading] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
+  const [recSource, setRecSource] = useState<'gemini' | 'rule-based' | null>(null);
 
   // ── Fetch current user ──
   useEffect(() => {
@@ -322,6 +336,30 @@ export default function RepoDashboardPage() {
       setCopyDone(true);
       setTimeout(() => setCopyDone(false), 2000);
     });
+  }
+
+  // Derive logged-in username from existing /api/me fetch
+  const loggedInUser = user?.loggedIn ? (user.githubUsername ?? null) : null;
+
+  async function fetchIssueRecommendations() {
+    if (recLoading || !loggedInUser) return;
+    setRecLoading(true);
+    setRecError(null);
+    try {
+      const url = `${API_BASE}/api/repo/${owner}/${repo}/recommendations?username=${encodeURIComponent(loggedInUser)}`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(payload.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { recommendations: IssueRecommendation[]; source: 'gemini' | 'rule-based' };
+      setIssueRecommendations(data.recommendations ?? []);
+      setRecSource(data.source);
+    } catch (err) {
+      setRecError(err instanceof Error ? err.message : 'Failed to load recommendations.');
+    } finally {
+      setRecLoading(false);
+    }
   }
 
   // ── Derived data ──
@@ -648,6 +686,63 @@ export default function RepoDashboardPage() {
           .dash-main { padding: 24px 16px 60px; }
           .dash-breadcrumb { display: none; }
         }
+
+        /* ── Issue Recommendations ── */
+        .rec-section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+        .rec-section-title { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+        .rec-find-btn {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: linear-gradient(135deg, var(--orange), #D94E00);
+          color: #fff; border: none; border-radius: 10px;
+          padding: 10px 20px; font-size: 13.5px; font-weight: 700;
+          cursor: pointer; font-family: var(--font);
+          transition: opacity 0.15s, box-shadow 0.15s;
+        }
+        .rec-find-btn:hover:not(:disabled) { opacity: 0.88; box-shadow: 0 0 20px rgba(255,94,0,0.35); }
+        .rec-find-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .rec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .rec-card {
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 16px 20px; display: flex; flex-direction: column; gap: 10px;
+          transition: border-color 0.18s;
+        }
+        .rec-card:hover { border-color: var(--border-hover); }
+        .rec-title {
+          font-size: 14px; font-weight: 600; color: var(--text);
+          cursor: pointer; text-decoration: none; line-height: 1.45;
+          transition: color 0.15s;
+        }
+        .rec-title:hover { color: var(--orange-light); }
+        .rec-labels { display: flex; flex-wrap: wrap; gap: 5px; }
+        .rec-label-pill {
+          background: rgba(255,94,0,0.10); border: 1px solid rgba(255,94,0,0.2);
+          border-radius: 12px; padding: 2px 10px;
+          font-size: 10px; color: var(--orange-light); font-weight: 600;
+        }
+        .rec-reason { font-size: 12px; color: var(--text-secondary); line-height: 1.55; font-style: italic; }
+        .rec-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+        .rec-diff-easy { background: var(--green-dim); color: var(--green); padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+        .rec-diff-medium { background: var(--yellow-dim); color: var(--yellow); padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+        .rec-diff-hard { background: var(--red-dim); color: var(--red); padding: 2px 10px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+        .rec-gh-link { font-size: 11px; color: var(--orange-light); text-decoration: none; font-weight: 600; transition: color 0.15s; }
+        .rec-gh-link:hover { color: var(--orange); }
+        .rec-locked {
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 32px 24px; text-align: center; position: relative; overflow: hidden;
+          filter: none;
+        }
+        .rec-locked-blur {
+          position: absolute; inset: 0; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+          background: rgba(8,9,9,0.55); border-radius: 12px;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+          z-index: 2;
+        }
+        .rec-locked-text { font-size: 14px; color: var(--text-secondary); max-width: 300px; line-height: 1.55; }
+        .rec-locked-bg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; opacity: 0.3; pointer-events: none; }
+        .rec-skel { background: rgba(255,255,255,0.06); border-radius: 6px; animation: recPulse 1.5s ease-in-out infinite; }
+        @keyframes recPulse { 0%,100%{opacity:0.45} 50%{opacity:0.85} }
+        .rec-note { font-size: 11px; color: var(--text-muted); font-style: italic; margin-top: 4px; }
+        @media (max-width: 700px) { .rec-grid { grid-template-columns: 1fr; } }
       ` }} />
 
       <div className="dash-page">
@@ -1046,6 +1141,161 @@ export default function RepoDashboardPage() {
                 </div>
               ) : (
                 <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 2px" }}>No labeled issues found</div>
+              )}
+            </div>
+
+            {/* CONTRIBUTION RECOMMENDATIONS */}
+            <div className="card card-pad">
+              <div className="rec-section-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span className="rec-section-title">Contribution Recommendations</span>
+              </div>
+
+              {/* Not logged in — blurred locked card */}
+              {!user || user.loggedIn === false ? (
+                <div className="rec-locked">
+                  {/* Blurred ghost cards behind the overlay */}
+                  <div className="rec-locked-bg">
+                    {[1,2,3,4].map((i) => (
+                      <div key={i} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div className="rec-skel" style={{ height: 13, width: '70%' }} />
+                        <div className="rec-skel" style={{ height: 10, width: '40%' }} />
+                        <div className="rec-skel" style={{ height: 10, width: '90%' }} />
+                        <div className="rec-skel" style={{ height: 10, width: '60%' }} />
+                      </div>
+                    ))}
+                  </div>
+                  {/* Overlay */}
+                  <div className="rec-locked-blur">
+                    <span style={{ fontSize: 28 }}>🔒</span>
+                    <p className="rec-locked-text">
+                      Sign in to get personalised issue recommendations based on your GitHub profile
+                    </p>
+                    <a
+                      href={AUTH_URL}
+                      id="rec-signin-btn"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 8,
+                        background: 'linear-gradient(135deg, var(--orange), #D94E00)',
+                        color: '#fff', borderRadius: 10, padding: '10px 22px',
+                        fontWeight: 700, fontSize: 13, textDecoration: 'none',
+                        transition: 'opacity 0.15s',
+                      }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 3-.4c1.02.005 2.05.14 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.7.83.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                      Sign In with GitHub
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                /* Logged in */
+                <>
+                  {/* Pre-fetch CTA */}
+                  {!issueRecommendations && !recLoading && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                        Signed in as <strong style={{ color: 'var(--orange-light)' }}>@{loggedInUser}</strong>.
+                        Click below to find issues you can contribute to in this repository.
+                      </p>
+                      <div>
+                        <button
+                          id="rec-find-btn"
+                          className="rec-find-btn"
+                          onClick={fetchIssueRecommendations}
+                          disabled={recLoading}
+                        >
+                          ✨ Find Issues For Me
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Loading skeletons */}
+                  {recLoading && (
+                    <div className="rec-grid">
+                      {[1,2,3].map((i) => (
+                        <div key={i} className="rec-card">
+                          <div className="rec-skel" style={{ height: 14, width: '80%' }} />
+                          <div className="rec-skel" style={{ height: 10, width: '45%' }} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                            <div className="rec-skel" style={{ height: 10, width: '90%' }} />
+                            <div className="rec-skel" style={{ height: 10, width: '70%' }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                            <div className="rec-skel" style={{ height: 18, width: 58 }} />
+                            <div className="rec-skel" style={{ height: 18, width: 90 }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Error */}
+                  {recError && (
+                    <p style={{ fontSize: 13, color: 'var(--red)', marginBottom: 8 }}>{recError}</p>
+                  )}
+
+                  {/* Results */}
+                  {issueRecommendations && !recLoading && (
+                    <>
+                      {recSource === 'rule-based' && (
+                        <p className="rec-note">
+                          Recommendations based on issue labels (Gemini unavailable — sign in for AI-powered suggestions)
+                        </p>
+                      )}
+                      {issueRecommendations.length === 0 ? (
+                        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No open issues found to recommend right now.</p>
+                      ) : (
+                        <>
+                          <div className="rec-grid">
+                            {issueRecommendations.map((rec, i) => (
+                              <div key={i} className="rec-card">
+                                <a
+                                  href={rec.githubUrl || '#'}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="rec-title"
+                                >
+                                  {rec.issueTitle}
+                                </a>
+                                {rec.labels.length > 0 && (
+                                  <div className="rec-labels">
+                                    {rec.labels.map((lbl, li) => (
+                                      <span key={li} className="rec-label-pill">{lbl}</span>
+                                    ))}
+                                  </div>
+                                )}
+                                {rec.reason && <p className="rec-reason">{rec.reason}</p>}
+                                <div className="rec-footer">
+                                  <span className={`rec-diff-${
+                                    rec.difficultyMatch === 'easy' ? 'easy' :
+                                    rec.difficultyMatch === 'hard' ? 'hard' : 'medium'
+                                  }`}>
+                                    {rec.difficultyMatch}
+                                  </span>
+                                  {rec.githubUrl && (
+                                    <a href={rec.githubUrl} target="_blank" rel="noopener noreferrer" className="rec-gh-link">
+                                      View on GitHub →
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                            <button
+                              onClick={fetchIssueRecommendations}
+                              disabled={recLoading}
+                              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
+                            >
+                              ↻ Refresh
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </div>
 

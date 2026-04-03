@@ -29,6 +29,12 @@ import {
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
 import { resetGeminiCooldown, getGeminiModelCandidates } from '../ai/advice';
+import { generateUserInsights } from '../ai/userInsights';
+import type { UserProfileData } from '../ai/userInsights';
+import { generateIssueRecommendations } from '../ai/issueRecommender';
+import type { RepoIssue, UserProfileSnippet } from '../ai/issueRecommender';
+import { generateCompareInsights } from '../ai/compareInsights';
+import type { RepoMetricsForCompare } from '../ai/compareInsights';
 
 // Start background workers in the same process to save hosting costs!
 import '../workers/repoAnalyzer';
@@ -327,6 +333,33 @@ const badgeLimiter = rateLimit({
   message: { error: 'Badge rate limit exceeded. Try again shortly.' },
 });
 
+const aiInsightsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `ai-insights:${getClientIp(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'AI insights rate limit exceeded. Please wait a minute before trying again.' },
+});
+
+const issueRecommendationsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `issue-rec:${getClientIp(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Issue recommendations rate limit exceeded. Please wait a minute.' },
+});
+
+const compareInsightsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `compare-insights:${getClientIp(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Compare insights rate limit exceeded. Please wait a minute before trying again.' },
+});
+
 app.use(defaultLimiter);
 
 // ═══════════════════════════════════════════════════════════════
@@ -608,6 +641,9 @@ interface UserProfileApiResponse {
   reliabilityPct: number;
   percentile: string;
   needsAnalysis: boolean;
+  issuesOpened: number;
+  issuesClosed: number;
+  issuesOpen: number;
   contribution: {
     externalPRCount: number;
     externalMergedPRCount: number;
@@ -1374,6 +1410,26 @@ app.get(
         getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
       ]);
 
+      // Fetch user issue stats (opened + closed)
+      let issuesOpened = 0;
+      let issuesClosed = 0;
+      try {
+        const [openedRes, closedRes] = await Promise.all([
+          fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue&per_page=1`, { headers }),
+          fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue+is:closed&per_page=1`, { headers }),
+        ]);
+        if (openedRes.ok) {
+          const data = await openedRes.json() as { total_count?: number };
+          issuesOpened = data.total_count ?? 0;
+        }
+        if (closedRes.ok) {
+          const data = await closedRes.json() as { total_count?: number };
+          issuesClosed = data.total_count ?? 0;
+        }
+      } catch (e) {
+        console.warn('[UserProfile] Failed to fetch issue stats:', e);
+      }
+
       if (userResponse.status === 404) {
         res.status(404).json({ error: `GitHub user "${username}" was not found.` });
         return;
@@ -1470,6 +1526,9 @@ app.get(
         reliabilityPct,
         percentile: computePercentileLabel(developerScore),
         needsAnalysis: !contribution,
+        issuesOpened,
+        issuesClosed,
+        issuesOpen: Math.max(0, issuesOpened - issuesClosed),
         contribution: {
           externalPRCount: contribution?.externalPRCount ?? 0,
           externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
@@ -1491,7 +1550,298 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6h. GET /api/leaderboard — Get top developers
+// 6h. POST /api/user/:username/ai-insights — Gemini profile analysis
+// ─────────────────────────────────────────────────────────────
+// Returns AI-generated summary, strengths, areas for growth,
+// contribution style, and recommended focus areas. Cached 24h.
+
+app.post(
+  '/api/user/:username/ai-insights',
+  aiInsightsLimiter,
+  [param('username').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_-]+$/)],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const username = req.params.username as string;
+      const headers = await buildGitHubRestHeaders(req, username);
+
+      // Fetch GitHub user + repos + contribution cache in parallel
+      const [userResponse, reposResponse, contributionCache] = await Promise.all([
+        fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
+        fetch(
+          `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`,
+          { headers },
+        ),
+        getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+      ]);
+
+      if (userResponse.status === 404) {
+        res.status(404).json({ error: `GitHub user "${username}" was not found.` });
+        return;
+      }
+
+      if (!userResponse.ok) {
+        res.status(502).json({ error: `Failed to fetch GitHub profile (HTTP ${userResponse.status}).` });
+        return;
+      }
+
+      const githubUser = await userResponse.json() as GitHubUserApiResponse;
+
+      let githubRepos: GitHubRepoApiResponse[] = [];
+      if (reposResponse.ok) {
+        const reposPayload = await reposResponse.json() as unknown;
+        if (Array.isArray(reposPayload)) {
+          githubRepos = reposPayload.filter((entry) =>
+            Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry),
+          ) as GitHubRepoApiResponse[];
+        }
+      }
+
+      const publicRepos = githubRepos
+        .filter((repo) => !repo.private)
+        .slice(0, MAX_USER_PROFILE_REPOS);
+
+      // Pull health scores from cache for each repo
+      const repoHealthScores: number[] = [];
+      const repoNames: string[] = [];
+      const repoLanguages: (string | null)[] = [];
+
+      await Promise.all(
+        publicRepos.map(async (repo) => {
+          repoNames.push(repo.name);
+          repoLanguages.push(repo.language);
+          const ownerFromFullName = repo.full_name.split('/')[0] || username;
+          const cached = await getFreshRepoMetricsCache<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
+          if (cached && typeof cached.value?.healthScore === 'number') {
+            repoHealthScores.push(Number(cached.value.healthScore));
+          }
+        }),
+      );
+
+      const contribution = contributionCache?.value ?? null;
+
+      const profileData: UserProfileData = {
+        username: githubUser.login,
+        publicRepos: githubUser.public_repos,
+        followers: githubUser.followers,
+        following: githubUser.following,
+        topLanguage: getTopLanguage(publicRepos),
+        externalPRCount: contribution?.externalPRCount ?? 0,
+        externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
+        contributionAcceptanceRate: contribution?.contributionAcceptanceRate ?? 0,
+        issuesOpened: 0, // Not fetched again here — use cached value if available
+        issuesClosed: 0,
+        repoHealthScores,
+        repoNames,
+        repoLanguages,
+      };
+
+      const insights = await generateUserInsights(profileData);
+
+      res.json(insights);
+    } catch (error) {
+      console.error('[AI][UserInsights] Error generating user insights:', error);
+      res.status(500).json({ error: 'Failed to generate AI profile insights' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6j. GET /api/repo/:owner/:repo/recommendations — AI issue recommendations
+// ─────────────────────────────────────────────────────────────
+// Query: ?username=octocat  (optional — omit for label-only fallback)
+// Fetches open issues from GitHub REST API, then calls Gemini to match
+// them to the developer's skill profile.
+
+app.get(
+  '/api/repo/:owner/:repo/recommendations',
+  issueRecommendationsLimiter,
+  [
+    param('owner').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_.-]+$/),
+    param('repo').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_.-]+$/),
+    query('username').optional().isString().trim().matches(/^[a-zA-Z0-9_-]+$/),
+  ],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const owner = req.params.owner as string;
+      const repo = req.params.repo as string;
+      const username = (req.query.username as string | undefined)?.trim() || '';
+
+      // 1. Check repo metrics cache — repo must have been analyzed first.
+      const cached = await getFreshRepoMetricsCache<{
+        issueMetrics?: { labelBreakdown?: { label: string; count: number; githubFilterUrl: string }[] } | null;
+      }>(owner, repo);
+
+      if (!cached) {
+        res.status(404).json({
+          error: 'No metrics found for this repository. Analyze it first before requesting recommendations.',
+        });
+        return;
+      }
+
+      // 2. Fetch open issues from GitHub REST API (labels + pagination, max 100).
+      const headers = await buildGitHubRestHeaders(req, username || owner);
+      const issuesRes = await fetch(
+        `${GITHUB_REST_BASE_URL}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues?state=open&per_page=100&sort=created&direction=desc`,
+        { headers },
+      );
+
+      let repoIssues: RepoIssue[] = [];
+
+      if (issuesRes.ok) {
+        const rawIssues = await issuesRes.json() as unknown[];
+        if (Array.isArray(rawIssues)) {
+          repoIssues = rawIssues
+            .filter((i): i is Record<string, unknown> =>
+              Boolean(i && typeof i === 'object' && 'title' in (i as object) && !('pull_request' in (i as object))),
+            )
+            .map((i) => ({
+              title: String((i as Record<string, unknown>).title ?? ''),
+              labels: Array.isArray((i as Record<string, unknown>).labels)
+                ? ((i as Record<string, unknown>).labels as Record<string, unknown>[]).map((l) => String(l.name ?? '')).filter(Boolean)
+                : [],
+              url: String((i as Record<string, unknown>).html_url ?? ''),
+              createdAt: String((i as Record<string, unknown>).created_at ?? new Date().toISOString()),
+              commentsCount: Number((i as Record<string, unknown>).comments ?? 0),
+            }))
+            .filter((i) => Boolean(i.title));
+        }
+      } else {
+        console.warn(`[Recommendations] GitHub issues fetch failed (HTTP ${issuesRes.status}) for ${owner}/${repo}`);
+      }
+
+      // 3. If no issues found, return empty result early.
+      if (repoIssues.length === 0) {
+        res.json({ recommendations: [], source: 'rule-based', message: 'No open issues found for this repository.' });
+        return;
+      }
+
+      // 4. Build user profile snippet (fetch from GitHub if username provided).
+      let userProfile: UserProfileSnippet = {
+        username: username || 'anonymous',
+        topLanguage: null,
+        externalPRCount: 0,
+        repoLanguages: [],
+        repoNames: [],
+      };
+
+      if (username) {
+        try {
+          const userHeaders = await buildGitHubRestHeaders(req, username);
+          const [ghUserRes, ghReposRes, contribCache] = await Promise.all([
+            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers: userHeaders }),
+            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`, { headers: userHeaders }),
+            getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+          ]);
+
+          if (ghUserRes.ok) {
+            const ghUserData = await ghUserRes.json() as GitHubUserApiResponse;
+            let repoLanguages: (string | null)[] = [];
+            let repoNames: string[] = [];
+
+            if (ghReposRes.ok) {
+              const rawRepos = await ghReposRes.json() as unknown[];
+              if (Array.isArray(rawRepos)) {
+                const repos = rawRepos.filter(
+                  (r): r is GitHubRepoApiResponse =>
+                    Boolean(r && typeof r === 'object' && 'name' in (r as object)),
+                ) as GitHubRepoApiResponse[];
+                repoLanguages = repos.map((r) => r.language);
+                repoNames = repos.map((r) => r.name);
+              }
+            }
+
+            userProfile = {
+              username: ghUserData.login,
+              topLanguage: getTopLanguage(
+                (await ghReposRes.clone().json().catch(() => [])) as GitHubRepoApiResponse[],
+              ),
+              externalPRCount: contribCache?.value?.externalPRCount ?? 0,
+              repoLanguages,
+              repoNames,
+            };
+          }
+        } catch (profileErr) {
+          console.warn('[Recommendations] Failed to fetch user profile for recommendations:', profileErr);
+          // Continue with anonymous profile — will use rule-based fallback
+        }
+      }
+
+      // 5. Generate recommendations.
+      const result = await generateIssueRecommendations(userProfile, repoIssues, owner, repo);
+
+      res.json(result);
+    } catch (error) {
+      console.error('[Recommendations] Error generating issue recommendations:', error);
+      res.status(500).json({ error: 'Failed to generate issue recommendations' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6k. POST /api/compare/insights — AI-powered repo comparison
+// ─────────────────────────────────────────────────────────────
+// Body: { repos: string[] }  (2–4 "owner/repo" strings)
+// Looks up each repo from Redis cache, passes metrics to Gemini.
+
+app.post(
+  '/api/compare/insights',
+  compareInsightsLimiter,
+  [body('repos').isArray({ min: 2, max: 4 }).withMessage('repos must be an array of 2-4 repo strings')],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const rawRepos = req.body.repos as unknown[];
+
+      // Validate each repo string format
+      const repoPattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+      const validRepos = rawRepos
+        .map((r) => String(r).trim())
+        .filter((r) => repoPattern.test(r))
+        .slice(0, 4);
+
+      if (validRepos.length < 2) {
+        res.status(400).json({ error: 'At least 2 valid "owner/repo" strings are required.' });
+        return;
+      }
+
+      // Fetch metrics from cache for each repo
+      const metricsEntries = await Promise.all(
+        validRepos.map(async (repoRef) => {
+          const [owner, repoName] = repoRef.split('/');
+          if (!owner || !repoName) return null;
+          const cached = await getFreshRepoMetricsCache<object>(owner, repoName);
+          if (!cached) return null;
+          return { repo: repoRef, metrics: cached.value } as RepoMetricsForCompare;
+        }),
+      );
+
+      const validEntries = metricsEntries.filter((e): e is RepoMetricsForCompare => e !== null);
+
+      if (validEntries.length < 2) {
+        res.status(400).json({
+          error: 'At least 2 repositories must have been analyzed before generating compare insights. Analyze the missing repos first.',
+          analyzedCount: validEntries.length,
+          requestedCount: validRepos.length,
+        });
+        return;
+      }
+
+      const result = await generateCompareInsights(validEntries);
+      res.json(result);
+    } catch (error) {
+      console.error('[AI][Compare] Error generating compare insights:', error);
+      res.status(500).json({ error: 'Failed to generate comparison insights' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6l. GET /api/leaderboard — Get top developers
 // ─────────────────────────────────────────────────────────────
 // Optional filter: ?lang=typescript (filter by primary language)
 // Returns: top 100 developers sorted by their developer score
