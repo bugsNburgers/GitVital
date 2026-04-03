@@ -219,6 +219,7 @@ export default function UserProfilePage() {
     } | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
     const [aiError, setAiError] = useState<string | null>(null);
+    const [aiErrorCode, setAiErrorCode] = useState<string | null>(null);
     const [aiRequested, setAiRequested] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -431,13 +432,15 @@ export default function UserProfilePage() {
         setAiRequested(true);
         setAiLoading(true);
         setAiError(null);
+        setAiErrorCode(null);
         try {
             const res = await fetch(`${API_BASE}/api/user/${encodeURIComponent(owner)}/ai-insights`, {
                 method: "POST",
                 credentials: "include",
             });
             if (!res.ok) {
-                const payload = await res.json().catch(() => ({})) as { error?: string };
+                const payload = await res.json().catch(() => ({})) as { error?: string; code?: string };
+                setAiErrorCode(payload.code ?? null);
                 throw new Error(payload.error || `AI insights request failed (HTTP ${res.status}).`);
             }
             const data = await res.json() as {
@@ -685,12 +688,31 @@ export default function UserProfilePage() {
         .issue-stat-card {
           flex: 1; min-width: 120px; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
           border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+          cursor: pointer; transition: border-color 0.18s, background 0.18s, transform 0.15s;
+          text-decoration: none;
         }
+        .issue-stat-card:hover { border-color: rgba(255,94,0,0.4); background: rgba(255,94,0,0.06); transform: translateY(-2px); }
         .issue-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
         .issue-stat-value { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; color: var(--text); }
         .issue-stat-value.opened { color: var(--orange-light); }
         .issue-stat-value.closed { color: var(--green); }
         .issue-stat-value.open { color: var(--secondary, #0ea5e9); }
+        .issue-stat-hint { font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 3px; margin-top: 2px; }
+
+        .pr-stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+        .pr-stat-card {
+          flex: 1; min-width: 120px; background: rgba(14,165,233,0.04); border: 1px solid rgba(14,165,233,0.15);
+          border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+          cursor: pointer; transition: border-color 0.18s, background 0.18s, transform 0.15s;
+          text-decoration: none;
+        }
+        .pr-stat-card:hover { border-color: rgba(14,165,233,0.45); background: rgba(14,165,233,0.09); transform: translateY(-2px); }
+        .pr-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+        .pr-stat-value { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; }
+        .pr-stat-value.total { color: #67c1f5; }
+        .pr-stat-value.merged { color: #a78bfa; }
+        .pr-stat-value.open { color: #34d399; }
+        .pr-stat-hint { font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 3px; margin-top: 2px; }
 
         .ai-insights-btn {
           display: inline-flex; align-items: center; gap: 8px;
@@ -902,27 +924,107 @@ export default function UserProfilePage() {
                                     <h3 className="section-title"><span className="material-symbols-outlined">alt_route</span> Issue Activity</h3>
                                 </div>
                                 <div className="issue-stats-row">
-                                    <div className="issue-stat-card">
+                                    <a
+                                        className="issue-stat-card"
+                                        href={`https://github.com/search?q=author%3A${encodeURIComponent(profile.username)}+type%3Aissue&type=issues`}
+                                        target="_blank" rel="noopener noreferrer"
+                                    >
                                         <span className="issue-stat-label">
                                             <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>add_circle</span>
                                             Issues Opened
                                         </span>
                                         <span className="issue-stat-value opened">{(profile.issuesOpened ?? 0).toLocaleString()}</span>
-                                    </div>
-                                    <div className="issue-stat-card">
+                                        <span className="issue-stat-hint">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
+                                            View on GitHub
+                                        </span>
+                                    </a>
+                                    <a
+                                        className="issue-stat-card"
+                                        href={`https://github.com/search?q=author%3A${encodeURIComponent(profile.username)}+type%3Aissue+is%3Aclosed&type=issues`}
+                                        target="_blank" rel="noopener noreferrer"
+                                    >
                                         <span className="issue-stat-label">
                                             <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>check_circle</span>
                                             Issues Closed
                                         </span>
                                         <span className="issue-stat-value closed">{(profile.issuesClosed ?? 0).toLocaleString()}</span>
-                                    </div>
-                                    <div className="issue-stat-card">
+                                        <span className="issue-stat-hint">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
+                                            View on GitHub
+                                        </span>
+                                    </a>
+                                    <a
+                                        className="issue-stat-card"
+                                        href={`https://github.com/search?q=author%3A${encodeURIComponent(profile.username)}+type%3Aissue+is%3Aopen&type=issues`}
+                                        target="_blank" rel="noopener noreferrer"
+                                    >
                                         <span className="issue-stat-label">
                                             <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>radio_button_unchecked</span>
                                             Currently Open
                                         </span>
                                         <span className="issue-stat-value open">{(profile.issuesOpen ?? 0).toLocaleString()}</span>
-                                    </div>
+                                        <span className="issue-stat-hint">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
+                                            View on GitHub
+                                        </span>
+                                    </a>
+                                </div>
+                            </div>
+
+                            {/* PR Activity Section */}
+                            <div className="profile-section">
+                                <div className="section-header">
+                                    <h3 className="section-title"><span className="material-symbols-outlined">merge</span> PR Activity</h3>
+                                </div>
+                                <div className="pr-stats-row">
+                                    <a
+                                        className="pr-stat-card"
+                                        href={`https://github.com/search?q=author%3A${encodeURIComponent(profile.username)}+type%3Apr&type=pullrequests`}
+                                        target="_blank" rel="noopener noreferrer"
+                                    >
+                                        <span className="pr-stat-label">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>call_split</span>
+                                            PRs Opened
+                                        </span>
+                                        <span className="pr-stat-value total">{(profile.contribution.externalPRCount ?? 0).toLocaleString()}</span>
+                                        <span className="pr-stat-hint">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
+                                            View on GitHub
+                                        </span>
+                                    </a>
+                                    <a
+                                        className="pr-stat-card"
+                                        href={`https://github.com/search?q=author%3A${encodeURIComponent(profile.username)}+type%3Apr+is%3Amerged&type=pullrequests`}
+                                        target="_blank" rel="noopener noreferrer"
+                                    >
+                                        <span className="pr-stat-label">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>check_circle</span>
+                                            PRs Merged
+                                        </span>
+                                        <span className="pr-stat-value merged">{(profile.contribution.externalMergedPRCount ?? 0).toLocaleString()}</span>
+                                        <span className="pr-stat-hint">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
+                                            View on GitHub
+                                        </span>
+                                    </a>
+                                    <a
+                                        className="pr-stat-card"
+                                        href={`https://github.com/search?q=author%3A${encodeURIComponent(profile.username)}+type%3Apr+is%3Aopen&type=pullrequests`}
+                                        target="_blank" rel="noopener noreferrer"
+                                    >
+                                        <span className="pr-stat-label">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>radio_button_unchecked</span>
+                                            Currently Open
+                                        </span>
+                                        <span className="pr-stat-value open">
+                                            {Math.max(0, (profile.contribution.externalPRCount ?? 0) - (profile.contribution.externalMergedPRCount ?? 0)).toLocaleString()}
+                                        </span>
+                                        <span className="pr-stat-hint">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
+                                            View on GitHub
+                                        </span>
+                                    </a>
                                 </div>
                             </div>
 
@@ -993,7 +1095,26 @@ export default function UserProfilePage() {
                                     </div>
                                 )}
 
-                                {aiError && (
+                                {/* Quota exceeded banner */}
+                                {aiErrorCode === 'QUOTA_EXCEEDED' && (
+                                    <div style={{
+                                        background: 'rgba(234,179,8,0.08)',
+                                        border: '1px solid rgba(234,179,8,0.3)',
+                                        borderRadius: 12,
+                                        padding: '14px 18px',
+                                        fontSize: 13,
+                                        color: 'rgba(234,179,8,0.9)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 10,
+                                        marginTop: 8
+                                    }}>
+                                        🌅 Daily AI limit reached. Your quota resets at midnight UTC. Come back tomorrow!
+                                    </div>
+                                )}
+
+                                {/* Generic error (not quota) */}
+                                {aiError && aiErrorCode !== 'QUOTA_EXCEEDED' && (
                                     <p className="ai-error-msg">{aiError}</p>
                                 )}
 

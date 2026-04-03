@@ -196,6 +196,7 @@ export default function RepoDashboardPage() {
   const [issueRecommendations, setIssueRecommendations] = useState<IssueRecommendation[] | null>(null);
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
+  const [recErrorCode, setRecErrorCode] = useState<string | null>(null);
   const [recSource, setRecSource] = useState<'gemini' | 'rule-based' | null>(null);
 
   // ── Fetch current user ──
@@ -341,15 +342,19 @@ export default function RepoDashboardPage() {
   // Derive logged-in username from existing /api/me fetch
   const loggedInUser = user?.loggedIn ? (user.githubUsername ?? null) : null;
 
-  async function fetchIssueRecommendations() {
+  async function fetchIssueRecommendations(forceRefresh = false) {
     if (recLoading || !loggedInUser) return;
     setRecLoading(true);
     setRecError(null);
+    setRecErrorCode(null);
     try {
-      const url = `${API_BASE}/api/repo/${owner}/${repo}/recommendations?username=${encodeURIComponent(loggedInUser)}`;
+      const params = new URLSearchParams({ username: loggedInUser });
+      if (forceRefresh) params.set('refresh', 'true');
+      const url = `${API_BASE}/api/repo/${owner}/${repo}/recommendations?${params.toString()}`;
       const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({})) as { error?: string };
+        const payload = await res.json().catch(() => ({})) as { error?: string; code?: string };
+        setRecErrorCode(payload.code ?? null);
         throw new Error(payload.error ?? `HTTP ${res.status}`);
       }
       const data = await res.json() as { recommendations: IssueRecommendation[]; source: 'gemini' | 'rule-based' };
@@ -1201,7 +1206,7 @@ export default function RepoDashboardPage() {
                         <button
                           id="rec-find-btn"
                           className="rec-find-btn"
-                          onClick={fetchIssueRecommendations}
+                          onClick={() => fetchIssueRecommendations()}
                           disabled={recLoading}
                         >
                           ✨ Find Issues For Me
@@ -1213,7 +1218,7 @@ export default function RepoDashboardPage() {
                   {/* Loading skeletons */}
                   {recLoading && (
                     <div className="rec-grid">
-                      {[1,2,3].map((i) => (
+                      {[1,2,3,4].map((i) => (
                         <div key={i} className="rec-card">
                           <div className="rec-skel" style={{ height: 14, width: '80%' }} />
                           <div className="rec-skel" style={{ height: 10, width: '45%' }} />
@@ -1230,8 +1235,19 @@ export default function RepoDashboardPage() {
                     </div>
                   )}
 
-                  {/* Error */}
-                  {recError && (
+                  {/* Quota exceeded */}
+                  {recErrorCode === 'QUOTA_EXCEEDED' && (
+                    <div style={{
+                      background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)',
+                      borderRadius: 12, padding: '14px 18px', fontSize: 13, color: 'rgba(234,179,8,0.9)',
+                      display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8
+                    }}>
+                      🌅 Daily AI limit reached. Your quota resets at midnight UTC. Come back tomorrow!
+                    </div>
+                  )}
+
+                  {/* Generic error (not quota) */}
+                  {recError && recErrorCode !== 'QUOTA_EXCEEDED' && (
                     <p style={{ fontSize: 13, color: 'var(--red)', marginBottom: 8 }}>{recError}</p>
                   )}
 
@@ -1282,13 +1298,24 @@ export default function RepoDashboardPage() {
                               </div>
                             ))}
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
+                              {recSource === 'gemini' ? '✦ Gemini' : '⚙️ Rule-Based'} · {issueRecommendations.length} match{issueRecommendations.length !== 1 ? 'es' : ''}
+                            </span>
                             <button
-                              onClick={fetchIssueRecommendations}
+                              onClick={() => fetchIssueRecommendations(true)}
                               disabled={recLoading}
-                              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                background: 'rgba(255,94,0,0.08)', border: '1px solid rgba(255,94,0,0.25)',
+                                color: 'var(--orange-light)', borderRadius: 8,
+                                padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                                cursor: recLoading ? 'not-allowed' : 'pointer',
+                                fontFamily: 'var(--font)', opacity: recLoading ? 0.5 : 1,
+                                transition: 'background 0.15s'
+                              }}
                             >
-                              ↻ Refresh
+                              🔄 Find More Issues
                             </button>
                           </div>
                         </>
