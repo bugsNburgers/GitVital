@@ -35,6 +35,7 @@ import { generateIssueRecommendations } from '../ai/issueRecommender';
 import type { RepoIssue, UserProfileSnippet } from '../ai/issueRecommender';
 import { generateCompareInsights } from '../ai/compareInsights';
 import type { RepoMetricsForCompare } from '../ai/compareInsights';
+import { checkAndIncrementGlobalDailyQuota } from '../ai/globalQuotaGate';
 
 // Start background workers in the same process to save hosting costs!
 import '../workers/repoAnalyzer';
@@ -1563,6 +1564,20 @@ app.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const username = req.params.username as string;
+
+      // Quota gate — global + per-user daily cap
+      const loggedInUser = (req as Request & { user?: { githubUsername?: string } }).user?.githubUsername || username;
+      const quota = await checkAndIncrementGlobalDailyQuota(loggedInUser);
+      if (!quota.allowed) {
+        res.status(429).json({
+          error: 'Daily AI limit reached. Come back tomorrow.',
+          code: 'QUOTA_EXCEEDED',
+          resetAt: quota.resetAt,
+          limitHit: quota.limitHit,
+        });
+        return;
+      }
+
       const headers = await buildGitHubRestHeaders(req, username);
 
       // Fetch GitHub user + repos + contribution cache in parallel
@@ -1668,6 +1683,27 @@ app.get(
       const owner = req.params.owner as string;
       const repo = req.params.repo as string;
       const username = (req.query.username as string | undefined)?.trim() || '';
+      const forceRefresh = req.query.refresh === 'true';
+
+      // Auth guard — must be logged in to get personalized recommendations
+      const sessionUser = (req as Request & { user?: { loggedIn?: boolean; githubUsername?: string } }).user;
+      if (!sessionUser?.loggedIn || !sessionUser.githubUsername) {
+        res.status(401).json({ error: 'Login required to get personalized issue recommendations.', code: 'LOGIN_REQUIRED' });
+        return;
+      }
+      const authedUsername = sessionUser.githubUsername;
+
+      // Quota gate
+      const quota = await checkAndIncrementGlobalDailyQuota(authedUsername);
+      if (!quota.allowed) {
+        res.status(429).json({
+          error: 'Daily AI limit reached. Come back tomorrow.',
+          code: 'QUOTA_EXCEEDED',
+          resetAt: quota.resetAt,
+          limitHit: quota.limitHit,
+        });
+        return;
+      }
 
       // 1. Check repo metrics cache — repo must have been analyzed first.
       const cached = await getFreshRepoMetricsCache<{
@@ -1719,21 +1755,26 @@ app.get(
       }
 
       // 4. Build user profile snippet (fetch from GitHub if username provided).
+      const effectiveUsername = username || authedUsername;
       let userProfile: UserProfileSnippet = {
-        username: username || 'anonymous',
+        username: effectiveUsername,
         topLanguage: null,
         externalPRCount: 0,
+        externalMergedPRCount: 0,
+        contributionAcceptanceRate: 0,
+        followers: 0,
+        issuesOpened: 0,
         repoLanguages: [],
         repoNames: [],
       };
 
-      if (username) {
+      if (effectiveUsername) {
         try {
-          const userHeaders = await buildGitHubRestHeaders(req, username);
+          const userHeaders = await buildGitHubRestHeaders(req, effectiveUsername);
           const [ghUserRes, ghReposRes, contribCache] = await Promise.all([
-            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers: userHeaders }),
-            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`, { headers: userHeaders }),
-            getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(effectiveUsername)}`, { headers: userHeaders }),
+            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(effectiveUsername)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`, { headers: userHeaders }),
+            getFreshUserContributionCache<UserContributionMetricsCacheValue>(effectiveUsername),
           ]);
 
           if (ghUserRes.ok) {
@@ -1758,7 +1799,11 @@ app.get(
               topLanguage: getTopLanguage(
                 (await ghReposRes.clone().json().catch(() => [])) as GitHubRepoApiResponse[],
               ),
-              externalPRCount: contribCache?.value?.externalPRCount ?? 0,
+              externalPRCount:              contribCache?.value?.externalPRCount ?? 0,
+              externalMergedPRCount:        contribCache?.value?.externalMergedPRCount ?? 0,
+              contributionAcceptanceRate:   contribCache?.value?.contributionAcceptanceRate ?? 0,
+              followers:                    ghUserData.followers ?? 0,
+              issuesOpened:                 0, // not critical for matching; keep 0 to avoid extra API call
               repoLanguages,
               repoNames,
             };
@@ -1769,8 +1814,8 @@ app.get(
         }
       }
 
-      // 5. Generate recommendations.
-      const result = await generateIssueRecommendations(userProfile, repoIssues, owner, repo);
+      // 5. Generate recommendations (pass forceRefresh for fresh batch).
+      const result = await generateIssueRecommendations(userProfile, repoIssues, owner, repo, forceRefresh);
 
       res.json(result);
     } catch (error) {
@@ -1795,6 +1840,25 @@ app.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const rawRepos = req.body.repos as unknown[];
+
+      // Auth guard — must be logged in for AI comparison
+      const sessionUser = (req as Request & { user?: { loggedIn?: boolean; githubUsername?: string } }).user;
+      if (!sessionUser?.loggedIn || !sessionUser.githubUsername) {
+        res.status(401).json({ error: 'Login required to generate AI comparison insights.', code: 'LOGIN_REQUIRED' });
+        return;
+      }
+
+      // Quota gate
+      const quota = await checkAndIncrementGlobalDailyQuota(sessionUser.githubUsername);
+      if (!quota.allowed) {
+        res.status(429).json({
+          error: 'Daily AI limit reached. Come back tomorrow.',
+          code: 'QUOTA_EXCEEDED',
+          resetAt: quota.resetAt,
+          limitHit: quota.limitHit,
+        });
+        return;
+      }
 
       // Validate each repo string format
       const repoPattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
