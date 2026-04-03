@@ -31,6 +31,8 @@ import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto'
 import { resetGeminiCooldown, getGeminiModelCandidates } from '../ai/advice';
 import { generateUserInsights } from '../ai/userInsights';
 import type { UserProfileData } from '../ai/userInsights';
+import { generateIssueRecommendations } from '../ai/issueRecommender';
+import type { RepoIssue, UserProfileSnippet } from '../ai/issueRecommender';
 
 // Start background workers in the same process to save hosting costs!
 import '../workers/repoAnalyzer';
@@ -336,6 +338,15 @@ const aiInsightsLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'AI insights rate limit exceeded. Please wait a minute before trying again.' },
+});
+
+const issueRecommendationsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `issue-rec:${getClientIp(req)}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Issue recommendations rate limit exceeded. Please wait a minute.' },
 });
 
 app.use(defaultLimiter);
@@ -1626,7 +1637,141 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6i. GET /api/leaderboard — Get top developers
+// 6j. GET /api/repo/:owner/:repo/recommendations — AI issue recommendations
+// ─────────────────────────────────────────────────────────────
+// Query: ?username=octocat  (optional — omit for label-only fallback)
+// Fetches open issues from GitHub REST API, then calls Gemini to match
+// them to the developer's skill profile.
+
+app.get(
+  '/api/repo/:owner/:repo/recommendations',
+  issueRecommendationsLimiter,
+  [
+    param('owner').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_.-]+$/),
+    param('repo').isString().trim().notEmpty().matches(/^[a-zA-Z0-9_.-]+$/),
+    query('username').optional().isString().trim().matches(/^[a-zA-Z0-9_-]+$/),
+  ],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const owner = req.params.owner as string;
+      const repo = req.params.repo as string;
+      const username = (req.query.username as string | undefined)?.trim() || '';
+
+      // 1. Check repo metrics cache — repo must have been analyzed first.
+      const cached = await getFreshRepoMetricsCache<{
+        issueMetrics?: { labelBreakdown?: { label: string; count: number; githubFilterUrl: string }[] } | null;
+      }>(owner, repo);
+
+      if (!cached) {
+        res.status(404).json({
+          error: 'No metrics found for this repository. Analyze it first before requesting recommendations.',
+        });
+        return;
+      }
+
+      // 2. Fetch open issues from GitHub REST API (labels + pagination, max 100).
+      const headers = await buildGitHubRestHeaders(req, username || owner);
+      const issuesRes = await fetch(
+        `${GITHUB_REST_BASE_URL}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues?state=open&per_page=100&sort=created&direction=desc`,
+        { headers },
+      );
+
+      let repoIssues: RepoIssue[] = [];
+
+      if (issuesRes.ok) {
+        const rawIssues = await issuesRes.json() as unknown[];
+        if (Array.isArray(rawIssues)) {
+          repoIssues = rawIssues
+            .filter((i): i is Record<string, unknown> =>
+              Boolean(i && typeof i === 'object' && 'title' in (i as object) && !('pull_request' in (i as object))),
+            )
+            .map((i) => ({
+              title: String((i as Record<string, unknown>).title ?? ''),
+              labels: Array.isArray((i as Record<string, unknown>).labels)
+                ? ((i as Record<string, unknown>).labels as Record<string, unknown>[]).map((l) => String(l.name ?? '')).filter(Boolean)
+                : [],
+              url: String((i as Record<string, unknown>).html_url ?? ''),
+              createdAt: String((i as Record<string, unknown>).created_at ?? new Date().toISOString()),
+              commentsCount: Number((i as Record<string, unknown>).comments ?? 0),
+            }))
+            .filter((i) => Boolean(i.title));
+        }
+      } else {
+        console.warn(`[Recommendations] GitHub issues fetch failed (HTTP ${issuesRes.status}) for ${owner}/${repo}`);
+      }
+
+      // 3. If no issues found, return empty result early.
+      if (repoIssues.length === 0) {
+        res.json({ recommendations: [], source: 'rule-based', message: 'No open issues found for this repository.' });
+        return;
+      }
+
+      // 4. Build user profile snippet (fetch from GitHub if username provided).
+      let userProfile: UserProfileSnippet = {
+        username: username || 'anonymous',
+        topLanguage: null,
+        externalPRCount: 0,
+        repoLanguages: [],
+        repoNames: [],
+      };
+
+      if (username) {
+        try {
+          const userHeaders = await buildGitHubRestHeaders(req, username);
+          const [ghUserRes, ghReposRes, contribCache] = await Promise.all([
+            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers: userHeaders }),
+            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`, { headers: userHeaders }),
+            getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+          ]);
+
+          if (ghUserRes.ok) {
+            const ghUserData = await ghUserRes.json() as GitHubUserApiResponse;
+            let repoLanguages: (string | null)[] = [];
+            let repoNames: string[] = [];
+
+            if (ghReposRes.ok) {
+              const rawRepos = await ghReposRes.json() as unknown[];
+              if (Array.isArray(rawRepos)) {
+                const repos = rawRepos.filter(
+                  (r): r is GitHubRepoApiResponse =>
+                    Boolean(r && typeof r === 'object' && 'name' in (r as object)),
+                ) as GitHubRepoApiResponse[];
+                repoLanguages = repos.map((r) => r.language);
+                repoNames = repos.map((r) => r.name);
+              }
+            }
+
+            userProfile = {
+              username: ghUserData.login,
+              topLanguage: getTopLanguage(
+                (await ghReposRes.clone().json().catch(() => [])) as GitHubRepoApiResponse[],
+              ),
+              externalPRCount: contribCache?.value?.externalPRCount ?? 0,
+              repoLanguages,
+              repoNames,
+            };
+          }
+        } catch (profileErr) {
+          console.warn('[Recommendations] Failed to fetch user profile for recommendations:', profileErr);
+          // Continue with anonymous profile — will use rule-based fallback
+        }
+      }
+
+      // 5. Generate recommendations.
+      const result = await generateIssueRecommendations(userProfile, repoIssues, owner, repo);
+
+      res.json(result);
+    } catch (error) {
+      console.error('[Recommendations] Error generating issue recommendations:', error);
+      res.status(500).json({ error: 'Failed to generate issue recommendations' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6k. GET /api/leaderboard — Get top developers
 // ─────────────────────────────────────────────────────────────
 // Optional filter: ?lang=typescript (filter by primary language)
 // Returns: top 100 developers sorted by their developer score
