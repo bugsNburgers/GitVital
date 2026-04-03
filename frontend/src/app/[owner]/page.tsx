@@ -219,6 +219,7 @@ export default function UserProfilePage() {
     } | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
     const [aiError, setAiError] = useState<string | null>(null);
+    const [aiErrorCode, setAiErrorCode] = useState<string | null>(null);
     const [aiRequested, setAiRequested] = useState(false);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -431,13 +432,15 @@ export default function UserProfilePage() {
         setAiRequested(true);
         setAiLoading(true);
         setAiError(null);
+        setAiErrorCode(null);
         try {
             const res = await fetch(`${API_BASE}/api/user/${encodeURIComponent(owner)}/ai-insights`, {
                 method: "POST",
                 credentials: "include",
             });
             if (!res.ok) {
-                const payload = await res.json().catch(() => ({})) as { error?: string };
+                const payload = await res.json().catch(() => ({})) as { error?: string; code?: string };
+                setAiErrorCode(payload.code ?? null);
                 throw new Error(payload.error || `AI insights request failed (HTTP ${res.status}).`);
             }
             const data = await res.json() as {
@@ -1092,7 +1095,26 @@ export default function UserProfilePage() {
                                     </div>
                                 )}
 
-                                {aiError && (
+                                {/* Quota exceeded banner */}
+                                {aiErrorCode === 'QUOTA_EXCEEDED' && (
+                                    <div style={{
+                                        background: 'rgba(234,179,8,0.08)',
+                                        border: '1px solid rgba(234,179,8,0.3)',
+                                        borderRadius: 12,
+                                        padding: '14px 18px',
+                                        fontSize: 13,
+                                        color: 'rgba(234,179,8,0.9)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 10,
+                                        marginTop: 8
+                                    }}>
+                                        🌅 Daily AI limit reached. Your quota resets at midnight UTC. Come back tomorrow!
+                                    </div>
+                                )}
+
+                                {/* Generic error (not quota) */}
+                                {aiError && aiErrorCode !== 'QUOTA_EXCEEDED' && (
                                     <p className="ai-error-msg">{aiError}</p>
                                 )}
 
