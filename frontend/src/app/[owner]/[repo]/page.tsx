@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { API_BASE, AUTH_URL } from "@/config";
+import { API_BASE, AUTH_URL, fetchSessionUser, type SessionUser } from "@/config";
 import InfoTooltip from "@/components/InfoTooltip";
 
 // ── Types matching backend AllMetrics + metadata ──
@@ -183,7 +183,8 @@ export default function RepoDashboardPage() {
 
   const [activeRange, setActiveRange] = useState<"12M" | "6M" | "30D">("12M");
   const [copyDone, setCopyDone] = useState(false);
-  const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [metrics, setMetrics] = useState<RepoMetrics | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("checking");
   const [jobId, setJobId] = useState<string | null>(null);
@@ -201,10 +202,21 @@ export default function RepoDashboardPage() {
 
   // ── Fetch current user ──
   useEffect(() => {
-    fetch(`${API_BASE}/api/me`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((d) => setUser(d))
-      .catch(() => setUser({ loggedIn: false }));
+    let cancelled = false;
+
+    const loadSession = async () => {
+      const session = await fetchSessionUser(API_BASE, 1);
+      if (!cancelled) {
+        setUser(session);
+        setSessionChecked(true);
+      }
+    };
+
+    void loadSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Poll job until done ──
@@ -1152,16 +1164,16 @@ export default function RepoDashboardPage() {
             {/* CONTRIBUTION RECOMMENDATIONS */}
             <div className="card card-pad">
               <div className="rec-section-header">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                 <span className="rec-section-title">Contribution Recommendations</span>
               </div>
 
               {/* Not logged in — blurred locked card */}
-              {!user || user.loggedIn === false ? (
+              {user?.loggedIn === false ? (
                 <div className="rec-locked">
                   {/* Blurred ghost cards behind the overlay */}
                   <div className="rec-locked-bg">
-                    {[1,2,3,4].map((i) => (
+                    {[1, 2, 3, 4].map((i) => (
                       <div key={i} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <div className="rec-skel" style={{ height: 13, width: '70%' }} />
                         <div className="rec-skel" style={{ height: 10, width: '40%' }} />
@@ -1187,12 +1199,12 @@ export default function RepoDashboardPage() {
                         transition: 'opacity 0.15s',
                       }}
                     >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 3-.4c1.02.005 2.05.14 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.7.83.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 3-.4c1.02.005 2.05.14 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.7.83.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z" /></svg>
                       Sign In with GitHub
                     </a>
                   </div>
                 </div>
-              ) : (
+              ) : user?.loggedIn === true ? (
                 /* Logged in */
                 <>
                   {/* Pre-fetch CTA */}
@@ -1218,7 +1230,7 @@ export default function RepoDashboardPage() {
                   {/* Loading skeletons */}
                   {recLoading && (
                     <div className="rec-grid">
-                      {[1,2,3,4].map((i) => (
+                      {[1, 2, 3, 4].map((i) => (
                         <div key={i} className="rec-card">
                           <div className="rec-skel" style={{ height: 14, width: '80%' }} />
                           <div className="rec-skel" style={{ height: 10, width: '45%' }} />
@@ -1283,10 +1295,9 @@ export default function RepoDashboardPage() {
                                 )}
                                 {rec.reason && <p className="rec-reason">{rec.reason}</p>}
                                 <div className="rec-footer">
-                                  <span className={`rec-diff-${
-                                    rec.difficultyMatch === 'easy' ? 'easy' :
+                                  <span className={`rec-diff-${rec.difficultyMatch === 'easy' ? 'easy' :
                                     rec.difficultyMatch === 'hard' ? 'hard' : 'medium'
-                                  }`}>
+                                    }`}>
                                     {rec.difficultyMatch}
                                   </span>
                                   {rec.githubUrl && (
@@ -1323,6 +1334,14 @@ export default function RepoDashboardPage() {
                     </>
                   )}
                 </>
+              ) : sessionChecked ? (
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  Could not verify your login status right now. Refresh once and try again.
+                </p>
+              ) : (
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  Checking login status...
+                </p>
               )}
             </div>
 
