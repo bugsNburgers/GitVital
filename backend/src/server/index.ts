@@ -101,21 +101,43 @@ function getTokenCacheKeyForUser(userId: number | string): string {
 }
 
 async function storeEncryptedGitHubToken(userId: number | string, plainToken: string): Promise<void> {
-  const encrypted = encryptAccessToken(plainToken, config.encryptionKey);
-  await redis.set(getTokenCacheKeyForUser(userId), encrypted, 'EX', OAUTH_TOKEN_TTL_SECONDS);
+  try {
+    const encrypted = encryptAccessToken(plainToken, config.encryptionKey);
+    await redis.set(getTokenCacheKeyForUser(userId), encrypted, 'EX', OAUTH_TOKEN_TTL_SECONDS);
+  } catch (error) {
+    console.warn('[Auth] Failed to cache encrypted GitHub token in Redis. Continuing without cached token.', {
+      userId: String(userId),
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function getDecryptedGitHubToken(userId: number | string): Promise<string | null> {
-  const encrypted = await redis.get(getTokenCacheKeyForUser(userId));
-  if (!encrypted) {
+  try {
+    const encrypted = await redis.get(getTokenCacheKeyForUser(userId));
+    if (!encrypted) {
+      return null;
+    }
+
+    return decryptAccessToken(encrypted, config.encryptionKey);
+  } catch (error) {
+    console.warn('[Auth] Failed to read/decrypt cached GitHub token from Redis. Falling back to service token.', {
+      userId: String(userId),
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
-
-  return decryptAccessToken(encrypted, config.encryptionKey);
 }
 
 async function removeGitHubToken(userId: number | string): Promise<void> {
-  await redis.del(getTokenCacheKeyForUser(userId));
+  try {
+    await redis.del(getTokenCacheKeyForUser(userId));
+  } catch (error) {
+    console.warn('[Auth] Failed to delete cached GitHub token from Redis during logout.', {
+      userId: String(userId),
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function redactSensitivePayload(value: unknown): unknown {
@@ -2330,6 +2352,7 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
     }
 
     // Encrypt before persistence and avoid storing plain access tokens in session.
+    // Redis outages should not block login: we can still keep session auth active.
     await storeEncryptedGitHubToken(userData.id, tokenData.access_token);
 
     // Store user info in the session
