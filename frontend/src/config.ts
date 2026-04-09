@@ -34,6 +34,55 @@ const getSiteUrl = () => {
 export const API_BASE = getApiBase();
 export const SITE_URL = getSiteUrl();
 
+export type SessionUser = {
+  loggedIn: boolean;
+  githubUsername?: string;
+  userId?: number | string;
+};
+
+function isSessionUser(payload: unknown): payload is SessionUser {
+  if (!payload || typeof payload !== 'object') return false;
+  return typeof (payload as { loggedIn?: unknown }).loggedIn === 'boolean';
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function fetchSessionUser(apiBase: string = API_BASE, retries: number = 1): Promise<SessionUser | null> {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(`${apiBase}/api/me`, {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          return { loggedIn: false };
+        }
+        throw new Error(`/api/me failed with HTTP ${response.status}`);
+      }
+
+      const payload: unknown = await response.json();
+      if (!isSessionUser(payload)) {
+        throw new Error('Invalid /api/me response shape.');
+      }
+
+      return payload;
+    } catch {
+      if (attempt < retries) {
+        await delay(250);
+        continue;
+      }
+      return null;
+    }
+  }
+
+  return null;
+}
+
 export const getAuthUrl = (returnTo: string = SITE_URL) => {
   const params = new URLSearchParams({ returnTo });
   return `${API_BASE}/auth/github?${params.toString()}`;
