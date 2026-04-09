@@ -38,7 +38,7 @@ import type { RepoMetricsForCompare } from '../ai/compareInsights';
 import { checkAndIncrementGlobalDailyQuota } from '../ai/globalQuotaGate';
 
 // Start background workers in the same process to save hosting costs!
-import '../workers/repoAnalyzer';
+import { runDirectRepoAnalysis } from '../workers/repoAnalyzer';
 import '../workers/userAnalyzer';
 
 // ═══════════════════════════════════════════════════════════════
@@ -499,9 +499,14 @@ async function countPendingJobsForUser(userId: string): Promise<number> {
 }
 
 function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }): { owner: string; repo: string } | null {
+  const normalizeRepoName = (value: string): string => {
+    const trimmed = value.trim();
+    return trimmed.toLowerCase().endsWith('.git') ? trimmed.slice(0, -4) : trimmed;
+  };
+
   if (typeof payload.owner === 'string' && typeof payload.repo === 'string') {
     const owner = payload.owner.trim();
-    const repo = payload.repo.trim();
+    const repo = normalizeRepoName(payload.repo);
     if (isValidGitHubNameSegment(owner) && isValidGitHubNameSegment(repo)) {
       return { owner, repo };
     }
@@ -527,7 +532,8 @@ function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }
       return null;
     }
 
-    const [owner, repo] = parsed.pathname.split('/').filter(Boolean);
+    const [owner, repoRaw] = parsed.pathname.split('/').filter(Boolean);
+    const repo = normalizeRepoName(repoRaw || '');
     if (!owner || !repo || !isValidGitHubNameSegment(owner) || !isValidGitHubNameSegment(repo)) {
       return null;
     }
@@ -535,6 +541,15 @@ function parseRepoInput(payload: { url?: string; owner?: string; repo?: string }
     return { owner, repo };
   } catch {
     return null;
+  }
+}
+
+async function isQueueInfrastructureAvailable(): Promise<boolean> {
+  try {
+    const ping = await redis.ping();
+    return ping === 'PONG';
+  } catch {
+    return false;
   }
 }
 
@@ -932,6 +947,11 @@ app.post(
   ],
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
+    const parsedForFallback = parseRepoInput(req.body as { url?: string; owner?: string; repo?: string });
+    const fallbackOwner = parsedForFallback?.owner;
+    const fallbackRepo = parsedForFallback?.repo;
+    const fallbackUserId = (req.session as any)?.userId as string | number | undefined;
+
     try {
       const parsed = parseRepoInput(req.body as { url?: string; owner?: string; repo?: string });
       if (!parsed) {
@@ -962,6 +982,31 @@ app.post(
           id: requesterIp,
           geminiLimitPerDay: MAX_GEMINI_ANALYSES_PER_IP_PER_DAY,
         };
+
+      const queueInfraAvailable = await isQueueInfrastructureAvailable();
+      if (!queueInfraAvailable) {
+        console.warn('[Analyze Fallback] Redis/queue unavailable. Running direct synchronous analysis.', {
+          owner,
+          repo,
+          requesterIp,
+          authenticated: Boolean(userId),
+        });
+
+        const metrics = await runDirectRepoAnalysis({
+          owner,
+          repo,
+          userId: userId !== undefined && userId !== null ? String(userId) : undefined,
+          forceFallbackAdvice: false,
+        });
+
+        res.status(200).json({
+          status: 'done',
+          source: 'direct-fallback',
+          fallbackReason: 'queue_unavailable',
+          metrics,
+        });
+        return;
+      }
 
       await trackRapidFireAndAlert(requesterIp, normalizedRepoRef);
 
@@ -1060,22 +1105,46 @@ app.post(
       }
 
       // ── CREATE NEW JOB ──
-      const job = await analysisQueue.add(
-        'analyze-repo',                           // Job name (for logging/filtering)
-        {
+      let job;
+      try {
+        job = await analysisQueue.add(
+          'analyze-repo',                           // Job name (for logging/filtering)
+          {
+            owner,
+            repo,
+            userId: userId !== undefined && userId !== null ? String(userId) : undefined,
+            forceFallbackAdvice,
+          },  // Job data
+          {
+            jobId,
+            attempts: 3,                            // Retry up to 3 times on failure
+            backoff: { type: 'exponential', delay: 5000 }, // Wait longer between each retry
+            removeOnComplete: { age: 3600 },       // Clean up completed jobs after 1 hour
+            removeOnFail: { age: 86400 },          // Keep failed jobs for 24 hours (for debugging)
+          },
+        );
+      } catch (queueError) {
+        console.warn('[Analyze Fallback] Queue add failed. Running direct synchronous analysis.', {
+          owner,
+          repo,
+          error: queueError instanceof Error ? queueError.message : String(queueError),
+        });
+
+        const metrics = await runDirectRepoAnalysis({
           owner,
           repo,
           userId: userId !== undefined && userId !== null ? String(userId) : undefined,
           forceFallbackAdvice,
-        },  // Job data
-        {
-          jobId,
-          attempts: 3,                            // Retry up to 3 times on failure
-          backoff: { type: 'exponential', delay: 5000 }, // Wait longer between each retry
-          removeOnComplete: { age: 3600 },       // Clean up completed jobs after 1 hour
-          removeOnFail: { age: 86400 },          // Keep failed jobs for 24 hours (for debugging)
-        },
-      );
+        });
+
+        res.status(200).json({
+          status: 'done',
+          source: 'direct-fallback',
+          fallbackReason: 'queue_add_failed',
+          metrics,
+        });
+        return;
+      }
 
       if (!job.id) {
         res.status(500).json({ error: 'Failed to create analysis job. Please try again.' });
@@ -1093,7 +1162,34 @@ app.post(
       });
     } catch (error) {
       console.error('Error queuing analysis job:', error);
-      res.status(500).json({ error: 'Failed to queue analysis' });
+      if (fallbackOwner && fallbackRepo) {
+        try {
+          console.warn('[Analyze Fallback] Route-level failure. Attempting direct synchronous analysis.', {
+            owner: fallbackOwner,
+            repo: fallbackRepo,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          const metrics = await runDirectRepoAnalysis({
+            owner: fallbackOwner,
+            repo: fallbackRepo,
+            userId: fallbackUserId !== undefined && fallbackUserId !== null ? String(fallbackUserId) : undefined,
+            forceFallbackAdvice: false,
+          });
+
+          res.status(200).json({
+            status: 'done',
+            source: 'direct-fallback',
+            fallbackReason: 'route_error',
+            metrics,
+          });
+          return;
+        } catch (fallbackError) {
+          console.error('Direct fallback analysis failed:', fallbackError);
+        }
+      }
+
+      res.status(500).json({ error: 'Failed to queue analysis and fallback analysis failed.' });
     }
   },
 );
@@ -1799,11 +1895,11 @@ app.get(
               topLanguage: getTopLanguage(
                 (await ghReposRes.clone().json().catch(() => [])) as GitHubRepoApiResponse[],
               ),
-              externalPRCount:              contribCache?.value?.externalPRCount ?? 0,
-              externalMergedPRCount:        contribCache?.value?.externalMergedPRCount ?? 0,
-              contributionAcceptanceRate:   contribCache?.value?.contributionAcceptanceRate ?? 0,
-              followers:                    ghUserData.followers ?? 0,
-              issuesOpened:                 0, // not critical for matching; keep 0 to avoid extra API call
+              externalPRCount: contribCache?.value?.externalPRCount ?? 0,
+              externalMergedPRCount: contribCache?.value?.externalMergedPRCount ?? 0,
+              contributionAcceptanceRate: contribCache?.value?.contributionAcceptanceRate ?? 0,
+              followers: ghUserData.followers ?? 0,
+              issuesOpened: 0, // not critical for matching; keep 0 to avoid extra API call
               repoLanguages,
               repoNames,
             };

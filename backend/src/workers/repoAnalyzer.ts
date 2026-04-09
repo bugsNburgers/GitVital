@@ -44,13 +44,17 @@ const MAX_ISSUES = 500;
 // Priority: user's OAuth token (encrypted in Redis) → service token env var.
 async function resolveAccessToken(userId?: string): Promise<string> {
   if (userId) {
-    const encrypted = await redis.get(`oauth:github:token:user:${userId}`);
-    if (encrypted) {
-      try {
-        return decryptAccessToken(encrypted, config.encryptionKey);
-      } catch {
-        console.warn('[Worker] Failed to decrypt user token, falling back to service token.');
+    try {
+      const encrypted = await redis.get(`oauth:github:token:user:${userId}`);
+      if (encrypted) {
+        try {
+          return decryptAccessToken(encrypted, config.encryptionKey);
+        } catch {
+          console.warn('[Worker] Failed to decrypt user token, falling back to service token.');
+        }
       }
+    } catch (redisError) {
+      console.warn('[Worker] Redis unavailable while resolving user token, falling back to service token.', redisError);
     }
   }
 
@@ -220,11 +224,15 @@ function generateRiskFlags(metrics: AllMetrics): AllMetrics['riskFlags'] {
 }
 
 async function setJobState(jobId: string, status: 'queued' | 'processing' | 'done' | 'failed', error?: string): Promise<void> {
-  await redis.set(`jobstatus:${jobId}`, status, 'EX', 3600);
-  if (error) {
-    await redis.set(`joberror:${jobId}`, error, 'EX', 3600);
-  } else {
-    await redis.del(`joberror:${jobId}`);
+  try {
+    await redis.set(`jobstatus:${jobId}`, status, 'EX', 3600);
+    if (error) {
+      await redis.set(`joberror:${jobId}`, error, 'EX', 3600);
+    } else {
+      await redis.del(`joberror:${jobId}`);
+    }
+  } catch (redisError) {
+    console.warn(`[Worker] Failed to persist job state for ${jobId}. Continuing without Redis status sync.`, redisError);
   }
 }
 
@@ -252,9 +260,10 @@ function isGitHubApiError(error: unknown): error is GitHubApiError {
 // This is the function that runs every time a job is picked up.
 // It follows the exact 15-step pipeline from the architecture doc.
 
-async function processAnalysisJob(job: Job<JobData>): Promise<void> {
+async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { metadata?: RepoMetadata }) | void> {
   const { owner, repo, userId, forceFallbackAdvice } = job.data;
   const logPrefix = `[Job ${job.id}] ${owner}/${repo}`;
+  const isDirectMode = String(job.id ?? '').startsWith('direct__');
 
   console.log(`\n🔬 ${logPrefix} — Starting analysis...`);
 
@@ -306,11 +315,15 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         aiAdviceModel: null,
       };
       // Cache the empty result and mark job done
-      await setRepoMetricsCache(owner, repo, emptyResult, config.cacheTtlSeconds);
+      try {
+        await setRepoMetricsCache(owner, repo, emptyResult, config.cacheTtlSeconds);
+      } catch (cacheError) {
+        console.warn(`   ${logPrefix} — Cache write skipped (Redis unavailable):`, cacheError);
+      }
       await setJobState(job.id!, 'done');
       await job.updateProgress(100);
       console.log(`   ${logPrefix} — Empty repo, analysis skipped ✓`);
-      return;
+      return { ...emptyResult, metadata };
     }
 
     console.log(`   ${logPrefix} — Step 2: Repo validated ✓`);
@@ -527,8 +540,12 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     // ──────────────────────────────────────────────
     // Step 13: Update Redis cache with fresh metrics
     // ──────────────────────────────────────────────
-    await setRepoMetricsCache(owner, repo, { ...metrics, metadata }, config.cacheTtlSeconds);
-    console.log(`   ${logPrefix} — Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
+    try {
+      await setRepoMetricsCache(owner, repo, { ...metrics, metadata }, config.cacheTtlSeconds);
+      console.log(`   ${logPrefix} — Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
+    } catch (cacheError) {
+      console.warn(`   ${logPrefix} — Step 13: Cache write skipped (Redis unavailable):`, cacheError);
+    }
 
 
     // ──────────────────────────────────────────────
@@ -558,6 +575,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     }
 
     console.log(`\n✅ ${logPrefix} — Analysis complete! Score: ${metrics.healthScore}/100\n`);
+    return { ...metrics, metadata };
 
   } catch (error) {
     // ═══════════════════════════════════════════════════════════
@@ -577,6 +595,10 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
         // ── 403: Rate limited by GitHub ──
         // We CAN retry this, but we need to wait until the rate limit resets.
         case 403:
+          if (isDirectMode) {
+            console.error(`❌ ${logPrefix} — GitHub rate limited during direct API fallback mode`);
+            throw new Error('GitHub API rate limit reached. Please retry in a few minutes.');
+          }
           if (error.rateLimitResetAt) {
             const resetTime = new Date(error.rateLimitResetAt).getTime();
             const now = Date.now();
@@ -611,6 +633,28 @@ async function processAnalysisJob(job: Job<JobData>): Promise<void> {
     console.error(`❌ ${logPrefix} — Unexpected error:`, error);
     throw error;
   }
+}
+
+export async function runDirectRepoAnalysis(data: JobData): Promise<AllMetrics & { metadata?: RepoMetadata }> {
+  const directJobId = `direct__${data.owner.toLowerCase()}__${data.repo.toLowerCase()}__${Date.now()}`;
+  const directJob = {
+    id: directJobId,
+    data,
+    token: 'direct-fallback',
+    async updateProgress() {
+      return;
+    },
+    async moveToDelayed() {
+      return;
+    },
+  } as unknown as Job<JobData>;
+
+  const result = await processAnalysisJob(directJob);
+  if (!result) {
+    throw new Error('Direct analysis did not produce a result payload.');
+  }
+
+  return result;
 }
 
 
