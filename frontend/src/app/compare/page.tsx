@@ -65,7 +65,11 @@ const REPO_REF_REGEX = /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/;
 function parseRepoRef(value: string): { owner: string; repo: string } | null {
   const match = REPO_REF_REGEX.exec(value.trim());
   if (!match) return null;
-  return { owner: match[1], repo: match[2] };
+  const owner = match[1];
+  const repoRaw = match[2];
+  const repo = repoRaw.toLowerCase().endsWith('.git') ? repoRaw.slice(0, -4) : repoRaw;
+  if (!repo) return null;
+  return { owner, repo };
 }
 
 function repoRefKey(owner: string, repo: string): string {
