@@ -177,8 +177,11 @@ function buildSparkPath(points: number[], width = 1200, height = 160): string {
 
 export default function RepoDashboardPage() {
   const params = useParams<{ owner: string; repo: string }>();
-  const owner = params?.owner ?? "facebook";
-  const repo = params?.repo ?? "react";
+  const ownerRaw = params?.owner ?? "facebook";
+  const repoRaw = params?.repo ?? "react";
+  const owner = decodeURIComponent(ownerRaw);
+  const decodedRepo = decodeURIComponent(repoRaw);
+  const repo = decodedRepo.toLowerCase().endsWith('.git') ? decodedRepo.slice(0, -4) : decodedRepo;
   const router = useRouter();
 
   const [activeRange, setActiveRange] = useState<"12M" | "6M" | "30D">("12M");

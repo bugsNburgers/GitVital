@@ -570,6 +570,49 @@ function parseBooleanFlag(value: unknown): boolean {
   return false;
 }
 
+function classifyAnalyzeFailure(error: unknown): { status: number; code: string; message: string } {
+  const message = error instanceof Error ? error.message : String(error ?? 'Unknown analysis error');
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('no github access token available')) {
+    return {
+      status: 503,
+      code: 'GITHUB_TOKEN_UNAVAILABLE',
+      message: 'GitHub analysis token is unavailable while queue infrastructure is offline. Please retry shortly.',
+    };
+  }
+
+  if (normalized.includes('rate limit')) {
+    return {
+      status: 429,
+      code: 'GITHUB_RATE_LIMITED',
+      message: 'GitHub API rate limit reached. Please retry in a few minutes.',
+    };
+  }
+
+  if (normalized.includes('repository not found') || normalized.includes('is private')) {
+    return {
+      status: 404,
+      code: 'REPO_NOT_FOUND',
+      message: 'Repository not found or is private.',
+    };
+  }
+
+  if (normalized.includes('oauth token expired') || normalized.includes('authentication expired')) {
+    return {
+      status: 401,
+      code: 'GITHUB_AUTH_EXPIRED',
+      message: 'GitHub authentication expired. Please sign in again.',
+    };
+  }
+
+  return {
+    status: 500,
+    code: 'ANALYSIS_FALLBACK_FAILED',
+    message: 'Failed to queue analysis and fallback analysis failed.',
+  };
+}
+
 function mapQueueStateToJobStatus(state: string): JobStatus {
   switch (state) {
     case 'waiting':
@@ -992,19 +1035,29 @@ app.post(
           authenticated: Boolean(userId),
         });
 
-        const metrics = await runDirectRepoAnalysis({
-          owner,
-          repo,
-          userId: userId !== undefined && userId !== null ? String(userId) : undefined,
-          forceFallbackAdvice: false,
-        });
+        try {
+          const metrics = await runDirectRepoAnalysis({
+            owner,
+            repo,
+            userId: userId !== undefined && userId !== null ? String(userId) : undefined,
+            forceFallbackAdvice: false,
+          });
 
-        res.status(200).json({
-          status: 'done',
-          source: 'direct-fallback',
-          fallbackReason: 'queue_unavailable',
-          metrics,
-        });
+          res.status(200).json({
+            status: 'done',
+            source: 'direct-fallback',
+            fallbackReason: 'queue_unavailable',
+            metrics,
+          });
+        } catch (directError) {
+          const failure = classifyAnalyzeFailure(directError);
+          res.status(failure.status).json({
+            error: failure.message,
+            code: failure.code,
+            source: 'direct-fallback',
+            fallbackReason: 'queue_unavailable',
+          });
+        }
         return;
       }
 
@@ -1130,19 +1183,29 @@ app.post(
           error: queueError instanceof Error ? queueError.message : String(queueError),
         });
 
-        const metrics = await runDirectRepoAnalysis({
-          owner,
-          repo,
-          userId: userId !== undefined && userId !== null ? String(userId) : undefined,
-          forceFallbackAdvice,
-        });
+        try {
+          const metrics = await runDirectRepoAnalysis({
+            owner,
+            repo,
+            userId: userId !== undefined && userId !== null ? String(userId) : undefined,
+            forceFallbackAdvice,
+          });
 
-        res.status(200).json({
-          status: 'done',
-          source: 'direct-fallback',
-          fallbackReason: 'queue_add_failed',
-          metrics,
-        });
+          res.status(200).json({
+            status: 'done',
+            source: 'direct-fallback',
+            fallbackReason: 'queue_add_failed',
+            metrics,
+          });
+        } catch (directError) {
+          const failure = classifyAnalyzeFailure(directError);
+          res.status(failure.status).json({
+            error: failure.message,
+            code: failure.code,
+            source: 'direct-fallback',
+            fallbackReason: 'queue_add_failed',
+          });
+        }
         return;
       }
 
@@ -1186,10 +1249,19 @@ app.post(
           return;
         } catch (fallbackError) {
           console.error('Direct fallback analysis failed:', fallbackError);
+          const failure = classifyAnalyzeFailure(fallbackError);
+          res.status(failure.status).json({
+            error: failure.message,
+            code: failure.code,
+            source: 'direct-fallback',
+            fallbackReason: 'route_error',
+          });
+          return;
         }
       }
 
-      res.status(500).json({ error: 'Failed to queue analysis and fallback analysis failed.' });
+      const failure = classifyAnalyzeFailure(error);
+      res.status(failure.status).json({ error: failure.message, code: failure.code });
     }
   },
 );
@@ -1248,8 +1320,14 @@ app.get(
   handleValidationErrors,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const owner = req.params.owner as string;
-      const repo = req.params.repo as string;
+      const owner = (req.params.owner as string).trim();
+      const repoRaw = (req.params.repo as string).trim();
+      const repo = repoRaw.toLowerCase().endsWith('.git') ? repoRaw.slice(0, -4) : repoRaw;
+
+      if (!repo) {
+        res.status(400).json({ error: 'Invalid repository name.' });
+        return;
+      }
 
       // Step 1: Check the Redis cache first (fast path)
       const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
