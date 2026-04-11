@@ -89,9 +89,16 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         // or partial failures are caught here to return 0 metrics instead of crashing.
         let mergedPRs: UserMergedPRNode[] = [];
         try {
-            mergedPRs = await fetchUserMergedPRsFromGitHub(client, username, MAX_USER_PRS);
+            const FETCH_TIMEOUT_MS = 45_000; // 45s — GitHub pagination can be slow
+            const timeoutPromise = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('GitHub PR fetch timed out after 45s')), FETCH_TIMEOUT_MS)
+            );
+            mergedPRs = await Promise.race([
+                fetchUserMergedPRsFromGitHub(client, username, MAX_USER_PRS),
+                timeoutPromise,
+            ]);
         } catch (fetchError) {
-            console.warn(`   ${logPrefix} — PR fetch failed, returning zero metrics:`, fetchError);
+            console.warn(`   ${logPrefix} — PR fetch failed or timed out, returning zero metrics:`, fetchError);
             // Continue with empty array — all metrics will be 0
         }
         await safeUpdateProgress(job, 55);
@@ -154,11 +161,13 @@ if (shouldStartUserWorker) {
         {
             connection: getBullRedisConnection(),
             concurrency: 2,
+            lockDuration: 120_000,    // 2 min lock — fetch can take time
+            stalledInterval: 60_000,  // Check stalled every 1 min
+            maxStalledCount: 1,       // Only restart stalled once
             limiter: {
                 max: 10,
                 duration: 60_000,
             },
-            // Attempts/backoff are set at enqueue time in POST /api/user/analyze.
         },
     );
 
