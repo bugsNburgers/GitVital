@@ -37,7 +37,8 @@ import { generateCompareInsights } from '../ai/compareInsights';
 import type { RepoMetricsForCompare } from '../ai/compareInsights';
 import { checkAndIncrementGlobalDailyQuota } from '../ai/globalQuotaGate';
 
-// Start background workers in the same process to save hosting costs!
+// Analysis helpers + optional inline workers.
+// Workers only boot inline when EMBED_WORKERS_IN_API=true.
 import { runDirectRepoAnalysis } from '../workers/repoAnalyzer';
 import '../workers/userAnalyzer';
 
@@ -1305,6 +1306,22 @@ app.get(
       const job = await analysisQueue.getJob(jobId);
 
       if (!job) {
+        const [cachedStatusRaw, cachedError] = await Promise.all([
+          redis.get(`jobstatus:${jobId}`),
+          redis.get(`joberror:${jobId}`),
+        ]);
+
+        const cachedStatus = normalizeJobStatus(cachedStatusRaw);
+        if (cachedStatus) {
+          res.json({
+            jobId,
+            status: cachedStatus,
+            progress: cachedStatus === 'done' ? 100 : 0,
+            error: cachedError || null,
+          });
+          return;
+        }
+
         res.status(404).json({ error: 'Job not found' });
         return;
       }

@@ -662,68 +662,73 @@ export async function runDirectRepoAnalysis(data: JobData): Promise<AllMetrics &
 // SECTION 4: CREATE AND START THE WORKER
 // ═══════════════════════════════════════════════════════════════
 
-const worker = new Worker<JobData>(
-  'repo-analysis',  // Must match the queue name in the API server
-  processAnalysisJob,
-  {
-    connection: getBullRedisConnection(),
-    concurrency: 2,           // Process 2 jobs at the same time
-    lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1
-    stalledInterval: 120_000, // Check for stalled jobs every 2 minutes — Prompt 7.1
-    maxStalledCount: 2,       // Restart stalled jobs up to 2 times — Prompt 7.1
-    limiter: {
-      max: 5,            // Max 5 jobs started...
-      duration: 60_000,  // ...per 60 seconds (1 minute)
+const shouldStartRepoWorker = require.main === module || process.env.EMBED_WORKERS_IN_API === 'true';
+let worker: Worker<JobData> | null = null;
+
+if (shouldStartRepoWorker) {
+  worker = new Worker<JobData>(
+    'repo-analysis',  // Must match the queue name in the API server
+    processAnalysisJob,
+    {
+      connection: getBullRedisConnection(),
+      concurrency: 2,           // Process 2 jobs at the same time
+      lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1
+      stalledInterval: 120_000, // Check for stalled jobs every 2 minutes — Prompt 7.1
+      maxStalledCount: 2,       // Restart stalled jobs up to 2 times — Prompt 7.1
+      limiter: {
+        max: 5,            // Max 5 jobs started...
+        duration: 60_000,  // ...per 60 seconds (1 minute)
+      },
+      // NOTE: Retry attempts (3x with exponential backoff) are set at enqueue time
+      // in the API server (POST /api/analyze), not at the worker level.
+      // BullMQ's default behavior + the 'failed' event handler handles terminal failures.
     },
-    // NOTE: Retry attempts (3x with exponential backoff) are set at enqueue time
-    // in the API server (POST /api/analyze), not at the worker level.
-    // BullMQ's default behavior + the 'failed' event handler handles terminal failures.
-  },
-);
+  );
 
 
-// ═══════════════════════════════════════════════════════════════
-// SECTION 5: WORKER EVENT LISTENERS
-// ═══════════════════════════════════════════════════════════════
-// These log what's happening so we can monitor the worker.
+  // ═══════════════════════════════════════════════════════════════
+  // SECTION 5: WORKER EVENT LISTENERS
+  // ═══════════════════════════════════════════════════════════════
+  // These log what's happening so we can monitor the worker.
 
-worker.on('ready', () => {
-  console.log('🏭 GitVital Worker is ready and waiting for jobs...');
-  console.log(`   Queue: "repo-analysis"`);
-  console.log(`   Concurrency: 2 jobs at a time`);
-  console.log(`   Rate limit: 5 jobs per minute`);
-});
+  worker.on('ready', () => {
+    console.log('🏭 GitVital Worker is ready and waiting for jobs...');
+    console.log(`   Queue: "repo-analysis"`);
+    console.log(`   Concurrency: 2 jobs at a time`);
+    console.log(`   Rate limit: 5 jobs per minute`);
+  });
 
-worker.on('active', (job) => {
-  console.log(`🔄 Job ${job.id} (${job.data.owner}/${job.data.repo}) has started processing`);
-});
+  worker.on('active', (job) => {
+    console.log(`🔄 Job ${job.id} (${job.data.owner}/${job.data.repo}) has started processing`);
+  });
 
-worker.on('completed', (job) => {
-  console.log(`✅ Job ${job.id} (${job.data.owner}/${job.data.repo}) completed successfully`);
-});
+  worker.on('completed', (job) => {
+    console.log(`✅ Job ${job.id} (${job.data.owner}/${job.data.repo}) completed successfully`);
+  });
 
-worker.on('failed', (job, err) => {
-  if (job) {
-    console.error(`❌ Job ${job.id} (${job.data.owner}/${job.data.repo}) failed:`, err.message);
-    console.error(`   Attempts: ${job.attemptsMade}/${job.opts.attempts || 3}`);
+  worker.on('failed', (job, err) => {
+    if (job) {
+      console.error(`❌ Job ${job.id} (${job.data.owner}/${job.data.repo}) failed:`, err.message);
+      console.error(`   Attempts: ${job.attemptsMade}/${job.opts.attempts || 3}`);
 
-    const maxAttempts = job.opts.attempts || 3;
-    if (job.attemptsMade >= maxAttempts) {
-      // Mark failed only on terminal failure to match Prompt 2.2 semantics.
-      void setJobState(job.id!, 'failed', err.message || 'Analysis failed after retries');
+      const maxAttempts = job.opts.attempts || 3;
+      if (job.attemptsMade >= maxAttempts) {
+        // Mark failed only on terminal failure to match Prompt 2.2 semantics.
+        void setJobState(job.id!, 'failed', err.message || 'Analysis failed after retries');
+      }
+    } else {
+      console.error('❌ A job failed (no job reference):', err.message);
     }
-  } else {
-    console.error('❌ A job failed (no job reference):', err.message);
-  }
-});
+  });
 
-worker.on('error', (err) => {
-  console.error('❌ Worker error:', err.message);
-});
+  worker.on('error', (err) => {
+    console.error('❌ Worker error:', err.message);
+  });
 
-worker.on('stalled', (jobId) => {
-  console.warn(`⚠️ Job ${jobId} stalled (took too long without a heartbeat)`);
-});
+  worker.on('stalled', (jobId) => {
+    console.warn(`⚠️ Job ${jobId} stalled (took too long without a heartbeat)`);
+  });
+}
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -733,9 +738,11 @@ worker.on('stalled', (jobId) => {
 async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n⚠️  Worker received ${signal}. Shutting down gracefully...`);
 
-  // Close the worker — this waits for active jobs to finish
-  await worker.close();
-  console.log('   ✅ Worker closed (active jobs finished)');
+  if (worker) {
+    // Close the worker — this waits for active jobs to finish
+    await worker.close();
+    console.log('   ✅ Worker closed (active jobs finished)');
+  }
 
   // Close the Redis connection
   redis.disconnect();
@@ -748,7 +755,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
   process.exit(0);
 }
 
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+if (shouldStartRepoWorker) {
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+}
 
 export { worker };

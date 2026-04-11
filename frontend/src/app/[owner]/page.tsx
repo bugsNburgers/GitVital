@@ -7,6 +7,8 @@ import InfoTooltip from "@/components/InfoTooltip";
 
 type BadgeTone = "orange" | "secondary" | "emerald" | "orange-light";
 type LoadState = "checking" | "queuing" | "polling" | "done" | "error";
+const MAX_JOB_POLL_ATTEMPTS = 120;
+const JOB_POLL_INTERVAL_MS = 3000;
 
 interface ProfileBadge {
     title: string;
@@ -262,13 +264,34 @@ export default function UserProfilePage() {
             setJobId(targetJobId);
             setJobProgress(5);
 
+            let attempts = 0;
+
             pollRef.current = setInterval(async () => {
+                attempts += 1;
+                if (attempts > MAX_JOB_POLL_ATTEMPTS) {
+                    if (pollRef.current) {
+                        clearInterval(pollRef.current);
+                        pollRef.current = null;
+                    }
+                    setErrorMsg("User analysis timed out. Please retry.");
+                    setLoadState("error");
+                    return;
+                }
+
                 try {
                     const statusResponse = await fetch(`${API_BASE}/api/user/status/${targetJobId}`, {
                         credentials: "include",
                     });
 
                     if (!statusResponse.ok) {
+                        if (statusResponse.status === 404) {
+                            if (pollRef.current) {
+                                clearInterval(pollRef.current);
+                                pollRef.current = null;
+                            }
+                            setErrorMsg("User analysis job not found. Please start a new analysis.");
+                            setLoadState("error");
+                        }
                         return;
                     }
 
@@ -301,7 +324,7 @@ export default function UserProfilePage() {
                 } catch {
                     // Ignore transient polling failures and keep retrying.
                 }
-            }, 3000);
+            }, JOB_POLL_INTERVAL_MS);
         },
         [fetchProfile],
     );
@@ -1167,63 +1190,63 @@ export default function UserProfilePage() {
                                     <div className="section-empty">No repositories found for this developer.</div>
                                 ) : (
                                     <>
-                                    <div className="repo-grid">
-                                        {displayedRepos.map((repo, index) => {
-                                            const healthText = repo.healthScore !== null ? repo.healthScore.toFixed(1) : "--";
-                                            const healthClass = repo.healthScore !== null ? "repo-health-val" : "repo-health-val na";
-                                            const sparkColor = repo.healthScore !== null && repo.healthScore >= 75
-                                                ? COLORS.green
-                                                : repo.healthScore !== null && repo.healthScore >= 50
-                                                    ? COLORS.secondary
-                                                    : COLORS.orange;
+                                        <div className="repo-grid">
+                                            {displayedRepos.map((repo, index) => {
+                                                const healthText = repo.healthScore !== null ? repo.healthScore.toFixed(1) : "--";
+                                                const healthClass = repo.healthScore !== null ? "repo-health-val" : "repo-health-val na";
+                                                const sparkColor = repo.healthScore !== null && repo.healthScore >= 75
+                                                    ? COLORS.green
+                                                    : repo.healthScore !== null && repo.healthScore >= 50
+                                                        ? COLORS.secondary
+                                                        : COLORS.orange;
 
-                                            return (
-                                                <div key={repo.fullName} className="repo-card" onClick={() => router.push(`/${repo.owner}/${repo.name}`)}>
-                                                    <div className="repo-card-top">
-                                                        <div className="repo-icon"><span className="material-symbols-outlined">{repoIcon(repo.language)}</span></div>
-                                                        <div className="repo-health">
-                                                            <span className="repo-health-lbl">Health</span>
-                                                            <span className={healthClass}>{healthText}</span>
+                                                return (
+                                                    <div key={repo.fullName} className="repo-card" onClick={() => router.push(`/${repo.owner}/${repo.name}`)}>
+                                                        <div className="repo-card-top">
+                                                            <div className="repo-icon"><span className="material-symbols-outlined">{repoIcon(repo.language)}</span></div>
+                                                            <div className="repo-health">
+                                                                <span className="repo-health-lbl">Health</span>
+                                                                <span className={healthClass}>{healthText}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <h4 className="repo-name">{repo.name}</h4>
+                                                        <p className="repo-desc">{repo.description || "No repository description available."}</p>
+
+                                                        <div className="repo-spark">
+                                                            {renderSpark(sparkSeriesForRepo(repo, index), sparkColor, index)}
+                                                        </div>
+
+                                                        <div className="repo-foot">
+                                                            <div className="repo-lang">
+                                                                <span className={`repo-lang-dot ${languageClass(repo.language)}`} />
+                                                                {repo.language || "Unknown"}
+                                                            </div>
+                                                            <div className="repo-stars">
+                                                                <span className="material-symbols-outlined">star</span>
+                                                                {compactNumber(repo.stars)}
+                                                            </div>
                                                         </div>
                                                     </div>
-
-                                                    <h4 className="repo-name">{repo.name}</h4>
-                                                    <p className="repo-desc">{repo.description || "No repository description available."}</p>
-
-                                                    <div className="repo-spark">
-                                                        {renderSpark(sparkSeriesForRepo(repo, index), sparkColor, index)}
-                                                    </div>
-
-                                                    <div className="repo-foot">
-                                                        <div className="repo-lang">
-                                                            <span className={`repo-lang-dot ${languageClass(repo.language)}`} />
-                                                            {repo.language || "Unknown"}
-                                                        </div>
-                                                        <div className="repo-stars">
-                                                            <span className="material-symbols-outlined">star</span>
-                                                            {compactNumber(repo.stars)}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    {sortedRepos.length > REPO_PAGE_SIZE && (
-                                        <div className="view-all-repos-wrap">
-                                            <button
-                                                className="btn-view-all-repos"
-                                                onClick={() => setShowAllRepos(prev => !prev)}
-                                            >
-                                                <span className="material-symbols-outlined">
-                                                    {showAllRepos ? "expand_less" : "expand_more"}
-                                                </span>
-                                                {showAllRepos
-                                                    ? `Show fewer repos`
-                                                    : `View all ${sortedRepos.length} repositories`
-                                                }
-                                            </button>
+                                                );
+                                            })}
                                         </div>
-                                    )}
+                                        {sortedRepos.length > REPO_PAGE_SIZE && (
+                                            <div className="view-all-repos-wrap">
+                                                <button
+                                                    className="btn-view-all-repos"
+                                                    onClick={() => setShowAllRepos(prev => !prev)}
+                                                >
+                                                    <span className="material-symbols-outlined">
+                                                        {showAllRepos ? "expand_less" : "expand_more"}
+                                                    </span>
+                                                    {showAllRepos
+                                                        ? `Show fewer repos`
+                                                        : `View all ${sortedRepos.length} repositories`
+                                                    }
+                                                </button>
+                                            </div>
+                                        )}
                                     </>
                                 )}
                             </div>
