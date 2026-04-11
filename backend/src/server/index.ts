@@ -1899,12 +1899,13 @@ app.get(
       const forceRefresh = req.query.refresh === 'true';
 
       // Auth guard — must be logged in to get personalized recommendations
-      const sessionUser = (req as Request & { user?: { loggedIn?: boolean; githubUsername?: string } }).user;
-      if (!sessionUser?.loggedIn || !sessionUser.githubUsername) {
+      const sessionUserId = (req.session as any)?.userId as number | string | undefined;
+      const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
+      if (!sessionUserId || !sessionUsername) {
         res.status(401).json({ error: 'Login required to get personalized issue recommendations.', code: 'LOGIN_REQUIRED' });
         return;
       }
-      const authedUsername = sessionUser.githubUsername;
+      const authedUsername = sessionUsername;
 
       // Quota gate
       const quota = await checkAndIncrementGlobalDailyQuota(authedUsername);
@@ -2055,14 +2056,15 @@ app.post(
       const rawRepos = req.body.repos as unknown[];
 
       // Auth guard — must be logged in for AI comparison
-      const sessionUser = (req as Request & { user?: { loggedIn?: boolean; githubUsername?: string } }).user;
-      if (!sessionUser?.loggedIn || !sessionUser.githubUsername) {
+      const sessionUserId = (req.session as any)?.userId as number | string | undefined;
+      const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
+      if (!sessionUserId || !sessionUsername) {
         res.status(401).json({ error: 'Login required to generate AI comparison insights.', code: 'LOGIN_REQUIRED' });
         return;
       }
 
       // Quota gate
-      const quota = await checkAndIncrementGlobalDailyQuota(sessionUser.githubUsername);
+      const quota = await checkAndIncrementGlobalDailyQuota(sessionUsername);
       if (!quota.allowed) {
         res.status(429).json({
           error: 'Daily AI limit reached. Come back tomorrow.',
