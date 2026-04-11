@@ -58,12 +58,18 @@ Open `backend/.env` and replace the placeholder values with your actual database
 
 This architecture is robust because it detaches the heavy GraphQL polling from the main REST server. To run the application, you need **three** separate terminal windows.
 
+> Important: Avoid running both dedicated workers and inline workers at the same time.
+> By default, workers start only from `npm run worker` / `npm run worker:user`.
+> Inline workers are opt-in via `EMBED_WORKERS_IN_API=true` on the API process.
+
 ### Terminal 1: Backend API Server
 Serves all `/api/*` REST endpoints and handles OAuth.
 ```bash
 cd backend
 npm run dev
 ```
+
+If you set `EMBED_WORKERS_IN_API=true` for the API process, do not start Terminal 2/worker scripts.
 
 ### Terminal 2: BullMQ Worker Engine
 Continuously consumes the Redis queue, executing complex repository and contributor metric mathematics in the background.

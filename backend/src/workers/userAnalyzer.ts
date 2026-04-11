@@ -130,73 +130,82 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
     }
 }
 
-const userWorker = new Worker<UserJobData>(
-    'user-analysis',
-    processUserAnalysisJob,
-    {
-        connection: getBullRedisConnection(),
-        concurrency: 2,
-        limiter: {
-            max: 10,
-            duration: 60_000,
+const shouldStartUserWorker = require.main === module || process.env.EMBED_WORKERS_IN_API === 'true';
+let userWorker: Worker<UserJobData> | null = null;
+
+if (shouldStartUserWorker) {
+    userWorker = new Worker<UserJobData>(
+        'user-analysis',
+        processUserAnalysisJob,
+        {
+            connection: getBullRedisConnection(),
+            concurrency: 2,
+            limiter: {
+                max: 10,
+                duration: 60_000,
+            },
+            // Attempts/backoff are set at enqueue time in POST /api/user/analyze.
         },
-        // Attempts/backoff are set at enqueue time in POST /api/user/analyze.
-    },
-);
+    );
 
-userWorker.on('ready', () => {
-    console.log('🏭 User contribution worker ready');
-    console.log('   Queue: "user-analysis"');
-    console.log('   Concurrency: 2');
-    console.log('   Limiter: 10 jobs/minute');
-});
+    userWorker.on('ready', () => {
+        console.log('🏭 User contribution worker ready');
+        console.log('   Queue: "user-analysis"');
+        console.log('   Concurrency: 2');
+        console.log('   Limiter: 10 jobs/minute');
+    });
 
-userWorker.on('active', (job) => {
-    console.log(`🔄 User job ${job.id} (${job.data.username}) started`);
-});
+    userWorker.on('active', (job) => {
+        console.log(`🔄 User job ${job.id} (${job.data.username}) started`);
+    });
 
-userWorker.on('completed', (job) => {
-    console.log(`✅ User job ${job.id} (${job.data.username}) completed`);
-});
+    userWorker.on('completed', (job) => {
+        console.log(`✅ User job ${job.id} (${job.data.username}) completed`);
+    });
 
-userWorker.on('failed', (job, err) => {
-    if (!job) {
-        console.error('❌ User job failed (missing job reference):', err.message);
-        return;
-    }
+    userWorker.on('failed', (job, err) => {
+        if (!job) {
+            console.error('❌ User job failed (missing job reference):', err.message);
+            return;
+        }
 
-    console.error(`❌ User job ${job.id} (${job.data.username}) failed:`, err.message);
-    console.error(`   Attempts: ${job.attemptsMade}/${job.opts.attempts || 3}`);
+        console.error(`❌ User job ${job.id} (${job.data.username}) failed:`, err.message);
+        console.error(`   Attempts: ${job.attemptsMade}/${job.opts.attempts || 3}`);
 
-    const maxAttempts = job.opts.attempts || 3;
-    if (job.attemptsMade >= maxAttempts) {
-        void setUserJobState(job.id!, 'failed', err.message || 'User contribution analysis failed after retries');
-    }
-});
+        const maxAttempts = job.opts.attempts || 3;
+        if (job.attemptsMade >= maxAttempts) {
+            void setUserJobState(job.id!, 'failed', err.message || 'User contribution analysis failed after retries');
+        }
+    });
 
-userWorker.on('stalled', (jobId) => {
-    console.warn(`⚠️ User job ${jobId} stalled`);
-});
+    userWorker.on('stalled', (jobId) => {
+        console.warn(`⚠️ User job ${jobId} stalled`);
+    });
 
-userWorker.on('error', (err) => {
-    console.error('❌ User worker error:', err.message);
-});
+    userWorker.on('error', (err) => {
+        console.error('❌ User worker error:', err.message);
+    });
+}
 
 async function gracefulShutdown(signal: string): Promise<void> {
     console.log(`\n⚠️ User worker received ${signal}. Shutting down gracefully...`);
-    await userWorker.close();
-    console.log('   ✅ User worker closed');
+    if (userWorker) {
+        await userWorker.close();
+        console.log('   ✅ User worker closed');
+    }
     redis.disconnect();
     console.log('   ✅ Redis disconnected');
     process.exit(0);
 }
 
-process.on('SIGINT', () => {
-    void gracefulShutdown('SIGINT');
-});
+if (shouldStartUserWorker) {
+    process.on('SIGINT', () => {
+        void gracefulShutdown('SIGINT');
+    });
 
-process.on('SIGTERM', () => {
-    void gracefulShutdown('SIGTERM');
-});
+    process.on('SIGTERM', () => {
+        void gracefulShutdown('SIGTERM');
+    });
+}
 
 export { userWorker };

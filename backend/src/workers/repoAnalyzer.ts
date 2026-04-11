@@ -236,6 +236,17 @@ async function setJobState(jobId: string, status: 'queued' | 'processing' | 'don
   }
 }
 
+// Safe wrapper around job.updateProgress() — BullMQ calls Redis internally.
+// If Redis is down mid-job, progress updates should fail silently so the
+// actual analysis (GitHub fetching, metrics, AI) can still complete.
+async function safeUpdateProgress(job: Job<JobData>, progress: number): Promise<void> {
+  try {
+    await job.updateProgress(progress);
+  } catch {
+    // Redis unavailable — progress tracking lost, analysis continues
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 2: HELPER — GitHub Error Classifier
@@ -274,7 +285,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // We track status in Redis (for fast polling) and will also
     // update the database once Prisma is set up.
     await setJobState(job.id!, 'processing');
-    await job.updateProgress(5);
+    await safeUpdateProgress(job, 5);
     console.log(`   ${logPrefix} — Step 1: Status → processing`);
 
     // TODO: Update analysis_jobs table via Prisma
@@ -294,7 +305,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 2: Validate repo exists and is public
     // ──────────────────────────────────────────────
     const metadata = await fetchRepoMetadata(client, owner, repo);
-    await job.updateProgress(10);
+    await safeUpdateProgress(job, 10);
 
     if (!metadata.exists) {
       throw { status: 404, message: 'Repository not found or is private' } as GitHubApiError;
@@ -321,7 +332,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         console.warn(`   ${logPrefix} — Cache write skipped (Redis unavailable):`, cacheError);
       }
       await setJobState(job.id!, 'done');
-      await job.updateProgress(100);
+      await safeUpdateProgress(job, 100);
       console.log(`   ${logPrefix} — Empty repo, analysis skipped ✓`);
       return { ...emptyResult, metadata };
     }
@@ -335,7 +346,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Raw commit data stays in memory ONLY — never written to DB.
     console.log(`   ${logPrefix} — Step 3: Fetching commits...`);
     const commits = await fetchCommitsFromGitHub(client, owner, repo, MAX_COMMITS);
-    await job.updateProgress(30);
+    await safeUpdateProgress(job, 30);
     console.log(`   ${logPrefix} — Step 3: Fetched ${commits.length} commits ✓`);
 
 
@@ -352,7 +363,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       console.warn(`   ${logPrefix} — Step 4: PR fetch failed (partial failure, proceeding):`, prError);
       // PR metrics will be null / "unavailable" — still save partial results
     }
-    await job.updateProgress(50);
+    await safeUpdateProgress(job, 50);
 
 
     // ──────────────────────────────────────────────
@@ -368,7 +379,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       console.warn(`   ${logPrefix} — Step 5: Issue fetch failed (partial failure, proceeding):`, issueError);
       // Issue metrics will be null — still save partial results
     }
-    await job.updateProgress(60);
+    await safeUpdateProgress(job, 60);
 
 
     // ──────────────────────────────────────────────
@@ -434,26 +445,26 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         aiAdviceModel: null,
       };
     }
-    await job.updateProgress(70);
+    await safeUpdateProgress(job, 70);
     console.log(`   ${logPrefix} — Step 6: Health score = ${metrics.healthScore} ✓`);
 
     // ──────────────────────────────────────────────
     // Step 7: Health score already computed by metrics engine
     // ──────────────────────────────────────────────
-    await job.updateProgress(72);
+    await safeUpdateProgress(job, 72);
 
     // ──────────────────────────────────────────────
     // Step 8: Compute quarterly timeline
     // ──────────────────────────────────────────────
     const timeline = computeQuarterlyTimeline(commits, prs, metrics.healthScore);
-    await job.updateProgress(75);
+    await safeUpdateProgress(job, 75);
     console.log(`   ${logPrefix} — Step 8: Timeline points = ${timeline.length} ✓`);
 
     // ──────────────────────────────────────────────
     // Step 9: Generate risk flags
     // ──────────────────────────────────────────────
     metrics.riskFlags = generateRiskFlags(metrics);
-    await job.updateProgress(78);
+    await safeUpdateProgress(job, 78);
     console.log(`   ${logPrefix} — Step 9: Risk flags = ${metrics.riskFlags.length} ✓`);
 
 
@@ -501,7 +512,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       }
     }
 
-    await job.updateProgress(85);
+    await safeUpdateProgress(job, 85);
 
 
     // ──────────────────────────────────────────────
@@ -534,7 +545,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // });
 
     console.log(`   ${logPrefix} — Step 12: Timeline stored ✓`);
-    await job.updateProgress(90);
+    await safeUpdateProgress(job, 90);
 
 
     // ──────────────────────────────────────────────
@@ -552,7 +563,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 14: Update job status to "done"
     // ──────────────────────────────────────────────
     await setJobState(job.id!, 'done');
-    await job.updateProgress(100);
+    await safeUpdateProgress(job, 100);
     console.log(`   ${logPrefix} — Step 14: Status → done ✓`);
 
     // TODO: Update analysis_jobs table via Prisma
@@ -662,68 +673,73 @@ export async function runDirectRepoAnalysis(data: JobData): Promise<AllMetrics &
 // SECTION 4: CREATE AND START THE WORKER
 // ═══════════════════════════════════════════════════════════════
 
-const worker = new Worker<JobData>(
-  'repo-analysis',  // Must match the queue name in the API server
-  processAnalysisJob,
-  {
-    connection: getBullRedisConnection(),
-    concurrency: 2,           // Process 2 jobs at the same time
-    lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1
-    stalledInterval: 120_000, // Check for stalled jobs every 2 minutes — Prompt 7.1
-    maxStalledCount: 2,       // Restart stalled jobs up to 2 times — Prompt 7.1
-    limiter: {
-      max: 5,            // Max 5 jobs started...
-      duration: 60_000,  // ...per 60 seconds (1 minute)
+const shouldStartRepoWorker = require.main === module || process.env.EMBED_WORKERS_IN_API === 'true';
+let worker: Worker<JobData> | null = null;
+
+if (shouldStartRepoWorker) {
+  worker = new Worker<JobData>(
+    'repo-analysis',  // Must match the queue name in the API server
+    processAnalysisJob,
+    {
+      connection: getBullRedisConnection(),
+      concurrency: 2,           // Process 2 jobs at the same time
+      lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1
+      stalledInterval: 120_000, // Check for stalled jobs every 2 minutes — Prompt 7.1
+      maxStalledCount: 2,       // Restart stalled jobs up to 2 times — Prompt 7.1
+      limiter: {
+        max: 5,            // Max 5 jobs started...
+        duration: 60_000,  // ...per 60 seconds (1 minute)
+      },
+      // NOTE: Retry attempts (3x with exponential backoff) are set at enqueue time
+      // in the API server (POST /api/analyze), not at the worker level.
+      // BullMQ's default behavior + the 'failed' event handler handles terminal failures.
     },
-    // NOTE: Retry attempts (3x with exponential backoff) are set at enqueue time
-    // in the API server (POST /api/analyze), not at the worker level.
-    // BullMQ's default behavior + the 'failed' event handler handles terminal failures.
-  },
-);
+  );
 
 
-// ═══════════════════════════════════════════════════════════════
-// SECTION 5: WORKER EVENT LISTENERS
-// ═══════════════════════════════════════════════════════════════
-// These log what's happening so we can monitor the worker.
+  // ═══════════════════════════════════════════════════════════════
+  // SECTION 5: WORKER EVENT LISTENERS
+  // ═══════════════════════════════════════════════════════════════
+  // These log what's happening so we can monitor the worker.
 
-worker.on('ready', () => {
-  console.log('🏭 GitVital Worker is ready and waiting for jobs...');
-  console.log(`   Queue: "repo-analysis"`);
-  console.log(`   Concurrency: 2 jobs at a time`);
-  console.log(`   Rate limit: 5 jobs per minute`);
-});
+  worker.on('ready', () => {
+    console.log('🏭 GitVital Worker is ready and waiting for jobs...');
+    console.log(`   Queue: "repo-analysis"`);
+    console.log(`   Concurrency: 2 jobs at a time`);
+    console.log(`   Rate limit: 5 jobs per minute`);
+  });
 
-worker.on('active', (job) => {
-  console.log(`🔄 Job ${job.id} (${job.data.owner}/${job.data.repo}) has started processing`);
-});
+  worker.on('active', (job) => {
+    console.log(`🔄 Job ${job.id} (${job.data.owner}/${job.data.repo}) has started processing`);
+  });
 
-worker.on('completed', (job) => {
-  console.log(`✅ Job ${job.id} (${job.data.owner}/${job.data.repo}) completed successfully`);
-});
+  worker.on('completed', (job) => {
+    console.log(`✅ Job ${job.id} (${job.data.owner}/${job.data.repo}) completed successfully`);
+  });
 
-worker.on('failed', (job, err) => {
-  if (job) {
-    console.error(`❌ Job ${job.id} (${job.data.owner}/${job.data.repo}) failed:`, err.message);
-    console.error(`   Attempts: ${job.attemptsMade}/${job.opts.attempts || 3}`);
+  worker.on('failed', (job, err) => {
+    if (job) {
+      console.error(`❌ Job ${job.id} (${job.data.owner}/${job.data.repo}) failed:`, err.message);
+      console.error(`   Attempts: ${job.attemptsMade}/${job.opts.attempts || 3}`);
 
-    const maxAttempts = job.opts.attempts || 3;
-    if (job.attemptsMade >= maxAttempts) {
-      // Mark failed only on terminal failure to match Prompt 2.2 semantics.
-      void setJobState(job.id!, 'failed', err.message || 'Analysis failed after retries');
+      const maxAttempts = job.opts.attempts || 3;
+      if (job.attemptsMade >= maxAttempts) {
+        // Mark failed only on terminal failure to match Prompt 2.2 semantics.
+        void setJobState(job.id!, 'failed', err.message || 'Analysis failed after retries');
+      }
+    } else {
+      console.error('❌ A job failed (no job reference):', err.message);
     }
-  } else {
-    console.error('❌ A job failed (no job reference):', err.message);
-  }
-});
+  });
 
-worker.on('error', (err) => {
-  console.error('❌ Worker error:', err.message);
-});
+  worker.on('error', (err) => {
+    console.error('❌ Worker error:', err.message);
+  });
 
-worker.on('stalled', (jobId) => {
-  console.warn(`⚠️ Job ${jobId} stalled (took too long without a heartbeat)`);
-});
+  worker.on('stalled', (jobId) => {
+    console.warn(`⚠️ Job ${jobId} stalled (took too long without a heartbeat)`);
+  });
+}
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -733,9 +749,11 @@ worker.on('stalled', (jobId) => {
 async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n⚠️  Worker received ${signal}. Shutting down gracefully...`);
 
-  // Close the worker — this waits for active jobs to finish
-  await worker.close();
-  console.log('   ✅ Worker closed (active jobs finished)');
+  if (worker) {
+    // Close the worker — this waits for active jobs to finish
+    await worker.close();
+    console.log('   ✅ Worker closed (active jobs finished)');
+  }
 
   // Close the Redis connection
   redis.disconnect();
@@ -748,7 +766,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
   process.exit(0);
 }
 
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+if (shouldStartRepoWorker) {
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+}
 
 export { worker };

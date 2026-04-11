@@ -78,6 +78,8 @@ interface IssueRecommendation {
 }
 
 type LoadState = "idle" | "checking" | "queuing" | "polling" | "done" | "error";
+const MAX_JOB_POLL_ATTEMPTS = 120;
+const JOB_POLL_INTERVAL_MS = 3000;
 
 // ── Helper to format numbers ──
 function fmt(n: number): string {
@@ -228,9 +230,30 @@ export default function RepoDashboardPage() {
     setLoadState("polling");
     setJobId(jid);
 
+    let attempts = 0;
+
     pollRef.current = setInterval(async () => {
+      attempts += 1;
+      if (attempts > MAX_JOB_POLL_ATTEMPTS) {
+        clearInterval(pollRef.current!);
+        pollRef.current = null;
+        setErrorMsg("Analysis timed out while waiting for job completion. Please try again.");
+        setLoadState("error");
+        return;
+      }
+
       try {
         const r = await fetch(`${API_BASE}/api/status/${jid}`);
+        if (!r.ok) {
+          if (r.status === 404) {
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setErrorMsg("Analysis job not found. Please retry analysis.");
+            setLoadState("error");
+          }
+          return;
+        }
+
         const data = await r.json();
         if (data.progress) setJobProgress(Number(data.progress));
 
@@ -256,7 +279,7 @@ export default function RepoDashboardPage() {
       } catch {
         // network blip — keep polling
       }
-    }, 3000);
+    }, JOB_POLL_INTERVAL_MS);
   }, [owner, repo]);
 
   // ── Initial load: check cache → queue if missing ──
