@@ -236,6 +236,17 @@ async function setJobState(jobId: string, status: 'queued' | 'processing' | 'don
   }
 }
 
+// Safe wrapper around job.updateProgress() — BullMQ calls Redis internally.
+// If Redis is down mid-job, progress updates should fail silently so the
+// actual analysis (GitHub fetching, metrics, AI) can still complete.
+async function safeUpdateProgress(job: Job<JobData>, progress: number): Promise<void> {
+  try {
+    await job.updateProgress(progress);
+  } catch {
+    // Redis unavailable — progress tracking lost, analysis continues
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 2: HELPER — GitHub Error Classifier
@@ -274,7 +285,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // We track status in Redis (for fast polling) and will also
     // update the database once Prisma is set up.
     await setJobState(job.id!, 'processing');
-    await job.updateProgress(5);
+    await safeUpdateProgress(job, 5);
     console.log(`   ${logPrefix} — Step 1: Status → processing`);
 
     // TODO: Update analysis_jobs table via Prisma
@@ -294,7 +305,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 2: Validate repo exists and is public
     // ──────────────────────────────────────────────
     const metadata = await fetchRepoMetadata(client, owner, repo);
-    await job.updateProgress(10);
+    await safeUpdateProgress(job, 10);
 
     if (!metadata.exists) {
       throw { status: 404, message: 'Repository not found or is private' } as GitHubApiError;
@@ -321,7 +332,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         console.warn(`   ${logPrefix} — Cache write skipped (Redis unavailable):`, cacheError);
       }
       await setJobState(job.id!, 'done');
-      await job.updateProgress(100);
+      await safeUpdateProgress(job, 100);
       console.log(`   ${logPrefix} — Empty repo, analysis skipped ✓`);
       return { ...emptyResult, metadata };
     }
@@ -335,7 +346,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Raw commit data stays in memory ONLY — never written to DB.
     console.log(`   ${logPrefix} — Step 3: Fetching commits...`);
     const commits = await fetchCommitsFromGitHub(client, owner, repo, MAX_COMMITS);
-    await job.updateProgress(30);
+    await safeUpdateProgress(job, 30);
     console.log(`   ${logPrefix} — Step 3: Fetched ${commits.length} commits ✓`);
 
 
@@ -352,7 +363,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       console.warn(`   ${logPrefix} — Step 4: PR fetch failed (partial failure, proceeding):`, prError);
       // PR metrics will be null / "unavailable" — still save partial results
     }
-    await job.updateProgress(50);
+    await safeUpdateProgress(job, 50);
 
 
     // ──────────────────────────────────────────────
@@ -368,7 +379,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       console.warn(`   ${logPrefix} — Step 5: Issue fetch failed (partial failure, proceeding):`, issueError);
       // Issue metrics will be null — still save partial results
     }
-    await job.updateProgress(60);
+    await safeUpdateProgress(job, 60);
 
 
     // ──────────────────────────────────────────────
@@ -434,26 +445,26 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         aiAdviceModel: null,
       };
     }
-    await job.updateProgress(70);
+    await safeUpdateProgress(job, 70);
     console.log(`   ${logPrefix} — Step 6: Health score = ${metrics.healthScore} ✓`);
 
     // ──────────────────────────────────────────────
     // Step 7: Health score already computed by metrics engine
     // ──────────────────────────────────────────────
-    await job.updateProgress(72);
+    await safeUpdateProgress(job, 72);
 
     // ──────────────────────────────────────────────
     // Step 8: Compute quarterly timeline
     // ──────────────────────────────────────────────
     const timeline = computeQuarterlyTimeline(commits, prs, metrics.healthScore);
-    await job.updateProgress(75);
+    await safeUpdateProgress(job, 75);
     console.log(`   ${logPrefix} — Step 8: Timeline points = ${timeline.length} ✓`);
 
     // ──────────────────────────────────────────────
     // Step 9: Generate risk flags
     // ──────────────────────────────────────────────
     metrics.riskFlags = generateRiskFlags(metrics);
-    await job.updateProgress(78);
+    await safeUpdateProgress(job, 78);
     console.log(`   ${logPrefix} — Step 9: Risk flags = ${metrics.riskFlags.length} ✓`);
 
 
@@ -501,7 +512,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       }
     }
 
-    await job.updateProgress(85);
+    await safeUpdateProgress(job, 85);
 
 
     // ──────────────────────────────────────────────
@@ -534,7 +545,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // });
 
     console.log(`   ${logPrefix} — Step 12: Timeline stored ✓`);
-    await job.updateProgress(90);
+    await safeUpdateProgress(job, 90);
 
 
     // ──────────────────────────────────────────────
@@ -552,7 +563,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 14: Update job status to "done"
     // ──────────────────────────────────────────────
     await setJobState(job.id!, 'done');
-    await job.updateProgress(100);
+    await safeUpdateProgress(job, 100);
     console.log(`   ${logPrefix} — Step 14: Status → done ✓`);
 
     // TODO: Update analysis_jobs table via Prisma
