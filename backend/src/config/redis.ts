@@ -40,17 +40,10 @@ export function getBullRedisConnection(): BullRedisConnection {
   };
 }
 
-redis.on('connect', async () => {
+redis.on('connect', () => {
   console.log(`✅ Redis connected to: ${redactRedisUrl(config.redisUrl)}`);
-  try {
-    // Some managed Redis providers (e.g. Upstash with read-only CONFIG)
-    // will reject CONFIG SET.
-    await redis.config('SET', 'maxmemory', '100mb');
-    await redis.config('SET', 'maxmemory-policy', 'noeviction');
-    console.log('✅ Redis memory policy set: maxmemory=100mb, policy=noeviction');
-  } catch (err) {
-    console.warn('⚠️  Redis CONFIG SET skipped:', (err as Error).message);
-  }
+  // Note: Redis Cloud managed instances do not allow CONFIG SET.
+  // Eviction policy (volatile-lru) is set via the Redis Cloud dashboard.
 });
 
 redis.on('error', (err) => {
