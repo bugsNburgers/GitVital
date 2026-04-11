@@ -49,9 +49,19 @@ export async function getFreshRepoMetricsCache<T>(owner: string, repo: string): 
     }
 }
 
-export async function setRepoMetricsCache(owner: string, repo: string, metrics: unknown, ttlSeconds = DEFAULT_CACHE_TTL_SECONDS): Promise<void> {
+export async function setRepoMetricsCache(
+    owner: string,
+    repo: string,
+    metrics: unknown,
+    ttlSeconds = DEFAULT_CACHE_TTL_SECONDS,
+    fetchedAt?: string,
+): Promise<void> {
     const key = getRepoMetricsCacheKey(owner, repo);
-    await redis.set(key, JSON.stringify(metrics), 'EX', ttlSeconds);
+    const payload = {
+        ...(metrics as object),
+        _fetchedAt: fetchedAt ?? new Date().toISOString(),
+    };
+    await redis.set(key, JSON.stringify(payload), 'EX', ttlSeconds);
 }
 
 export async function clearRepoMetricsCache(owner: string, repo: string): Promise<void> {

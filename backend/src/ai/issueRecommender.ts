@@ -103,8 +103,9 @@ function resolveIssueUrl(title: string, issues: RepoIssue[]): string {
 
 function parseDifficulty(raw: unknown): 'easy' | 'medium' | 'hard' {
   const s = String(raw ?? '').toLowerCase().trim();
-  if (s === 'easy') return 'easy';
-  if (s === 'hard') return 'hard';
+  if (s.includes('easy')) return 'easy';
+  if (s.includes('hard')) return 'hard';
+  if (s.includes('medium') || s.includes('moderate')) return 'medium';
   return 'medium';
 }
 
@@ -156,8 +157,21 @@ const BEGINNER_LABELS = new Set([
   'first-timers-only',
 ]);
 
+const HARD_LABELS = new Set([
+  'complex', 'complexity', 'refactor', 'refactoring', 'architecture',
+  'performance', 'security', 'breaking change', 'breaking-change', 'rfc',
+  'feature', 'feat', 'major', 'design', 'research',
+]);
+
+function getDifficultyFromLabels(labels: string[]): 'easy' | 'medium' | 'hard' {
+  const normalized = labels.map((l) => l.toLowerCase());
+  if (normalized.some((l) => BEGINNER_LABELS.has(l))) return 'easy';
+  if (normalized.some((l) => HARD_LABELS.has(l) || l.includes('complex') || l.includes('refactor'))) return 'hard';
+  return 'medium';
+}
+
 function buildRuleBasedRecommendations(issues: RepoIssue[]): IssueRecommendation[] {
-  // Sort by most recent (ascending createdAt = oldest first, so we reverse)
+  // Sort by most recent
   const sorted = [...issues].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
@@ -175,7 +189,7 @@ function buildRuleBasedRecommendations(issues: RepoIssue[]): IssueRecommendation
     reason: beginner.some((b) => b.title === issue.title)
       ? 'This issue is labeled as beginner-friendly and is a great starting point for new contributors.'
       : 'This is a recent open issue in the repository that could use attention.',
-    difficultyMatch: 'easy' as const,
+    difficultyMatch: getDifficultyFromLabels(issue.labels),
     githubUrl: issue.url,
   }));
 }

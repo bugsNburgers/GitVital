@@ -16,3 +16,8 @@ export type {
     QueryResult,
     RepoMetricRow,
 } from './keyQueries';
+
+export { pgPool, dbQuery } from './pool';
+export { upsertRepo, insertRepoMetrics, upsertHealthTimeline, getStaleReposFromDb } from './repoQueries';
+export type { RepoRefreshRow } from './repoQueries';
+export { recomputeAllDeveloperScores, getLeaderboardLastUpdated, getLeaderboardStats } from './userQueries';

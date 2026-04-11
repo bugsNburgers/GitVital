@@ -4,17 +4,11 @@ import { config } from '../config';
 import { getBullRedisConnection } from '../config/redis';
 import { JobData } from '../types';
 import { getGeminiQuotaCooldownInfo } from '../ai/quotaTelemetry';
-import {
-    computeDeveloperScoreFromVerifiedRepoMetrics,
-    shouldFlagScoreChangeForManualReview,
-    type LeaderboardUserScoreInput,
-} from '../leaderboard/protection';
+import { getStaleReposFromDb } from '../db/repoQueries';
+import type { RepoRefreshRow } from '../db/repoQueries';
+import { recomputeAllDeveloperScores } from '../db/userQueries';
 
-interface RepoRefreshCandidate {
-    owner: string;
-    repo: string;
-    lastAnalyzedAt: Date;
-}
+type RepoRefreshCandidate = RepoRefreshRow;
 
 const REFRESH_CAP = 50;
 const REFRESH_CAP_UNDER_AI_LIMIT = 10;
@@ -50,18 +44,7 @@ function mapQueueStateToSimpleStatus(state: string): 'queued' | 'processing' | '
 }
 
 async function getAnalyzedReposFromDb(): Promise<RepoRefreshCandidate[]> {
-    // TODO: Replace with Prisma/SQL once DB wiring is available.
-    // Intended query shape:
-    // 1) repos that have at least one analysis in repo_metrics
-    // 2) latest analysis timestamp per repo
-    // 3) return owner, repo, lastAnalyzedAt
-    //
-    // Example SQL:
-    // SELECT r.owner, r.name AS repo, MAX(rm.analyzed_at) AS last_analyzed_at
-    // FROM repos r
-    // JOIN repo_metrics rm ON rm.repo_id = r.id
-    // GROUP BY r.owner, r.name;
-    return [];
+    return getStaleReposFromDb();
 }
 
 function isOlderThan24Hours(lastAnalyzedAt: Date, nowMs: number): boolean {
@@ -143,74 +126,14 @@ async function recomputeDeveloperScoresAndBadges(): Promise<void> {
     const startedAt = new Date();
     console.log(`[CRON 03:00] Starting developer score + rank recomputation at ${startedAt.toISOString()}`);
 
-    // Leaderboard anti-manipulation policy (Prompt 5.4):
-    // 1) Scores are computed server-side only.
-    // 2) Scores are derived from verified GitHub data and repo_metrics (never user-submitted scores).
-    // 3) Significant contributor rule: user_commit_count > 10.
-    // 4) Legitimacy weighting:
-    //    - stars < 5 and bus_factor = 1 => reduced weight
-    //    - forked repos => 50% weight
-    //    - archived repos => excluded
-    // 5) Runs only on cron (03:00), not on-demand endpoints.
-    // 6) Score jumps > 20 points in the same UTC day are logged for manual review.
-
-    // TODO: Replace with Prisma/SQL data load when DB wiring is active.
-    // Intended source shape for each user:
-    // - user id/username
-    // - current developer_score and updated_at
-    // - repo evidence rows from verified GitHub-derived tables:
-    //   health_score, stars, bus_factor, is_fork, is_archived, user_commit_count, verified flag
-    const candidates: LeaderboardUserScoreInput[] = [];
-
-    let recomputedUsers = 0;
-    let manualReviewAlerts = 0;
-
-    for (const candidate of candidates) {
-        const result = computeDeveloperScoreFromVerifiedRepoMetrics(candidate);
-
-        if (shouldFlagScoreChangeForManualReview(
-            candidate.previousDeveloperScore,
-            result.developerScore,
-            candidate.previousScoreUpdatedAt,
-            startedAt,
-        )) {
-            manualReviewAlerts += 1;
-            console.warn('[CRON 03:00][ALERT] Developer score jump exceeds 20 points in one day', {
-                userId: candidate.userId,
-                username: candidate.username,
-                previousScore: candidate.previousDeveloperScore,
-                nextScore: result.developerScore,
-                consideredRepos: result.breakdown.consideredRepos,
-                ignoredRepos: result.breakdown.ignoredRepos,
-            });
-        }
-
-        // TODO: Persist computed server-side score (never from user input)
-        // await prisma.user.update({
-        //   where: { id: candidate.userId },
-        //   data: { developerScore: result.developerScore },
-        // });
-
-        recomputedUsers += 1;
+    try {
+        const { recomputedUsers, manualReviewAlerts } = await recomputeAllDeveloperScores(startedAt);
+        console.log(
+            `[CRON 03:00] Score recompute finished. users=${recomputedUsers}, reviewAlerts=${manualReviewAlerts}. Leaderboard materialized view refreshed.`,
+        );
+    } catch (err) {
+        console.error('[CRON 03:00] Developer score recomputation failed:', err);
     }
-
-    // TODO: Recompute ranks/percentiles after score updates.
-    // Example SQL shape:
-    // WITH ranked AS (
-    //   SELECT id,
-    //          PERCENT_RANK() OVER (ORDER BY developer_score ASC) * 100 AS percentile,
-    //          RANK() OVER (ORDER BY developer_score DESC) AS global_rank
-    //   FROM users
-    // )
-    // UPDATE users u
-    // SET percentile = r.percentile,
-    //     global_rank = r.global_rank
-    // FROM ranked r
-    // WHERE u.id = r.id;
-
-    console.log(
-        `[CRON 03:00] Score recompute finished. users=${recomputedUsers}, reviewAlerts=${manualReviewAlerts}. DB persistence/rank refresh pending wiring.`,
-    );
 }
 
 const refreshTask = cron.schedule('0 2 * * *', () => {
@@ -221,28 +144,14 @@ const recomputeTask = cron.schedule('0 3 * * *', () => {
     void recomputeDeveloperScoresAndBadges();
 });
 
-//Refresh leaderboard materialized view every 6 hours
-const leaderboardViewRefreshTask = cron.schedule('0 */6 * * *', () => {
-    const startedAt = new Date();
-    console.log(`[CRON] Refreshing leaderboard materialized view at ${startedAt.toISOString()}...`);
-
-    // TODO: Refresh via Prisma once DB is connected
-    // await prisma.$executeRawUnsafe('REFRESH MATERIALIZED VIEW leaderboard_rankings');
-
-    console.log('[CRON] Leaderboard materialized view refresh finished.');
-});
-
 console.log('⏱️ Scheduled referesh cron started');
-console.log('   Repo refresh: daily at 02:00 server time');
-console.log('   Score recompute: daily at 03:00 server time');
-console.log('   Leaderboard view refresh: every 6 hours');
+console.log('   Score recompute + leaderboard refresh: daily at 03:00 server time');
 
 async function gracefulShutdown(signal: string): Promise<void> {
     console.log(`\n⚠️ Cron service received ${signal}. Shutting down gracefully...`);
 
     refreshTask.stop();
     recomputeTask.stop();
-    leaderboardViewRefreshTask.stop();
     console.log('   ✅ Cron schedules stopped');
 
     await analysisQueue.close();
