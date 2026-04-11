@@ -67,6 +67,12 @@ interface RepoMetrics {
   aiAdviceSource?: string | null;
   aiAdviceModel?: string | null;
   metadata?: RepoMetadata;
+  _meta?: {
+    source: 'redis_cache' | 'db_fallback' | 'fresh_fetch';
+    fetchedAt: string;
+    ttlSeconds: number | null;
+    cachedAgeHours: number | null;
+  };
 }
 
 interface IssueRecommendation {
@@ -625,6 +631,18 @@ export default function RepoDashboardPage() {
           background: var(--bg-surface); border: 1px solid var(--border);
           border-radius: 20px; padding: 3px 10px;
         }
+        
+        .cache-pill {
+          display: inline-flex; align-items: center; gap: 6px;
+          font-family: var(--mono); font-size: 11px; font-weight: 500;
+          color: var(--text-muted); background: rgba(255,255,255,0.03);
+          border: 1px solid var(--border); border-radius: 12px;
+          padding: 4px 10px; margin-left: 12px;
+        }
+        .cache-pill .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+        .cache-pill .dot.fresh { background: var(--green); box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+        .cache-pill .dot.cached { background: var(--yellow); box-shadow: 0 0 8px rgba(234,179,8,0.4); }
+        .cache-pill .dot.db { background: var(--orange); box-shadow: 0 0 8px rgba(255,94,0,0.4); }
 
         .metrics-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
         .metric-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
@@ -800,7 +818,20 @@ export default function RepoDashboardPage() {
                 <span className="sep">/</span>
                 <span className="crumb">{owner}</span>
                 <span className="sep">/</span>
-                <span style={{ color: "var(--text)" }}>{repo}</span>
+                <span style={{ color: "var(--text)", display: "flex", alignItems: "center" }}>
+                  {repo}
+                  {metrics?._meta && (
+                    <span className="cache-pill" title={`Data fetched ${new Date(metrics._meta.fetchedAt).toLocaleString()}`}>
+                      {metrics._meta.source === "db_fallback" ? (
+                        <><span className="dot db" /> DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
+                      ) : metrics._meta.source === "redis_cache" ? (
+                        <><span className="dot cached" /> Cached ({metrics._meta.cachedAgeHours}h ago)</>
+                      ) : (
+                        <><span className="dot fresh" /> Just Fetched</>
+                      )}
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
             <div className="dash-nav-right">

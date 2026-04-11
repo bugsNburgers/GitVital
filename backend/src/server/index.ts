@@ -20,6 +20,7 @@ import { Pool } from 'pg';
 import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
 import { getLeaderboardWithLanguageFilter, type Queryable } from '../db';
+import { getLeaderboardLastUpdated, getLeaderboardStats } from '../db/userQueries';
 import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
 import {
   clearUserContributionCache,
@@ -1372,18 +1373,58 @@ app.get(
       const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
 
       if (cached) {
-        res.json(cached.value);
+        const payload = cached.value as Record<string, unknown>;
+        const fetchedAt = (payload._fetchedAt as string | undefined) ?? null;
+        const cachedAgeHours = fetchedAt
+          ? Number(((Date.now() - new Date(fetchedAt).getTime()) / 3_600_000).toFixed(1))
+          : null;
+        res.json({
+          ...payload,
+          _meta: {
+            source: 'redis_cache',
+            fetchedAt,
+            ttlSeconds: cached.ttlSeconds,
+            cachedAgeHours,
+          },
+        });
         return;
       }
 
-      // Step 2: If not cached, fetch from PostgreSQL via Prisma
-      // TODO: Replace with actual Prisma query once the schema is set up
-      // const metrics = await prisma.repoMetrics.findFirst({
-      //   where: { owner, repo },
-      //   orderBy: { analyzedAt: 'desc' },
-      // });
+      // Step 2: If not in Redis, try NeonDB (most recent persisted metrics row)
+      if (sqlDb) {
+        try {
+          const repoRow = await sqlDb.query<{ id: string }>(
+            `SELECT id FROM repos WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2) LIMIT 1`,
+            [owner, repo],
+          );
+          if (repoRow.rows[0]) {
+            const metricsRow = await sqlDb.query<{ metrics_json: unknown; analyzed_at: string }>(
+              `SELECT metrics_json, analyzed_at FROM repo_metrics WHERE repo_id = $1 ORDER BY analyzed_at DESC LIMIT 1`,
+              [repoRow.rows[0].id],
+            );
+            if (metricsRow.rows[0]?.metrics_json) {
+              const dbMetrics = metricsRow.rows[0].metrics_json as Record<string, unknown>;
+              const fetchedAt = metricsRow.rows[0].analyzed_at;
+              const cachedAgeHours = Number(
+                ((Date.now() - new Date(fetchedAt).getTime()) / 3_600_000).toFixed(1),
+              );
+              // Re-seed Redis for 1 hour so next request is fast
+              try {
+                const { setRepoMetricsCache } = await import('../cache/repoCache');
+                await setRepoMetricsCache(owner, repo, dbMetrics, 3600, fetchedAt);
+              } catch { /* non-fatal */ }
+              res.json({
+                ...dbMetrics,
+                _meta: { source: 'db_fallback', fetchedAt, ttlSeconds: null, cachedAgeHours },
+              });
+              return;
+            }
+          }
+        } catch (dbErr) {
+          console.warn('[GET /api/repo] DB lookup failed (non-fatal):', dbErr);
+        }
+      }
 
-      // For now, return a placeholder to indicate the route works
       res.status(404).json({
         error: 'No metrics found for this repository. Submit an analysis first.',
       });
@@ -2158,7 +2199,17 @@ app.get(
         };
       });
 
-      res.json({ leaderboard, filter: normalizedLang || 'all' });
+      const [updatedAt, stats] = await Promise.allSettled([
+        getLeaderboardLastUpdated(),
+        getLeaderboardStats(),
+      ]);
+
+      res.json({
+        leaderboard,
+        filter: normalizedLang || 'all',
+        updatedAt: updatedAt.status === 'fulfilled' ? updatedAt.value : null,
+        stats: stats.status === 'fulfilled' ? stats.value : { totalDevelopers: leaderboard.length, totalRepos: 0 },
+      });
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
       res.status(500).json({ error: 'Failed to fetch leaderboard' });

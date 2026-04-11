@@ -34,6 +34,7 @@ import { fetchMetadata as fetchRepoMetadata } from '../github/fetchMetadata';
 import { CLOSED_ISSUE_COUNT_QUERY } from '../github/queries';
 import { setRepoMetricsCache } from '../cache/repoCache';
 import { decryptAccessToken } from '../security/tokenCrypto';
+import { upsertRepo, insertRepoMetrics, upsertHealthTimeline } from '../db/repoQueries';
 
 // API constraints from Planscribble.md
 const MAX_COMMITS = 1000;
@@ -519,32 +520,35 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 11: Store computed metrics in PostgreSQL
     // ──────────────────────────────────────────────
     console.log(`   ${logPrefix} — Step 11: Storing metrics in database...`);
-
-    // TODO: Store via Prisma once schema is set up
-    // await prisma.repoMetrics.upsert({
-    //   where: { ownerRepo: `${owner}/${repo}` },
-    //   update: { ...metrics, analyzedAt: new Date() },
-    //   create: { owner, repo, ...metrics, analyzedAt: new Date() },
-    // });
-
-    console.log(`   ${logPrefix} — Step 11: Metrics stored ✓`);
+    const fetchedAt = new Date().toISOString();
+    let repoDbId: string | null = null;
+    try {
+      repoDbId = await upsertRepo(owner, repo, metadata);
+      if (repoDbId) {
+        await insertRepoMetrics(repoDbId, metrics);
+        console.log(`   ${logPrefix} — Step 11: Metrics stored in NeonDB ✓ (repoId: ${repoDbId})`);
+      } else {
+        console.warn(`   ${logPrefix} — Step 11: DB unavailable — metrics not persisted (Redis cache still updated).`);
+      }
+    } catch (dbErr) {
+      console.warn(`   ${logPrefix} — Step 11: DB write failed (non-fatal):`, dbErr);
+    }
 
 
     // ──────────────────────────────────────────────
     // Step 12: Store quarterly timeline in PostgreSQL
     // ──────────────────────────────────────────────
     console.log(`   ${logPrefix} — Step 12: Storing timeline...`);
-
-    // TODO: Store timeline via Prisma (using computed timeline entries)
-    // await prisma.healthTimeline.create({
-    //   data: {
-    //     owner, repo,
-    //     healthScore: metrics.healthScore,
-    //     recordedAt: new Date(),
-    //   },
-    // });
-
-    console.log(`   ${logPrefix} — Step 12: Timeline stored ✓`);
+    if (repoDbId) {
+      try {
+        await upsertHealthTimeline(repoDbId, timeline);
+        console.log(`   ${logPrefix} — Step 12: Timeline stored ✓`);
+      } catch (tlErr) {
+        console.warn(`   ${logPrefix} — Step 12: Timeline DB write failed (non-fatal):`, tlErr);
+      }
+    } else {
+      console.log(`   ${logPrefix} — Step 12: Timeline skipped (no DB repo ID).`);
+    }
     await safeUpdateProgress(job, 90);
 
 
@@ -552,7 +556,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 13: Update Redis cache with fresh metrics
     // ──────────────────────────────────────────────
     try {
-      await setRepoMetricsCache(owner, repo, { ...metrics, metadata }, config.cacheTtlSeconds);
+      await setRepoMetricsCache(owner, repo, { ...metrics, metadata }, config.cacheTtlSeconds, fetchedAt);
       console.log(`   ${logPrefix} — Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
     } catch (cacheError) {
       console.warn(`   ${logPrefix} — Step 13: Cache write skipped (Redis unavailable):`, cacheError);
