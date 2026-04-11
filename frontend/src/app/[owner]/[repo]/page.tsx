@@ -818,20 +818,7 @@ export default function RepoDashboardPage() {
                 <span className="sep">/</span>
                 <span className="crumb">{owner}</span>
                 <span className="sep">/</span>
-                <span style={{ color: "var(--text)", display: "flex", alignItems: "center" }}>
-                  {repo}
-                  {metrics?._meta && (
-                    <span className="cache-pill" title={`Data fetched ${new Date(metrics._meta.fetchedAt).toLocaleString()}`}>
-                      {metrics._meta.source === "db_fallback" ? (
-                        <><span className="dot db" /> DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
-                      ) : metrics._meta.source === "redis_cache" ? (
-                        <><span className="dot cached" /> Cached ({metrics._meta.cachedAgeHours}h ago)</>
-                      ) : (
-                        <><span className="dot fresh" /> Just Fetched</>
-                      )}
-                    </span>
-                  )}
-                </span>
+                <span style={{ color: "var(--text)" }}>{repo}</span>
               </div>
             </div>
             <div className="dash-nav-right">
@@ -933,6 +920,17 @@ export default function RepoDashboardPage() {
                     Repository Health Score
                     <InfoTooltip metricKey="healthScore" />
                     <span style={{ marginLeft: 6 }}>- {healthLabel(score)}</span>
+                    {metrics?._meta && (
+                      <span className="cache-pill" title={`Data fetched ${new Date(metrics._meta.fetchedAt).toLocaleString()}`}>
+                        {metrics._meta.source === "db_fallback" ? (
+                          <><span className="dot db" /> DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
+                        ) : metrics._meta.source === "redis_cache" ? (
+                          <><span className="dot cached" /> Cached ({metrics._meta.cachedAgeHours}h ago)</>
+                        ) : (
+                          <><span className="dot fresh" /> Just Fetched</>
+                        )}
+                      </span>
+                    )}
                   </h2>
                   <p>{healthDesc(score, owner, repo)}</p>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
