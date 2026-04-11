@@ -9,11 +9,25 @@ import { setUserContributionCache, UserContributionMetricsCacheValue } from '../
 const MAX_USER_PRS = 500;
 
 async function setUserJobState(jobId: string, status: 'processing' | 'done' | 'failed', error?: string): Promise<void> {
-    await redis.set(`userjobstatus:${jobId}`, status, 'EX', 3600);
-    if (error) {
-        await redis.set(`userjoberror:${jobId}`, error, 'EX', 3600);
-    } else {
-        await redis.del(`userjoberror:${jobId}`);
+    try {
+        await redis.set(`userjobstatus:${jobId}`, status, 'EX', 3600);
+        if (error) {
+            await redis.set(`userjoberror:${jobId}`, error, 'EX', 3600);
+        } else {
+            await redis.del(`userjoberror:${jobId}`);
+        }
+    } catch (redisError) {
+        console.warn(`[UserWorker] Failed to persist job state for ${jobId}. Continuing without Redis status sync.`, redisError);
+    }
+}
+
+// Safe wrapper — BullMQ's updateProgress calls Redis internally.
+// If Redis is flaky mid-job, progress tracking should fail silently.
+async function safeUpdateProgress(job: Job<UserJobData>, progress: number): Promise<void> {
+    try {
+        await job.updateProgress(progress);
+    } catch {
+        // Redis unavailable — progress tracking lost, analysis continues
     }
 }
 
@@ -63,7 +77,7 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
 
     try {
         await setUserJobState(job.id!, 'processing');
-        await job.updateProgress(5);
+        await safeUpdateProgress(job, 5);
 
         // Create GitHub client with service token
         const token = getServiceToken();
@@ -80,14 +94,14 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
             console.warn(`   ${logPrefix} — PR fetch failed, returning zero metrics:`, fetchError);
             // Continue with empty array — all metrics will be 0
         }
-        await job.updateProgress(55);
+        await safeUpdateProgress(job, 55);
 
         // Compute contribution metrics
         // Prompt 6.1: 0 merged PRs → all metrics as 0 (handled naturally by computeUserContributionMetrics)
         // Prompt 6.1: Only own-repo PRs → external counts = 0 (handled by strictExternal filter)
         // Prompt 6.1: Missing author/owner login → skip safely (handled by null checks in filter)
         const metrics = computeUserContributionMetrics(username, mergedPRs);
-        await job.updateProgress(80);
+        await safeUpdateProgress(job, 80);
 
         // Step 6: Persist metrics to Redis cache so /api/user/:username can serve real data.
         const cachePayload: UserContributionMetricsCacheValue = {
@@ -99,11 +113,11 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         };
         await setUserContributionCache(username, cachePayload, config.cacheTtlSeconds);
 
-        await job.updateProgress(95);
+        await safeUpdateProgress(job, 95);
 
         // Step 7: Mark complete.
         await setUserJobState(job.id!, 'done');
-        await job.updateProgress(100);
+        await safeUpdateProgress(job, 100);
 
         console.log(`✅ ${logPrefix} complete: externalPRs=${metrics.externalPRCount}, acceptance=${metrics.contributionAcceptanceRate}%`);
     } catch (error) {
