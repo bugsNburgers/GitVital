@@ -1323,7 +1323,9 @@ export default function GitvitalLanding() {
   .footer-bottom {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
     padding-top: 24px;
     border-top: 1px solid var(--border);
     font-size: 12.5px;
@@ -2254,6 +2256,15 @@ export default function GitvitalLanding() {
           </div>
           <div className="footer-bottom">
             <span>© 2026 GitVital. All rights reserved.</span>
+            <a
+              href="https://stats.uptimerobot.com/t0lyFM4YLA"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="status-dot"
+              aria-label="Uptime Status"
+            >
+              Uptime Status ↗
+            </a>
           </div>
         </div>
       </footer>
