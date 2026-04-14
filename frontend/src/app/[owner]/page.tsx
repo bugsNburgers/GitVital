@@ -823,13 +823,10 @@ export default function UserProfilePage() {
 
                         <div className="nav-icons">
                             <div className="nav-links-inline">
-                                <a href="/" className="nav-link">Explore</a>
+                                <a href="/?focus=analyze" className="nav-link">Analyze</a>
+                                <a href="/compare" className="nav-link">Compare</a>
                                 <a href="/leaderboard" className="nav-link">Leaderboard</a>
-                                {user?.loggedIn ? (
-                                    <a href={`/${user.githubUsername}`} className="nav-link-profile">My Profile</a>
-                                ) : (
-                                    <a href={AUTH_URL} className="nav-link">Login</a>
-                                )}
+                                <a href="https://github.com/bugsNburgers/GitVital#readme" className="nav-link" target="_blank" rel="noopener noreferrer">Docs</a>
                             </div>
                             <div className="nav-user">
                                 <div className="nav-avatar">{owner.charAt(0).toUpperCase()}</div>
@@ -1054,9 +1051,6 @@ export default function UserProfilePage() {
                             <div className="profile-section">
                                 <div className="section-header">
                                     <h3 className="section-title"><span className="material-symbols-outlined">military_tech</span> Achievement Badges</h3>
-                                    <button className="btn-secondary" onClick={reanalyzeProfile} disabled={busy}>
-                                        {profile.needsAnalysis ? "Generate Insights" : "Refresh Badges"}
-                                    </button>
                                 </div>
 
                                 {profile.badges.length === 0 ? (

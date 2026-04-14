@@ -752,6 +752,10 @@ interface LeaderboardApiEntry {
   img: string;
 }
 
+interface UserLeaderboardSnapshotRow {
+  percentile: string | null;
+}
+
 function parseScore(value: string | number | null | undefined): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return Number(value.toFixed(2));
@@ -1762,6 +1766,22 @@ app.get(
         githubUser.public_repos,
       );
 
+      let percentileLabel = computePercentileLabel(developerScore);
+      if (sqlDb) {
+        try {
+          const snapshot = await sqlDb.query<UserLeaderboardSnapshotRow>(
+            `SELECT percentile FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1`,
+            [githubUser.login],
+          );
+
+          if (snapshot.rows.length > 0) {
+            percentileLabel = `${formatPercentileForLeaderboard(snapshot.rows[0].percentile, developerScore)} Global`;
+          }
+        } catch (dbErr) {
+          console.warn('[UserProfile] Failed to load DB percentile snapshot:', dbErr);
+        }
+      }
+
       const profile: UserProfileApiResponse = {
         username: githubUser.login,
         displayName: githubUser.name || githubUser.login,
@@ -1779,7 +1799,7 @@ app.get(
         topLanguage: getTopLanguage(publicRepos),
         developerScore,
         reliabilityPct,
-        percentile: computePercentileLabel(developerScore),
+        percentile: percentileLabel,
         needsAnalysis: !contribution,
         issuesOpened,
         issuesClosed,
@@ -2420,6 +2440,24 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
       res.status(401).json({ error: 'Unable to load GitHub user profile.' });
       return;
     }
+
+    if (!sqlDb) {
+      res.status(503).json({ error: 'Database is unavailable for login. Please try again shortly.' });
+      return;
+    }
+
+    // Keep users table in sync with OAuth logins so leaderboard/dev features have source data.
+    const encryptedTokenForDb = encryptAccessToken(tokenData.access_token, config.encryptionKey);
+    await sqlDb.query(
+      `INSERT INTO users (github_id, username, avatar_url, access_token)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (github_id) DO UPDATE SET
+         username = EXCLUDED.username,
+         avatar_url = EXCLUDED.avatar_url,
+         access_token = EXCLUDED.access_token,
+         updated_at = NOW()`,
+      [String(userData.id), userData.login, userData.avatar_url || null, encryptedTokenForDb],
+    );
 
     // Encrypt before persistence and avoid storing plain access tokens in session.
     // Redis outages should not block login: we can still keep session auth active.

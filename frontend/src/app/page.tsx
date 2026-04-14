@@ -1,14 +1,22 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import ScrollPulse from '@/components/ScrollPulse';
 import { API_BASE, AUTH_URL } from '@/config';
 
 export default function GitvitalLanding() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isHealthy, setIsHealthy] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+  const [landingStats, setLandingStats] = useState<{ totalDevelopers: number; totalRepos: number } | null>(null);
+  const [animatedStats, setAnimatedStats] = useState<{ totalDevelopers: number; totalRepos: number; avgMs: number }>({
+    totalDevelopers: 0,
+    totalRepos: 0,
+    avgMs: 0,
+  });
   const [showIpNotice, setShowIpNotice] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -39,6 +47,63 @@ export default function GitvitalLanding() {
   }, []);
 
   useEffect(() => {
+    fetch(`${API_BASE}/api/leaderboard`)
+      .then(res => res.json())
+      .then((data) => {
+        const totalDevelopers = Number(data?.stats?.totalDevelopers);
+        const totalRepos = Number(data?.stats?.totalRepos);
+
+        if (Number.isFinite(totalDevelopers) && Number.isFinite(totalRepos)) {
+          setLandingStats({
+            totalDevelopers: Math.max(0, Math.floor(totalDevelopers)),
+            totalRepos: Math.max(0, Math.floor(totalRepos)),
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch landing stats:', err);
+      });
+  }, []);
+
+  const formatCompactStat = (value: number): string => {
+    if (!Number.isFinite(value) || value <= 0) return '0';
+    const compact = new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: value < 1_000_000 ? 0 : 1,
+    }).format(value);
+
+    return value >= 1000 ? `${compact}+` : compact;
+  };
+
+  useEffect(() => {
+    const targetDevelopers = landingStats?.totalDevelopers ?? 0;
+    const targetRepos = landingStats?.totalRepos ?? 0;
+    const targetAvgMs = 300;
+
+    const duration = 3000;
+    const steps = 120;
+    const stepTime = duration / steps;
+    let step = 0;
+
+    const timer = setInterval(() => {
+      step += 1;
+      const progress = Math.min(step / steps, 1);
+
+      setAnimatedStats({
+        totalDevelopers: Math.floor(targetDevelopers * progress),
+        totalRepos: Math.floor(targetRepos * progress),
+        avgMs: Math.floor(targetAvgMs * progress),
+      });
+
+      if (progress >= 1) {
+        clearInterval(timer);
+      }
+    }, stepTime);
+
+    return () => clearInterval(timer);
+  }, [landingStats]);
+
+  useEffect(() => {
     // IntersectionObservers equivalent
     const fadeEls = document.querySelectorAll('.fade-in');
     const fadeObserver = new IntersectionObserver((entries) => {
@@ -51,35 +116,6 @@ export default function GitvitalLanding() {
       const el = document.getElementById('heroCard');
       if (el) el.classList.add('visible');
     }, 300);
-
-    // Counter animations
-    const counterEls = document.querySelectorAll('.stat-num[data-target]');
-    const counterObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        const el = entry.target as HTMLElement;
-        const target = parseInt(el.dataset.target || '0');
-        const suffix = el.dataset.suffix || '';
-        const prefix = el.dataset.prefix || '';
-        const divisor = parseFloat(el.dataset.divisor || '1');
-        const duration = 1800;
-        const steps = 60;
-        const stepTime = duration / steps;
-        let current = 0;
-        const increment = target / steps;
-        const timer = setInterval(() => {
-          current += increment;
-          if (current >= target) {
-            current = target;
-            clearInterval(timer);
-          }
-          const display = divisor > 1 ? Math.floor(current / divisor) : Math.floor(current);
-          el.textContent = prefix + display + suffix;
-        }, stepTime);
-        counterObserver.unobserve(el);
-      });
-    }, { threshold: 0.5 });
-    counterEls.forEach(el => counterObserver.observe(el));
 
     // Marquee duplications
     // Removed innerHTML duplication to avoid React 'removeChild' errors!
@@ -99,10 +135,90 @@ export default function GitvitalLanding() {
 
     return () => {
       fadeObserver.disconnect();
-      counterObserver.disconnect();
       clearTimeout(initialTimeout);
       if (healthTimer) clearInterval(healthTimer);
     };
+  }, []);
+
+  useEffect(() => {
+    const tabsNav = document.querySelector('.tabs-nav') as HTMLElement | null;
+    if (!tabsNav) return;
+    const tabPanels = Array.from(document.querySelectorAll('.tab-panel')) as HTMLElement[];
+
+    let lastSwitchAt = 0;
+    let accumulatedDeltaX = 0;
+    let resetTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const switchByDelta = (delta: number) => {
+      const buttons = Array.from(tabsNav.querySelectorAll('.tab-btn')) as HTMLElement[];
+      if (buttons.length === 0) return false;
+
+      const activeIndex = Math.max(0, buttons.findIndex((b) => b.classList.contains('active')));
+      const direction = delta > 0 ? 1 : -1;
+      const nextIndex = Math.min(buttons.length - 1, Math.max(0, activeIndex + direction));
+      if (nextIndex === activeIndex) return false;
+
+      const tabId = buttons[nextIndex].dataset.tab;
+      if (!tabId) return false;
+
+      switchTab(tabId, buttons[nextIndex]);
+      return true;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      // Some devices emit horizontal as deltaX, others as Shift+deltaY.
+      const horizontalDelta = e.deltaX !== 0 ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+      const absX = Math.abs(horizontalDelta);
+      const absY = Math.abs(e.deltaY);
+      const isHorizontalIntent = absX > 0 && (absX >= absY * 0.6 || e.shiftKey);
+      if (!isHorizontalIntent) return;
+
+      e.preventDefault();
+
+      accumulatedDeltaX += horizontalDelta;
+      if (resetTimer) clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => { accumulatedDeltaX = 0; }, 140);
+
+      if (Math.abs(accumulatedDeltaX) < 38) return;
+
+      const now = Date.now();
+      if (now - lastSwitchAt < 180) return;
+
+      const switched = switchByDelta(accumulatedDeltaX);
+      if (!switched) return;
+
+      e.preventDefault();
+      lastSwitchAt = now;
+      accumulatedDeltaX = 0;
+    };
+
+    tabsNav.addEventListener('wheel', onWheel, { passive: false });
+    tabPanels.forEach((panel) => panel.addEventListener('wheel', onWheel, { passive: false }));
+    return () => {
+      tabsNav.removeEventListener('wheel', onWheel);
+      tabPanels.forEach((panel) => panel.removeEventListener('wheel', onWheel));
+      if (resetTimer) clearTimeout(resetTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const tabsNav = document.querySelector('.tabs-nav') as HTMLElement | null;
+    if (!tabsNav) return;
+
+    const autoAdvance = () => {
+      const buttons = Array.from(tabsNav.querySelectorAll('.tab-btn')) as HTMLElement[];
+      if (buttons.length < 2) return;
+
+      const activeIndex = Math.max(0, buttons.findIndex((b) => b.classList.contains('active')));
+      const nextIndex = (activeIndex + 1) % buttons.length;
+      const tabId = buttons[nextIndex].dataset.tab;
+      if (!tabId) return;
+
+      switchTab(tabId, buttons[nextIndex]);
+    };
+
+    const timer = setInterval(autoAdvance, 3000);
+    return () => clearInterval(timer);
   }, []);
 
   const switchTab = (id: string, btn: HTMLElement) => {
@@ -140,6 +256,23 @@ export default function GitvitalLanding() {
   const handleKeydown = (e: React.KeyboardEvent<HTMLInputElement>, inputId: string) => {
     if (e.key === 'Enter') analyzeRepo(inputId);
   };
+
+  const focusAnalyzeInput = () => {
+    const input = document.getElementById('heroInput') as HTMLInputElement | null;
+    if (!input) return;
+    input.focus();
+    input.select();
+  };
+
+  useEffect(() => {
+    if (searchParams.get('focus') !== 'analyze') return;
+    const input = document.getElementById('heroInput') as HTMLInputElement | null;
+    if (!input) return;
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 80);
+  }, [searchParams]);
 
   return (
     <>
@@ -367,6 +500,14 @@ export default function GitvitalLanding() {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+  .btn-avatar {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.14);
   }
   .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
   .btn-primary {
@@ -737,12 +878,8 @@ export default function GitvitalLanding() {
   /* ─── FEATURES TABS ─── */
   .features-section {}
   .tabs-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 40px;
+    display: block;
     margin-bottom: 40px;
-    flex-wrap: wrap;
   }
   .tabs-nav {
     display: flex;
@@ -751,9 +888,14 @@ export default function GitvitalLanding() {
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 3px;
-    flex-wrap: wrap;
-    align-self: flex-start;
-    margin-top: 8px;
+    flex-wrap: nowrap;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    margin: 36px auto 0;
   }
   .tab-btn {
     font-family: var(--font);
@@ -767,9 +909,25 @@ export default function GitvitalLanding() {
     cursor: pointer;
     transition: color 0.15s, background 0.15s;
     white-space: nowrap;
+    flex: 0 0 auto;
+    position: relative;
+    overflow: hidden;
   }
   .tab-btn:hover { color: var(--text-secondary); }
   .tab-btn.active { color: var(--text); background: rgba(255,255,255,0.07); }
+  .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 100%;
+    background: rgba(255,255,255,0.5);
+    transform: scaleX(0);
+    transform-origin: left;
+    animation: tabProgress 3s linear forwards;
+  }
+  @keyframes tabProgress { to { transform: scaleX(1); } }
   .tab-panel {
     display: none;
     background: var(--bg-card);
@@ -908,35 +1066,49 @@ export default function GitvitalLanding() {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: auto auto;
-    gap: 10px;
+    gap: 14px;
+    margin-top: 6px;
   }
   .bento-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 14px;
-    padding: 24px;
-    transition: border-color 0.2s, background 0.2s;
+    padding: 26px;
+    transition: border-color 0.22s ease, background 0.22s ease, transform 0.22s ease, box-shadow 0.22s ease;
     position: relative;
     overflow: hidden;
   }
-  .bento-card:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+  .bento-card:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 14px 24px rgba(0,0,0,0.2);
+  }
   .bento-card.col-2 { grid-column: span 2; }
+  .bento-kicker {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
   .bento-card .bc-label {
     font-size: 10px;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
   .bento-card .bc-title {
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 18px;
+    font-weight: 750;
     letter-spacing: -0.02em;
     color: var(--text);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
-  .bento-card .bc-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+  .bento-card .bc-desc { font-size: 13px; color: rgba(161,161,170,0.88); line-height: 1.65; }
 
   .badge-embed {
     display: inline-flex;
@@ -959,7 +1131,7 @@ export default function GitvitalLanding() {
     gap: 10px;
   }
   .rank-number {
-    font-size: 36px;
+    font-size: 44px;
     font-weight: 900;
     letter-spacing: -0.04em;
     color: var(--text);
@@ -970,25 +1142,51 @@ export default function GitvitalLanding() {
 
   .dev-profile-card { margin-top: 14px; }
   .dev-score-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-  .dev-score-big { font-size: 42px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; }
+  .dev-score-big { font-size: 50px; font-weight: 900; letter-spacing: -0.04em; line-height: 1; }
+  .dev-identity-name { font-size: 13px; color: var(--text); font-weight: 600; }
+  .dev-identity-meta { font-size: 12px; color: rgba(161,161,170,0.84); }
   .dev-score-big.green { color: var(--green); }
   .dev-badges { display: flex; flex-wrap: wrap; gap: 6px; }
   .dev-badge {
     font-size: 11px;
     font-weight: 500;
-    padding: 4px 10px;
-    border-radius: 6px;
+    padding: 0 10px;
+    border-radius: 7px;
     background: rgba(255,255,255,0.05);
     border: 1px solid var(--border);
     color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    line-height: 1;
   }
   .dev-badge.earned { background: rgba(255,94,0,0.1); border-color: rgba(255,94,0,0.25); color: #FFB380; }
+
+  .risk-flags-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .risk-flags-list .flag {
+    width: fit-content;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  .oauth-cta {
+    margin-top: 16px;
+    display: inline-flex;
+    border-radius: 8px;
+  }
 
   .limits-card { font-family: var(--mono); margin-top: 14px; }
   .limit-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
   .limit-row:last-child { border-bottom: none; }
   .limit-key { color: var(--text-muted); }
-  .limit-val { color: var(--text); font-weight: 500; }
+  .limit-val { color: var(--text); font-weight: 700; }
 
   /* ─── TESTIMONIALS ─── */
   .testimonials-section {}
@@ -1053,7 +1251,7 @@ export default function GitvitalLanding() {
   }
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 0;
     max-width: 1120px;
     margin: 0 auto;
@@ -1111,20 +1309,21 @@ export default function GitvitalLanding() {
   .footer-inner { max-width: 1120px; margin: 0 auto; }
   .footer-grid {
     display: grid;
-    grid-template-columns: 1.5fr repeat(4, 1fr);
+    grid-template-columns: 1.5fr repeat(3, 1fr);
     gap: 32px;
     margin-bottom: 48px;
   }
   .footer-brand .logo { margin-bottom: 10px; }
   .footer-brand p { font-size: 13px; color: var(--text-muted); line-height: 1.55; max-width: 200px; }
   .footer-col h4 { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 14px; letter-spacing: -0.01em; }
+  .footer-title-icon { display: inline-flex; align-items: center; gap: 7px; }
   .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
   .footer-col ul li a { font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color 0.15s; }
   .footer-col ul li a:hover { color: var(--text-secondary); }
   .footer-bottom {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     padding-top: 24px;
     border-top: 1px solid var(--border);
     font-size: 12.5px;
@@ -1352,7 +1551,7 @@ export default function GitvitalLanding() {
             <img src="/gitvital_logo_fixed.svg" alt="GitVital" className="logo-mark" />
           </a>
           <ul className="nav-links">
-            <li><a href="#features">Features</a></li>
+            <li><a href="/?focus=analyze" onClick={() => setTimeout(focusAnalyzeInput, 40)}>Analyze</a></li>
             <li><a href="/compare">Compare</a></li>
             <li><a href="/leaderboard">Leaderboard</a></li>
             <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
@@ -1360,7 +1559,11 @@ export default function GitvitalLanding() {
           <div className="nav-right">
             {user?.loggedIn ? (
               <a href={`/${user.githubUsername}`} className="btn-ghost" rel="noopener noreferrer">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+                <img
+                  src={`https://github.com/${user.githubUsername}.png`}
+                  alt={`${user.githubUsername} avatar`}
+                  className="btn-avatar"
+                />
                 View Profile
               </a>
             ) : (
@@ -1383,7 +1586,7 @@ export default function GitvitalLanding() {
 
       {/* Mobile drawer - nav links only, no login */}
       <div className={`mobile-drawer${menuOpen ? ' open' : ''}`}>
-        <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
+        <a href="/?focus=analyze" onClick={() => { setMenuOpen(false); setTimeout(focusAnalyzeInput, 40); }}>Analyze</a>
         <a href="/compare" onClick={() => setMenuOpen(false)}>Compare</a>
         <a href="/leaderboard" onClick={() => setMenuOpen(false)}>Leaderboard</a>
         <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
@@ -1511,7 +1714,6 @@ export default function GitvitalLanding() {
         <div className="section-inner">
           <div className="tabs-header fade-in">
             <div>
-              <div className="section-label">What GitVital Measures</div>
               <h2 className="section-h2">Every signal that tells you<br />if a repo is worth your time</h2>
               <p className="section-sub">Stop manually checking last commit dates and star counts. GitVital runs a full diagnostic on any public repo.</p>
               <div className="better-than">
@@ -1523,11 +1725,11 @@ export default function GitvitalLanding() {
               </div>
             </div>
             <div className="tabs-nav">
-              <button className="tab-btn active" onClick={(e) => switchTab('analyze', e.currentTarget)}>Analyze</button>
-              <button className="tab-btn" onClick={(e) => switchTab('score', e.currentTarget)}>Score</button>
-              <button className="tab-btn" onClick={(e) => switchTab('compare', e.currentTarget)}>Compare</button>
-              <button className="tab-btn" onClick={(e) => switchTab('timeline', e.currentTarget)}>Timeline</button>
-              <button className="tab-btn" onClick={(e) => switchTab('advise', e.currentTarget)}>Advise</button>
+              <button className="tab-btn active" data-tab="analyze" onClick={(e) => switchTab('analyze', e.currentTarget)}>Analyze</button>
+              <button className="tab-btn" data-tab="score" onClick={(e) => switchTab('score', e.currentTarget)}>Score</button>
+              <button className="tab-btn" data-tab="compare" onClick={(e) => switchTab('compare', e.currentTarget)}>Compare</button>
+              <button className="tab-btn" data-tab="timeline" onClick={(e) => switchTab('timeline', e.currentTarget)}>Timeline</button>
+              <button className="tab-btn" data-tab="advise" onClick={(e) => switchTab('advise', e.currentTarget)}>Advise</button>
             </div>
           </div>
 
@@ -1812,7 +2014,8 @@ export default function GitvitalLanding() {
             <div className="section-label">Everything in one place</div>
             <h2 className="section-h2">Everything you need to evaluate<br />a repo or a developer</h2>
           </div>
-          <div className="bento-grid fade-in fade-in-delay-1">
+          <div className="bento-kicker">Signals, trust checks, and developer context</div>
+          <div className="bento-grid">
 
 
             <div className="bento-card col-2">
@@ -1831,11 +2034,11 @@ export default function GitvitalLanding() {
               <div className="bc-label">Risk Flags</div>
               <div className="bc-title">Plain English warnings</div>
               <div className="bc-desc">Pure if/else logic that reads smart.</div>
-              <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span className="flag danger" style={{ width: 'fit-content' }}>⚠️ Contributor Concentration Risk</span>
-                <span className="flag warn" style={{ width: 'fit-content' }}>⚠️ PR Response Slow</span>
-                <span className="flag success" style={{ width: 'fit-content' }}>✅ Fast PR Reviews</span>
-                <span className="flag success" style={{ width: 'fit-content' }}>📈 Growing Activity</span>
+              <div className="risk-flags-list">
+                <span className="flag danger">⚠️ Contributor Concentration Risk</span>
+                <span className="flag warn">⚠️ PR Response Slow</span>
+                <span className="flag success">✅ Fast PR Reviews</span>
+                <span className="flag success">📈 Growing Activity</span>
               </div>
             </div>
 
@@ -1856,12 +2059,12 @@ export default function GitvitalLanding() {
               <div className="bc-title">{user?.loggedIn ? "Profile Active" : "Login to unlock more"}</div>
               <div className="bc-desc">{user?.loggedIn ? `Logged in as @${user.githubUsername}. You can now view your personalized developer score and repository analysis.` : "Authenticate to analyze your own repos, track your developer score, and get personalized AI advice."}</div>
               {user?.loggedIn ? (
-                <a href={`/${user.githubUsername}`} className="btn-ghost" style={{ marginTop: '16px', display: 'inline-flex', borderRadius: '8px' }}>
+                <a href={`/${user.githubUsername}`} className="btn-ghost oauth-cta">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
                   View Profile
                 </a>
               ) : (
-                <a href={AUTH_URL} className="btn-ghost" style={{ marginTop: '16px', display: 'inline-flex', borderRadius: '8px' }}>
+                <a href={AUTH_URL} className="btn-ghost oauth-cta">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
                   Login with GitHub
                 </a>
@@ -1877,8 +2080,8 @@ export default function GitvitalLanding() {
                 <div className="dev-score-row">
                   <div className="dev-score-big green">74</div>
                   <div>
-                    <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: '600' }}>{user?.loggedIn ? `@${user.githubUsername}` : "@yourusername"}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{user?.loggedIn ? "Better than 90% of developers" : "Better than 90% of developers"}</div>
+                    <div className="dev-identity-name">{user?.loggedIn ? `@${user.githubUsername}` : "@yourusername"}</div>
+                    <div className="dev-identity-meta">{user?.loggedIn ? "Better than 90% of developers" : "Better than 90% of developers"}</div>
                   </div>
                 </div>
                 <div className="dev-badges">
@@ -1977,20 +2180,16 @@ export default function GitvitalLanding() {
       <div className="stats-section">
         <div className="stats-grid">
           <div className="stat-item fade-in">
-            <div className="stat-num" data-target="2000000" data-suffix="M+" data-divisor="1000000">0</div>
+            <div className="stat-num">{formatCompactStat(animatedStats.totalDevelopers)}</div>
             <div className="stat-label">Developers</div>
           </div>
           <div className="stat-item fade-in fade-in-delay-1">
-            <div className="stat-num" data-target="50000" data-suffix="K+" data-divisor="1000">0</div>
+            <div className="stat-num">{formatCompactStat(animatedStats.totalRepos)}</div>
             <div className="stat-label">Repos Analyzed</div>
           </div>
           <div className="stat-item fade-in fade-in-delay-2">
-            <div className="stat-num" data-target="500" data-suffix="ms" data-divisor="1">0</div>
+            <div className="stat-num">{animatedStats.avgMs}ms</div>
             <div className="stat-label">Avg Analysis Time</div>
-          </div>
-          <div className="stat-item fade-in fade-in-delay-3">
-            <div className="stat-num" data-target="999" data-suffix="%" data-prefix="99.">0</div>
-            <div className="stat-label">Uptime</div>
           </div>
         </div>
       </div>
@@ -2021,48 +2220,40 @@ export default function GitvitalLanding() {
               <p style={{ marginTop: '10px' }}>GitHub repository health analytics. Know before you depend.</p>
             </div>
             <div className="footer-col">
-              <h4>Product</h4>
+              <h4>Navigation</h4>
               <ul>
-                <li><a href="/facebook/react">Health Score</a></li>
+                <li><a href="/?focus=analyze">Analyze</a></li>
                 <li><a href="/compare">Repo Compare</a></li>
-                <li><a href="/facebook/react">Timeline</a></li>
-                <li><a href="/facebook/react">AI Advice</a></li>
-                <li><a href="/facebook/react">Badges</a></li>
                 <li><a href="/leaderboard">Leaderboard</a></li>
               </ul>
             </div>
             <div className="footer-col">
-              <h4>Developers</h4>
+              <h4>Project</h4>
               <ul>
                 <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital/tree/main/gitvital/backend/src" target="_blank" rel="noopener noreferrer">API Reference</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noopener noreferrer">GitHub</a></li>
                 <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/SETUP.md" target="_blank" rel="noopener noreferrer">Setup</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/LICENSE" target="_blank" rel="noopener noreferrer">License</a></li>
               </ul>
             </div>
             <div className="footer-col">
-              <h4>Community</h4>
+              <h4>
+                <span className="footer-title-icon">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                  </svg>
+                  Contribute
+                </span>
+              </h4>
               <ul>
-                <li><a href="https://github.com/bugsNburgers/GitVital/discussions" target="_blank" rel="noopener noreferrer">Discord</a></li>
-                <li><a href="https://x.com" target="_blank" rel="noopener noreferrer">Twitter / X</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital/discussions" target="_blank" rel="noopener noreferrer">GitHub Discussions</a></li>
-              </ul>
-            </div>
-            <div className="footer-col">
-              <h4>Legal</h4>
-              <ul>
-                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Privacy Policy</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Terms of Service</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Fair Use</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noopener noreferrer">Source Code</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/issues" target="_blank" rel="noopener noreferrer">Raise Issue</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribution Guide</a></li>
               </ul>
             </div>
           </div>
           <div className="footer-bottom">
-            <span>© 2025 GitVital. All rights reserved.</span>
-            <a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noopener noreferrer" className="github-link">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
-              Source Code
-            </a>
+            <span>© 2026 GitVital. All rights reserved.</span>
           </div>
         </div>
       </footer>

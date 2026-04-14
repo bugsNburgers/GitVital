@@ -151,7 +151,11 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
     }
 }
 
-const shouldStartUserWorker = require.main === module || process.env.EMBED_WORKERS_IN_API === 'true';
+// Start user worker by default in API process unless explicitly disabled.
+// This prevents user-analysis jobs from getting stuck in queued state when
+// EMBED_WORKERS_IN_API is not set in production.
+const embedWorkersInApi = (process.env.EMBED_WORKERS_IN_API ?? 'true').toLowerCase() === 'true';
+const shouldStartUserWorker = require.main === module || embedWorkersInApi;
 let userWorker: Worker<UserJobData> | null = null;
 
 if (shouldStartUserWorker) {

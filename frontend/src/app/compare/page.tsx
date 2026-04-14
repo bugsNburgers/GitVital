@@ -526,6 +526,20 @@ export default function RepoComparePage() {
         .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 13.5px; font-weight: 450; padding: 5px 11px; border-radius: 6px; transition: color 0.15s, background 0.15s; }
         .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
         .nav-links a.active { color: var(--text); }
+        .cmp-nav-actions { display: inline-flex; align-items: center; gap: 8px; }
+        .btn-ghost {
+          font-family: var(--font); font-size: 13px; font-weight: 500;
+          color: var(--text-secondary); background: none;
+          border: 1px solid var(--border); border-radius: 20px;
+          padding: 5px 14px; cursor: pointer;
+          transition: color 0.15s, border-color 0.15s;
+          text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+        .btn-avatar {
+          width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+          border: 1px solid rgba(255,255,255,0.14);
+        }
         .btn-primary {
           font-family: var(--font); font-size: 13px; font-weight: 600; color: #fff;
           background: var(--orange); border: 1px solid rgba(255,94,0,0.5); border-radius: 20px;
@@ -728,13 +742,33 @@ export default function RepoComparePage() {
               <img src="/gitvital_logo_fixed.svg" alt="GitVital" />
             </div>
             <ul className="nav-links">
-              <li><a href="/">Dashboard</a></li>
+              <li><a href="/?focus=analyze">Analyze</a></li>
               <li><a href="/compare" className="active">Compare</a></li>
               <li><a href="/leaderboard">Leaderboard</a></li>
+              <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
             </ul>
-            <button className="btn-primary" disabled={repos.length >= 4} onClick={addRepo}>
-              + Add Repo
-            </button>
+            <div className="cmp-nav-actions">
+              <button className="btn-primary" disabled={repos.length >= 4} onClick={addRepo}>
+                + Add Repo
+              </button>
+              {user?.loggedIn && user.githubUsername ? (
+                <a href={`/${user.githubUsername}`} className="btn-ghost" rel="noopener noreferrer">
+                  <img
+                    src={`https://github.com/${user.githubUsername}.png?size=64`}
+                    alt={`${user.githubUsername} avatar`}
+                    className="btn-avatar"
+                  />
+                  View Profile
+                </a>
+              ) : (
+                <a href={AUTH_URL} className="btn-ghost" rel="noopener noreferrer">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                  </svg>
+                  Login with GitHub
+                </a>
+              )}
+            </div>
           </div>
         </nav>
 

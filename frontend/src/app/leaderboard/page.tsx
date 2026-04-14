@@ -121,10 +121,45 @@ export default function LeaderboardPage() {
         .lb-nav-inner { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .lb-logo { display: flex; align-items: center; cursor: pointer; }
         .lb-logo img { height: 36px; }
-        .lb-nav-links { display: flex; align-items: center; gap: 24px; }
-        .lb-nav-links a { color: var(--text-muted); font-size: 13px; font-weight: 600; text-decoration: none; transition: color 0.2s; }
-        .lb-nav-links a:hover { color: var(--text); }
-        .lb-nav-links a.active { color: var(--orange); border-bottom: 2px solid var(--orange); padding-bottom: 2px; }
+        .lb-nav-links { display: flex; align-items: center; gap: 2px; }
+        .lb-nav-links a {
+          color: var(--text-muted);
+          font-size: 13.5px;
+          font-weight: 450;
+          text-decoration: none;
+          padding: 5px 11px;
+          border-radius: 6px;
+          transition: color 0.15s, background 0.15s;
+        }
+        .lb-nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+        .lb-nav-links a.active { color: var(--text); }
+        .lb-nav-right { display: inline-flex; align-items: center; gap: 8px; }
+        .btn-ghost {
+          font-family: var(--font);
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-secondary);
+          background: none;
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          padding: 5px 14px;
+          cursor: pointer;
+          transition: color 0.15s, border-color 0.15s;
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+        }
+        .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+        .btn-avatar {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          object-fit: cover;
+          flex-shrink: 0;
+          border: 1px solid rgba(255,255,255,0.14);
+        }
         .lb-nav-search { position: relative; }
         .lb-nav-search input { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px 6px 36px; color: var(--text); font-size: 13px; width: 220px; transition: border-color 0.2s; outline: none; }
         .lb-nav-search input:focus { border-color: rgba(255,94,0,0.4); }
@@ -253,24 +288,39 @@ export default function LeaderboardPage() {
               <img src="/gitvital_logo_fixed.svg" alt="GitVital" />
             </div>
             <div className="lb-nav-links">
-              <a href="/">Explore</a>
-              <a href="/leaderboard" className="active">Leaderboard</a>
+              <a href="/?focus=analyze">Analyze</a>
               <a href="/compare">Compare</a>
-              {user?.loggedIn ? (
-                <a href={`/${user.githubUsername}`} className="lb-profile-link">View Profile</a>
-              ) : (
-                <a href={AUTH_URL}>Login</a>
-              )}
+              <a href="/leaderboard" className="active">Leaderboard</a>
+              <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a>
             </div>
-            <div className="lb-nav-search">
-              <span className="material-symbols-outlined">search</span>
-              <input
-                ref={searchRef}
-                type="text"
-                placeholder="Search developers..."
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              />
+            <div className="lb-nav-right">
+              <div className="lb-nav-search">
+                <span className="material-symbols-outlined">search</span>
+                <input
+                  ref={searchRef}
+                  type="text"
+                  placeholder="Search developers..."
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                />
+              </div>
+              {user?.loggedIn && user.githubUsername ? (
+                <a href={`/${user.githubUsername}`} className="btn-ghost" rel="noopener noreferrer">
+                  <img
+                    src={`https://github.com/${user.githubUsername}.png?size=64`}
+                    alt={`${user.githubUsername} avatar`}
+                    className="btn-avatar"
+                  />
+                  View Profile
+                </a>
+              ) : (
+                <a href={AUTH_URL} className="btn-ghost" rel="noopener noreferrer">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                  </svg>
+                  Login with GitHub
+                </a>
+              )}
             </div>
           </div>
         </nav>
@@ -286,30 +336,6 @@ export default function LeaderboardPage() {
                 {loading ? "Loading…" : updatedAt
                   ? `Updated daily at 3 AM · Last refresh: ${formatRelative(updatedAt)}`
                   : "Scores updated nightly · Analyze your repos to appear here"}
-              </div>
-            </div>
-            <div className="lb-filter">
-              <label>Filter by Language</label>
-              <div className="lb-filter-wrap">
-                <select
-                  value={langFilter}
-                  onChange={(e) => { setLangFilter(e.target.value); setCurrentPage(1); }}
-                  aria-label="Filter developers by language"
-                  title="Filter developers by language"
-                >
-                  <option>All Languages</option>
-                  <option>TypeScript</option>
-                  <option>JavaScript</option>
-                  <option>Python</option>
-                  <option>Rust</option>
-                  <option>Go</option>
-                  <option>Vue</option>
-                  <option>React</option>
-                  <option>CSS</option>
-                  <option>Java</option>
-                  <option>C++</option>
-                </select>
-                <span className="material-symbols-outlined">expand_more</span>
               </div>
             </div>
           </div>
