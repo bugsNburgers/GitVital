@@ -9,6 +9,12 @@ export default function GitvitalLanding() {
   const [isHealthy, setIsHealthy] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+  const [landingStats, setLandingStats] = useState<{ totalDevelopers: number; totalRepos: number } | null>(null);
+  const [animatedStats, setAnimatedStats] = useState<{ totalDevelopers: number; totalRepos: number; avgMs: number }>({
+    totalDevelopers: 0,
+    totalRepos: 0,
+    avgMs: 0,
+  });
   const [showIpNotice, setShowIpNotice] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -39,6 +45,63 @@ export default function GitvitalLanding() {
   }, []);
 
   useEffect(() => {
+    fetch(`${API_BASE}/api/leaderboard`)
+      .then(res => res.json())
+      .then((data) => {
+        const totalDevelopers = Number(data?.stats?.totalDevelopers);
+        const totalRepos = Number(data?.stats?.totalRepos);
+
+        if (Number.isFinite(totalDevelopers) && Number.isFinite(totalRepos)) {
+          setLandingStats({
+            totalDevelopers: Math.max(0, Math.floor(totalDevelopers)),
+            totalRepos: Math.max(0, Math.floor(totalRepos)),
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch landing stats:', err);
+      });
+  }, []);
+
+  const formatCompactStat = (value: number): string => {
+    if (!Number.isFinite(value) || value <= 0) return '0';
+    const compact = new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: value < 1_000_000 ? 0 : 1,
+    }).format(value);
+
+    return value >= 1000 ? `${compact}+` : compact;
+  };
+
+  useEffect(() => {
+    const targetDevelopers = landingStats?.totalDevelopers ?? 0;
+    const targetRepos = landingStats?.totalRepos ?? 0;
+    const targetAvgMs = 300;
+
+    const duration = 3000;
+    const steps = 120;
+    const stepTime = duration / steps;
+    let step = 0;
+
+    const timer = setInterval(() => {
+      step += 1;
+      const progress = Math.min(step / steps, 1);
+
+      setAnimatedStats({
+        totalDevelopers: Math.floor(targetDevelopers * progress),
+        totalRepos: Math.floor(targetRepos * progress),
+        avgMs: Math.floor(targetAvgMs * progress),
+      });
+
+      if (progress >= 1) {
+        clearInterval(timer);
+      }
+    }, stepTime);
+
+    return () => clearInterval(timer);
+  }, [landingStats]);
+
+  useEffect(() => {
     // IntersectionObservers equivalent
     const fadeEls = document.querySelectorAll('.fade-in');
     const fadeObserver = new IntersectionObserver((entries) => {
@@ -51,35 +114,6 @@ export default function GitvitalLanding() {
       const el = document.getElementById('heroCard');
       if (el) el.classList.add('visible');
     }, 300);
-
-    // Counter animations
-    const counterEls = document.querySelectorAll('.stat-num[data-target]');
-    const counterObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        const el = entry.target as HTMLElement;
-        const target = parseInt(el.dataset.target || '0');
-        const suffix = el.dataset.suffix || '';
-        const prefix = el.dataset.prefix || '';
-        const divisor = parseFloat(el.dataset.divisor || '1');
-        const duration = 1800;
-        const steps = 60;
-        const stepTime = duration / steps;
-        let current = 0;
-        const increment = target / steps;
-        const timer = setInterval(() => {
-          current += increment;
-          if (current >= target) {
-            current = target;
-            clearInterval(timer);
-          }
-          const display = divisor > 1 ? Math.floor(current / divisor) : Math.floor(current);
-          el.textContent = prefix + display + suffix;
-        }, stepTime);
-        counterObserver.unobserve(el);
-      });
-    }, { threshold: 0.5 });
-    counterEls.forEach(el => counterObserver.observe(el));
 
     // Marquee duplications
     // Removed innerHTML duplication to avoid React 'removeChild' errors!
@@ -99,7 +133,6 @@ export default function GitvitalLanding() {
 
     return () => {
       fadeObserver.disconnect();
-      counterObserver.disconnect();
       clearTimeout(initialTimeout);
       if (healthTimer) clearInterval(healthTimer);
     };
@@ -1191,7 +1224,7 @@ export default function GitvitalLanding() {
   }
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 0;
     max-width: 1120px;
     margin: 0 auto;
@@ -2115,20 +2148,16 @@ export default function GitvitalLanding() {
       <div className="stats-section">
         <div className="stats-grid">
           <div className="stat-item fade-in">
-            <div className="stat-num" data-target="2000000" data-suffix="M+" data-divisor="1000000">0</div>
+            <div className="stat-num">{formatCompactStat(animatedStats.totalDevelopers)}</div>
             <div className="stat-label">Developers</div>
           </div>
           <div className="stat-item fade-in fade-in-delay-1">
-            <div className="stat-num" data-target="50000" data-suffix="K+" data-divisor="1000">0</div>
+            <div className="stat-num">{formatCompactStat(animatedStats.totalRepos)}</div>
             <div className="stat-label">Repos Analyzed</div>
           </div>
           <div className="stat-item fade-in fade-in-delay-2">
-            <div className="stat-num" data-target="500" data-suffix="ms" data-divisor="1">0</div>
+            <div className="stat-num">{animatedStats.avgMs}ms</div>
             <div className="stat-label">Avg Analysis Time</div>
-          </div>
-          <div className="stat-item fade-in fade-in-delay-3">
-            <div className="stat-num" data-target="999" data-suffix="%" data-prefix="99.">0</div>
-            <div className="stat-label">Uptime</div>
           </div>
         </div>
       </div>
@@ -2196,7 +2225,7 @@ export default function GitvitalLanding() {
             </div>
           </div>
           <div className="footer-bottom">
-            <span>© 2025 GitVital. All rights reserved.</span>
+            <span>© 2026 GitVital. All rights reserved.</span>
             <a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noopener noreferrer" className="github-link">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
               Source Code
