@@ -752,10 +752,6 @@ interface LeaderboardApiEntry {
   img: string;
 }
 
-interface UserLeaderboardSnapshotRow {
-  percentile: string | null;
-}
-
 function parseScore(value: string | number | null | undefined): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return Number(value.toFixed(2));
@@ -1757,6 +1753,20 @@ app.get(
         githubUser.public_repos,
       );
 
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `UPDATE users
+             SET developer_score = $1,
+                 updated_at = NOW()
+             WHERE LOWER(username) = LOWER($2)`,
+            [developerScore, githubUser.login],
+          );
+        } catch (scorePersistErr) {
+          console.warn('[UserProfile] Failed to persist developer score snapshot:', scorePersistErr);
+        }
+      }
+
       const reliabilityPct = computeReliabilityPct(analyzedScores.length, Boolean(contribution));
       const badges = buildUserBadges(
         developerScore,
@@ -1769,13 +1779,24 @@ app.get(
       let percentileLabel = computePercentileLabel(developerScore);
       if (sqlDb) {
         try {
-          const snapshot = await sqlDb.query<UserLeaderboardSnapshotRow>(
-            `SELECT percentile FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1`,
-            [githubUser.login],
+          const snapshot = await sqlDb.query<{ percentile_raw: string | null }>(
+            `WITH scored_users AS (
+               SELECT developer_score
+               FROM users
+               WHERE developer_score > 0
+             )
+             SELECT
+               CASE
+                 WHEN COUNT(*) = 0 THEN NULL
+                 WHEN COUNT(*) = 1 THEN '100'
+                 ELSE (((SUM(CASE WHEN developer_score <= $1 THEN 1 ELSE 0 END)::numeric - 1) / (COUNT(*) - 1)::numeric) * 100)::text
+               END AS percentile_raw
+             FROM scored_users`,
+            [developerScore],
           );
 
-          if (snapshot.rows.length > 0) {
-            percentileLabel = `${formatPercentileForLeaderboard(snapshot.rows[0].percentile, developerScore)} Global`;
+          if (snapshot.rows.length > 0 && snapshot.rows[0].percentile_raw !== null) {
+            percentileLabel = `${formatPercentileForLeaderboard(snapshot.rows[0].percentile_raw, developerScore)} Global`;
           }
         } catch (dbErr) {
           console.warn('[UserProfile] Failed to load DB percentile snapshot:', dbErr);
@@ -2434,7 +2455,14 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
 
-    const userData = await userResponse.json() as { login: string; id: number; avatar_url: string; name: string };
+    const userData = await userResponse.json() as {
+      login: string;
+      id: number;
+      avatar_url: string;
+      name: string;
+      followers?: number;
+      public_repos?: number;
+    };
 
     if (!userData || !userData.id || !userData.login) {
       res.status(401).json({ error: 'Unable to load GitHub user profile.' });
@@ -2446,17 +2474,25 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
       return;
     }
 
+    const initialDeveloperScore = computeDeveloperScore(
+      [],
+      null,
+      typeof userData.followers === 'number' ? userData.followers : 0,
+      typeof userData.public_repos === 'number' ? userData.public_repos : 0,
+    );
+
     // Keep users table in sync with OAuth logins so leaderboard/dev features have source data.
     const encryptedTokenForDb = encryptAccessToken(tokenData.access_token, config.encryptionKey);
     await sqlDb.query(
-      `INSERT INTO users (github_id, username, avatar_url, access_token)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO users (github_id, username, avatar_url, access_token, developer_score)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (github_id) DO UPDATE SET
          username = EXCLUDED.username,
          avatar_url = EXCLUDED.avatar_url,
          access_token = EXCLUDED.access_token,
+         developer_score = GREATEST(users.developer_score, EXCLUDED.developer_score),
          updated_at = NOW()`,
-      [String(userData.id), userData.login, userData.avatar_url || null, encryptedTokenForDb],
+      [String(userData.id), userData.login, userData.avatar_url || null, encryptedTokenForDb, initialDeveloperScore],
     );
 
     // Encrypt before persistence and avoid storing plain access tokens in session.
