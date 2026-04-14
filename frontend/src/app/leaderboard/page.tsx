@@ -210,9 +210,12 @@ export default function LeaderboardPage() {
         thead tr { background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); }
         thead th { padding: 14px 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); text-align: left; white-space: nowrap; }
         thead th:last-child { text-align: right; }
-        tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+        tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
         tbody tr:last-child { border-bottom: none; }
-        tbody tr:hover { background: rgba(255,94,0,0.04); }
+        tbody tr.row-own { cursor: pointer; }
+        tbody tr.row-own:hover { background: rgba(255,94,0,0.06); }
+        tbody tr.row-locked { cursor: default; }
+        tbody tr.row-locked:hover { background: transparent; }
         td { padding: 18px 20px; font-size: 14px; vertical-align: middle; }
 
         /* SKELETON ROWS */
@@ -436,7 +439,7 @@ export default function LeaderboardPage() {
                     <th className="td-rank">Rank</th>
                     <th>Developer</th>
                     <th>Score</th>
-                    <th className="td-repos">Repos</th>
+                    <th className="td-repos">Repos Analyzed</th>
                     <th>Percentile</th>
                   </tr>
                 </thead>
@@ -480,33 +483,47 @@ export default function LeaderboardPage() {
                       </td>
                     </tr>
                   ) : (
-                    paged.map((leader) => (
-                      <tr key={leader.handle} onClick={() => router.push(`/${leader.handle.replace("@", "")}`)}>
-                        <td className="td-rank">
-                          {leader.tier !== "other" ? (
-                            <div className={`rank-medal rank-${leader.tier}`}>
-                              <span className="material-symbols-outlined">workspace_premium</span>
+                    paged.map((leader) => {
+                      const leaderUsername = leader.handle.replace("@", "").toLowerCase();
+                      const isOwnProfile = user?.loggedIn && user.githubUsername?.toLowerCase() === leaderUsername;
+                      return (
+                        <tr
+                          key={leader.handle}
+                          className={isOwnProfile ? "row-own" : "row-locked"}
+                          onClick={isOwnProfile ? () => router.push(`/${leader.handle.replace("@", "")}`) : undefined}
+                          title={isOwnProfile ? "View your profile" : undefined}
+                        >
+                          <td className="td-rank">
+                            {leader.tier !== "other" ? (
+                              <div className={`rank-medal rank-${leader.tier}`}>
+                                <span className="material-symbols-outlined">workspace_premium</span>
+                              </div>
+                            ) : (
+                              <div className="rank-num">{leader.rank}</div>
+                            )}
+                          </td>
+                          <td className="td-dev">
+                            <div className="dev-row">
+                              <img alt={leader.name} className={`dev-avatar tier-${leader.tier}`} src={leader.img} />
+                              <div>
+                                <div className="dev-name">
+                                  {leader.name}
+                                  {isOwnProfile && (
+                                    <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: '0.1em', background: 'var(--orange-dim)', padding: '1px 6px', borderRadius: 4, verticalAlign: 'middle' }}>You</span>
+                                  )}
+                                </div>
+                                <div className="dev-handle">{leader.handle}</div>
+                              </div>
                             </div>
-                          ) : (
-                            <div className="rank-num">{leader.rank}</div>
-                          )}
-                        </td>
-                        <td className="td-dev">
-                          <div className="dev-row">
-                            <img alt={leader.name} className={`dev-avatar tier-${leader.tier}`} src={leader.img} />
-                            <div>
-                              <div className="dev-name">{leader.name}</div>
-                              <div className="dev-handle">{leader.handle}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="td-score">{leader.score}</td>
-                        <td className="td-repos">{leader.repos}</td>
-                        <td className="td-pct">
-                          <span className={`pct-badge pct-${leader.tier}`}>{leader.percentile}</span>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                          <td className="td-score">{leader.score}</td>
+                          <td className="td-repos">{leader.repos}</td>
+                          <td className="td-pct">
+                            <span className={`pct-badge pct-${leader.tier}`}>{leader.percentile}</span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
