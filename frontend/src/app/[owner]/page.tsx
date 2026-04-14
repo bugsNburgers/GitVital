@@ -554,17 +554,18 @@ export default function UserProfilePage() {
                     padding: 5px 11px; border-radius: 6px; transition: color 0.15s, background 0.15s;
                 }
                 .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
-                .nav-links a.active { color: var(--text); }
                 .cmp-nav-actions { display: inline-flex; align-items: center; gap: 8px; }
-        .nav-user {
-                    display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 6px;
-          background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 20px;
-                    color: var(--text-secondary); text-decoration: none;
+                .btn-ghost {
+                    font-family: var(--font); font-size: 13px; font-weight: 500;
+                    color: var(--text-secondary); background: none;
+                    border: 1px solid var(--border); border-radius: 20px;
+                    padding: 5px 14px; cursor: pointer;
                     transition: color 0.15s, border-color 0.15s;
-        }
-                .nav-user:hover { color: var(--text); border-color: var(--border-hover); }
-                .nav-avatar {
-                    width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+                    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+                }
+                .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+                .btn-avatar {
+                    width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
                     border: 1px solid rgba(255,255,255,0.14);
                 }
                 .nav-username { font-size: 12px; font-weight: 600; }
@@ -805,24 +806,24 @@ export default function UserProfilePage() {
                     <div className="cmp-nav-inner">
                         <div className="cmp-logo" onClick={() => router.push("/")}>
                             <img src="/gitvital_logo_fixed.svg" alt="GitVital" />
+                        </div>
 
-                            <ul className="nav-links">
-                                <li><a href="/?focus=analyze">Analyze</a></li>
-                                <li><a href="/compare">Compare</a></li>
-                                <li><a href="/leaderboard">Leaderboard</a></li>
-                                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
-                            </ul>
+                        <ul className="nav-links">
+                            <li><a href="/?focus=analyze">Analyze</a></li>
+                            <li><a href="/compare">Compare</a></li>
+                            <li><a href="/leaderboard">Leaderboard</a></li>
+                            <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
+                        </ul>
 
-                            <div className="cmp-nav-actions">
-                                <a href={`/${owner}`} className="nav-user" rel="noopener noreferrer">
-                                    <img
-                                        src={(profile?.avatarUrl || `https://github.com/${owner}.png`) + "?size=64"}
-                                        alt={`${owner} avatar`}
-                                        className="nav-avatar"
-                                    />
-                                    <span className="nav-username">{owner}</span>
-                                </a>
-                            </div>
+                        <div className="cmp-nav-actions">
+                            <a href={`/${owner}`} className="btn-ghost" rel="noopener noreferrer">
+                                <img
+                                    src={(profile?.avatarUrl || `https://github.com/${owner}.png`) + "?size=64"}
+                                    alt={`${owner} avatar`}
+                                    className="btn-avatar"
+                                />
+                                <span className="nav-username">{owner}</span>
+                            </a>
                         </div>
                     </div>
                 </div>
