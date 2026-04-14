@@ -56,6 +56,7 @@ interface UserProfileResponse {
     contribution: {
         externalPRCount: number;
         externalMergedPRCount: number;
+        externalOpenPRCount: number;
         contributionAcceptanceRate: number;
         analyzedAt: string | null;
     };
@@ -778,9 +779,6 @@ export default function UserProfilePage() {
         .footer-left { display: flex; align-items: center; gap: 12px; }
         .footer-icon { width: 28px; height: 28px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--orange); }
         .footer-text { font-size: 13px; color: var(--text-muted); font-weight: 500; }
-        .footer-links { display: flex; gap: 24px; }
-        .footer-links a { color: var(--text-muted); font-size: 13px; text-decoration: none; transition: color 0.2s; }
-        .footer-links a:hover { color: var(--orange-light); }
 
         .spark-svg { width: 100%; height: 100%; overflow: visible; }
 
@@ -1038,7 +1036,7 @@ export default function UserProfilePage() {
                                             Currently Open
                                         </span>
                                         <span className="pr-stat-value open">
-                                            {Math.max(0, (profile.contribution.externalPRCount ?? 0) - (profile.contribution.externalMergedPRCount ?? 0)).toLocaleString()}
+                                            {(profile.contribution.externalOpenPRCount ?? 0).toLocaleString()}
                                         </span>
                                         <span className="pr-stat-hint">
                                             <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
@@ -1252,11 +1250,6 @@ export default function UserProfilePage() {
                     <div className="footer-left">
                         <div className="footer-icon"><span className="material-symbols-outlined">pulse_alert</span></div>
                         <span className="footer-text">© 2026 Git Vital Analytics. Build with integrity.</span>
-                    </div>
-                    <div className="footer-links">
-                        <a href="#">Privacy Policy</a>
-                        <a href="#">Terms of Service</a>
-                        <a href="#">Documentation</a>
                     </div>
                 </div>
             </div>

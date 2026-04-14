@@ -730,6 +730,7 @@ interface UserProfileApiResponse {
   contribution: {
     externalPRCount: number;
     externalMergedPRCount: number;
+    externalOpenPRCount: number;
     contributionAcceptanceRate: number;
     analyzedAt: string | null;
   };
@@ -1733,10 +1734,12 @@ app.get(
       // Fetch user issue stats (opened + closed)
       let issuesOpened = 0;
       let issuesClosed = 0;
+      let openPRs = 0;
       try {
-        const [openedRes, closedRes] = await Promise.all([
+        const [openedRes, closedRes, openPRsRes] = await Promise.all([
           fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue&per_page=1`, { headers }),
           fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue+is:closed&per_page=1`, { headers }),
+          fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:pr+is:open&per_page=1`, { headers }),
         ]);
         if (openedRes.ok) {
           const data = await openedRes.json() as { total_count?: number };
@@ -1745,6 +1748,10 @@ app.get(
         if (closedRes.ok) {
           const data = await closedRes.json() as { total_count?: number };
           issuesClosed = data.total_count ?? 0;
+        }
+        if (openPRsRes.ok) {
+          const data = await openPRsRes.json() as { total_count?: number };
+          openPRs = data.total_count ?? 0;
         }
       } catch (e) {
         console.warn('[UserProfile] Failed to fetch issue stats:', e);
@@ -1893,6 +1900,7 @@ app.get(
         contribution: {
           externalPRCount: contribution?.externalPRCount ?? 0,
           externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
+          externalOpenPRCount: openPRs,
           contributionAcceptanceRate: contribution?.contributionAcceptanceRate ?? 0,
           analyzedAt: contribution?.analyzedAt ?? null,
         },

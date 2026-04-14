@@ -270,11 +270,8 @@ export default function LeaderboardPage() {
         .pg-num:not(.active):hover { background: rgba(255,255,255,0.06); }
 
         /* FOOTER */
-        .lb-footer { margin-top: 60px; border-top: 1px solid var(--border); padding: 28px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; max-width: 1200px; margin-left: auto; margin-right: auto; }
+        .lb-footer { margin-top: 60px; border-top: 1px solid var(--border); padding: 28px 24px; display: flex; justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 16px; max-width: 1200px; margin-left: auto; margin-right: auto; }
         .lb-footer-text { font-size: 13px; color: var(--text-muted); }
-        .lb-footer-links { display: flex; gap: 24px; }
-        .lb-footer-links a { font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
-        .lb-footer-links a:hover { color: var(--orange-light); }
 
         @media (max-width: 900px) { .lb-stats { grid-template-columns: 1fr; } .lb-nav-links { display: none; } .td-repos { display: none; } }
         @media (max-width: 600px) { .lb-nav-search { display: none; } .lang-badge { display: none; } .lb-hero { flex-direction: column; align-items: flex-start; } }
@@ -500,11 +497,6 @@ export default function LeaderboardPage() {
 
         <footer className="lb-footer">
           <span className="lb-footer-text">© 2024 GitVital Analytics. Scores computed server-side from verified GitHub data.</span>
-          <div className="lb-footer-links">
-            {["Privacy Policy", "Terms of Service", "Documentation"].map((l) => (
-              <a key={l} href="#">{l}</a>
-            ))}
-          </div>
         </footer>
       </div>
     </>
