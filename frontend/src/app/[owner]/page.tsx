@@ -1054,9 +1054,6 @@ export default function UserProfilePage() {
                             <div className="profile-section">
                                 <div className="section-header">
                                     <h3 className="section-title"><span className="material-symbols-outlined">military_tech</span> Achievement Badges</h3>
-                                    <button className="btn-secondary" onClick={reanalyzeProfile} disabled={busy}>
-                                        {profile.needsAnalysis ? "Generate Insights" : "Refresh Badges"}
-                                    </button>
                                 </div>
 
                                 {profile.badges.length === 0 ? (
