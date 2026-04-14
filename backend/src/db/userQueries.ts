@@ -144,12 +144,17 @@ export async function getLeaderboardStats(): Promise<{
   totalDevelopers: number;
   totalRepos: number;
 }> {
-  const [devRows, repoRows] = await Promise.all([
+  const [devRows, repoRows, ownerRows] = await Promise.all([
     dbQuery<{ count: string }>(`SELECT COUNT(*)::text AS count FROM users WHERE developer_score > 0`),
     dbQuery<{ count: string }>(`SELECT COUNT(*)::text AS count FROM repos`),
+    dbQuery<{ count: string }>(`SELECT COUNT(DISTINCT LOWER(owner))::text AS count FROM repos`),
   ]);
+
+  const scoredDevelopers = Number(devRows?.[0]?.count ?? 0);
+  const repoOwners = Number(ownerRows?.[0]?.count ?? 0);
+
   return {
-    totalDevelopers: Number(devRows?.[0]?.count ?? 0),
+    totalDevelopers: scoredDevelopers > 0 ? scoredDevelopers : repoOwners,
     totalRepos: Number(repoRows?.[0]?.count ?? 0),
   };
 }

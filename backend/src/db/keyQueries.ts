@@ -97,7 +97,16 @@ SELECT
     lr.percentile::text AS percentile,
     pl.language AS primary_language,
     COALESCE(rt.repos_count, 0) AS repos_count
-FROM leaderboard_rankings lr
+FROM (
+    SELECT
+        u.username,
+        u.avatar_url,
+        u.developer_score,
+        RANK() OVER (ORDER BY u.developer_score DESC) AS global_rank,
+        (PERCENT_RANK() OVER (ORDER BY u.developer_score ASC) * 100) AS percentile
+    FROM users u
+    WHERE u.developer_score > 0
+) lr
 LEFT JOIN repo_totals rt ON rt.username = lr.username
 LEFT JOIN primary_languages pl ON pl.username = lr.username
 WHERE ($1::text IS NULL OR EXISTS (
