@@ -67,7 +67,8 @@ const MAX_GEMINI_ANALYSES_PER_IP_PER_DAY = 10;
 const RAPID_FIRE_WINDOW_SECONDS = 60;
 const RAPID_FIRE_ALERT_THRESHOLD = 8;
 const GITHUB_REST_BASE_URL = 'https://api.github.com';
-const MAX_USER_PROFILE_REPOS = 9;
+const USER_REPOS_PAGE_SIZE = 100;
+const MAX_USER_PROFILE_REPOS_FETCH = 5000;
 const SENSITIVE_RESPONSE_KEYS = new Set([
   'access_token',
   'accessToken',
@@ -825,6 +826,54 @@ async function buildGitHubRestHeaders(req: Request, username: string): Promise<R
   }
 
   return headers;
+}
+
+async function fetchAllOwnedRepos(
+  username: string,
+  headers: Record<string, string>,
+  maxRepos = MAX_USER_PROFILE_REPOS_FETCH,
+): Promise<GitHubRepoApiResponse[]> {
+  const repos: GitHubRepoApiResponse[] = [];
+  let page = 1;
+
+  while (repos.length < maxRepos) {
+    const remaining = Math.max(0, maxRepos - repos.length);
+    if (remaining === 0) {
+      break;
+    }
+
+    const perPage = Math.min(USER_REPOS_PAGE_SIZE, remaining);
+    const response = await fetch(
+      `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${perPage}&page=${page}`,
+      { headers },
+    );
+
+    if (!response.ok) {
+      if (page === 1) {
+        return [];
+      }
+      break;
+    }
+
+    const payload = await response.json() as unknown;
+    if (!Array.isArray(payload)) {
+      break;
+    }
+
+    const pageRepos = payload.filter((entry) => {
+      return Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry);
+    }) as GitHubRepoApiResponse[];
+
+    repos.push(...pageRepos);
+
+    if (pageRepos.length < perPage) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return repos;
 }
 
 function normalizeJobStatus(status: string | null): JobStatus | null {
@@ -1722,13 +1771,10 @@ app.get(
       const username = req.params.username as string;
       const headers = await buildGitHubRestHeaders(req, username);
 
-      const [userResponse, reposResponse, contributionCache] = await Promise.all([
+      const [userResponse, contributionCache, githubRepos] = await Promise.all([
         fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
-        fetch(
-          `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`,
-          { headers },
-        ),
         getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+        fetchAllOwnedRepos(username, headers),
       ]);
 
       // Fetch user issue stats (opened + closed)
@@ -1769,19 +1815,8 @@ app.get(
 
       const githubUser = await userResponse.json() as GitHubUserApiResponse;
 
-      let githubRepos: GitHubRepoApiResponse[] = [];
-      if (reposResponse.ok) {
-        const reposPayload = await reposResponse.json() as unknown;
-        if (Array.isArray(reposPayload)) {
-          githubRepos = reposPayload.filter((entry) => {
-            return Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry);
-          }) as GitHubRepoApiResponse[];
-        }
-      }
-
       const publicRepos = githubRepos
-        .filter((repo) => !repo.private)
-        .slice(0, MAX_USER_PROFILE_REPOS);
+        .filter((repo) => !repo.private);
 
       const reposWithMetrics = await Promise.all(
         publicRepos.map(async (repo): Promise<UserProfileRepoResponse> => {
@@ -1949,13 +1984,10 @@ app.post(
       const headers = await buildGitHubRestHeaders(req, username);
 
       // Fetch GitHub user + repos + contribution cache in parallel
-      const [userResponse, reposResponse, contributionCache] = await Promise.all([
+      const [userResponse, contributionCache, githubRepos] = await Promise.all([
         fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
-        fetch(
-          `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`,
-          { headers },
-        ),
         getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+        fetchAllOwnedRepos(username, headers),
       ]);
 
       if (userResponse.status === 404) {
@@ -1970,19 +2002,8 @@ app.post(
 
       const githubUser = await userResponse.json() as GitHubUserApiResponse;
 
-      let githubRepos: GitHubRepoApiResponse[] = [];
-      if (reposResponse.ok) {
-        const reposPayload = await reposResponse.json() as unknown;
-        if (Array.isArray(reposPayload)) {
-          githubRepos = reposPayload.filter((entry) =>
-            Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry),
-          ) as GitHubRepoApiResponse[];
-        }
-      }
-
       const publicRepos = githubRepos
-        .filter((repo) => !repo.private)
-        .slice(0, MAX_USER_PROFILE_REPOS);
+        .filter((repo) => !repo.private);
 
       // Pull health scores from cache for each repo
       const repoHealthScores: number[] = [];
@@ -2140,34 +2161,20 @@ app.get(
       if (effectiveUsername) {
         try {
           const userHeaders = await buildGitHubRestHeaders(req, effectiveUsername);
-          const [ghUserRes, ghReposRes, contribCache] = await Promise.all([
+          const [ghUserRes, contribCache, repos] = await Promise.all([
             fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(effectiveUsername)}`, { headers: userHeaders }),
-            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(effectiveUsername)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`, { headers: userHeaders }),
             getFreshUserContributionCache<UserContributionMetricsCacheValue>(effectiveUsername),
+            fetchAllOwnedRepos(effectiveUsername, userHeaders),
           ]);
 
           if (ghUserRes.ok) {
             const ghUserData = await ghUserRes.json() as GitHubUserApiResponse;
-            let repoLanguages: (string | null)[] = [];
-            let repoNames: string[] = [];
-
-            if (ghReposRes.ok) {
-              const rawRepos = await ghReposRes.json() as unknown[];
-              if (Array.isArray(rawRepos)) {
-                const repos = rawRepos.filter(
-                  (r): r is GitHubRepoApiResponse =>
-                    Boolean(r && typeof r === 'object' && 'name' in (r as object)),
-                ) as GitHubRepoApiResponse[];
-                repoLanguages = repos.map((r) => r.language);
-                repoNames = repos.map((r) => r.name);
-              }
-            }
+            const repoLanguages = repos.map((r) => r.language);
+            const repoNames = repos.map((r) => r.name);
 
             userProfile = {
               username: ghUserData.login,
-              topLanguage: getTopLanguage(
-                (await ghReposRes.clone().json().catch(() => [])) as GitHubRepoApiResponse[],
-              ),
+              topLanguage: getTopLanguage(repos),
               externalPRCount: contribCache?.value?.externalPRCount ?? 0,
               externalMergedPRCount: contribCache?.value?.externalMergedPRCount ?? 0,
               contributionAcceptanceRate: contribCache?.value?.contributionAcceptanceRate ?? 0,
