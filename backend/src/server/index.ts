@@ -1521,6 +1521,8 @@ app.post(
     try {
       const username = String(req.body.username).trim();
       const normalizedUsername = username.toLowerCase();
+      const sessionUserId = (req.session as any)?.userId;
+      const userIdForJob = sessionUserId !== undefined && sessionUserId !== null ? String(sessionUserId) : undefined;
       const forceReanalyze = parseBooleanFlag((req.body as { force?: unknown })?.force);
 
       if (!forceReanalyze) {
@@ -1564,7 +1566,7 @@ app.post(
 
       const job = await userAnalysisQueue.add(
         'analyzeUser',
-        { username },
+        { username, userId: userIdForJob },
         {
           jobId,
           attempts: 3,
@@ -1581,6 +1583,7 @@ app.post(
 
       await redis.set(`userjobstatus:${job.id}`, 'queued', 'EX', 3600);
       await redis.del(`userjoberror:${job.id}`);
+      await redis.del(`userjobdebug:${job.id}`);
 
       res.status(202).json({ jobId: job.id, status: 'queued', forced: forceReanalyze });
     } catch (error) {
@@ -1637,6 +1640,68 @@ app.get(
     } catch (error) {
       console.error('Error checking user analysis job status:', error);
       res.status(500).json({ error: 'Failed to check user analysis job status' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6f-debug. GET /api/user/debug/:jobId — Temporary diagnostics for user-analysis jobs
+// ─────────────────────────────────────────────────────────────
+
+app.get(
+  '/api/user/debug/:jobId',
+  [param('jobId').isString().trim().notEmpty()],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const debugEnabled = process.env.ENABLE_USER_JOB_DEBUG === 'true' || config.nodeEnv !== 'production';
+      if (!debugEnabled) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+
+      const jobId = req.params.jobId as string;
+      const [job, cachedStatusRaw, cachedError, cachedDebugRaw] = await Promise.all([
+        userAnalysisQueue.getJob(jobId),
+        redis.get(`userjobstatus:${jobId}`),
+        redis.get(`userjoberror:${jobId}`),
+        redis.get(`userjobdebug:${jobId}`),
+      ]);
+
+      const cachedStatus = normalizeJobStatus(cachedStatusRaw);
+      let queueState: string | null = null;
+      let progress: number | null = null;
+      if (job) {
+        queueState = await job.getState();
+        progress = typeof job.progress === 'number' ? job.progress : null;
+      }
+
+      let debug: unknown = null;
+      if (cachedDebugRaw) {
+        try {
+          debug = JSON.parse(cachedDebugRaw);
+        } catch {
+          debug = { raw: cachedDebugRaw, parseError: true };
+        }
+      }
+
+      if (!job && !cachedStatus && !cachedError && !debug) {
+        res.status(404).json({ error: 'User analysis job not found' });
+        return;
+      }
+
+      res.json({
+        jobId,
+        status: cachedStatus ?? (queueState ? mapQueueStateToJobStatus(queueState) : null),
+        queueState,
+        progress,
+        error: cachedError || null,
+        debug,
+      });
+    } catch (error) {
+      console.error('Error fetching user analysis debug payload:', error);
+      res.status(500).json({ error: 'Failed to fetch user analysis debug payload' });
     }
   },
 );
