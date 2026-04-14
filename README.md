@@ -17,6 +17,12 @@
 
 <br />
 
+## Project Cost
+
+- **Total spent to build, deploy, and run:** <strong><span style="color:#22c55e;">$0.00</span></strong>
+- **Pride level:** **Priceless**
+- **Built with:** Free tiers, stubborn optimism, and too many late-night commits.
+
 ## Screenshots
 
 
