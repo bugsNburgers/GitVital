@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import ScrollPulse from '@/components/ScrollPulse';
 import { API_BASE, AUTH_URL } from '@/config';
 
 export default function GitvitalLanding() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isHealthy, setIsHealthy] = useState(false);
   const [animKey, setAnimKey] = useState(0);
   const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
@@ -255,6 +257,23 @@ export default function GitvitalLanding() {
     if (e.key === 'Enter') analyzeRepo(inputId);
   };
 
+  const focusAnalyzeInput = () => {
+    const input = document.getElementById('heroInput') as HTMLInputElement | null;
+    if (!input) return;
+    input.focus();
+    input.select();
+  };
+
+  useEffect(() => {
+    if (searchParams.get('focus') !== 'analyze') return;
+    const input = document.getElementById('heroInput') as HTMLInputElement | null;
+    if (!input) return;
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 80);
+  }, [searchParams]);
+
   return (
     <>
       <ScrollPulse />
@@ -481,6 +500,14 @@ export default function GitvitalLanding() {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+  .btn-avatar {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.14);
   }
   .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
   .btn-primary {
@@ -1282,20 +1309,21 @@ export default function GitvitalLanding() {
   .footer-inner { max-width: 1120px; margin: 0 auto; }
   .footer-grid {
     display: grid;
-    grid-template-columns: 1.5fr repeat(4, 1fr);
+    grid-template-columns: 1.5fr repeat(3, 1fr);
     gap: 32px;
     margin-bottom: 48px;
   }
   .footer-brand .logo { margin-bottom: 10px; }
   .footer-brand p { font-size: 13px; color: var(--text-muted); line-height: 1.55; max-width: 200px; }
   .footer-col h4 { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 14px; letter-spacing: -0.01em; }
+  .footer-title-icon { display: inline-flex; align-items: center; gap: 7px; }
   .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
   .footer-col ul li a { font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color 0.15s; }
   .footer-col ul li a:hover { color: var(--text-secondary); }
   .footer-bottom {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     padding-top: 24px;
     border-top: 1px solid var(--border);
     font-size: 12.5px;
@@ -1523,7 +1551,7 @@ export default function GitvitalLanding() {
             <img src="/gitvital_logo_fixed.svg" alt="GitVital" className="logo-mark" />
           </a>
           <ul className="nav-links">
-            <li><a href="#features">Features</a></li>
+            <li><a href="/?focus=analyze" onClick={() => setTimeout(focusAnalyzeInput, 40)}>Analyze</a></li>
             <li><a href="/compare">Compare</a></li>
             <li><a href="/leaderboard">Leaderboard</a></li>
             <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
@@ -1531,7 +1559,11 @@ export default function GitvitalLanding() {
           <div className="nav-right">
             {user?.loggedIn ? (
               <a href={`/${user.githubUsername}`} className="btn-ghost" rel="noopener noreferrer">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+                <img
+                  src={`https://github.com/${user.githubUsername}.png`}
+                  alt={`${user.githubUsername} avatar`}
+                  className="btn-avatar"
+                />
                 View Profile
               </a>
             ) : (
@@ -1554,7 +1586,7 @@ export default function GitvitalLanding() {
 
       {/* Mobile drawer - nav links only, no login */}
       <div className={`mobile-drawer${menuOpen ? ' open' : ''}`}>
-        <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
+        <a href="/?focus=analyze" onClick={() => { setMenuOpen(false); setTimeout(focusAnalyzeInput, 40); }}>Analyze</a>
         <a href="/compare" onClick={() => setMenuOpen(false)}>Compare</a>
         <a href="/leaderboard" onClick={() => setMenuOpen(false)}>Leaderboard</a>
         <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
@@ -2188,48 +2220,40 @@ export default function GitvitalLanding() {
               <p style={{ marginTop: '10px' }}>GitHub repository health analytics. Know before you depend.</p>
             </div>
             <div className="footer-col">
-              <h4>Product</h4>
+              <h4>Navigation</h4>
               <ul>
-                <li><a href="/facebook/react">Health Score</a></li>
+                <li><a href="/?focus=analyze">Analyze</a></li>
                 <li><a href="/compare">Repo Compare</a></li>
-                <li><a href="/facebook/react">Timeline</a></li>
-                <li><a href="/facebook/react">AI Advice</a></li>
-                <li><a href="/facebook/react">Badges</a></li>
                 <li><a href="/leaderboard">Leaderboard</a></li>
               </ul>
             </div>
             <div className="footer-col">
-              <h4>Developers</h4>
+              <h4>Project</h4>
               <ul>
                 <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital/tree/main/gitvital/backend/src" target="_blank" rel="noopener noreferrer">API Reference</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noopener noreferrer">GitHub</a></li>
                 <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/SETUP.md" target="_blank" rel="noopener noreferrer">Setup</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/LICENSE" target="_blank" rel="noopener noreferrer">License</a></li>
               </ul>
             </div>
             <div className="footer-col">
-              <h4>Community</h4>
+              <h4>
+                <span className="footer-title-icon">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                  </svg>
+                  Contribute
+                </span>
+              </h4>
               <ul>
-                <li><a href="https://github.com/bugsNburgers/GitVital/discussions" target="_blank" rel="noopener noreferrer">Discord</a></li>
-                <li><a href="https://x.com" target="_blank" rel="noopener noreferrer">Twitter / X</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital/discussions" target="_blank" rel="noopener noreferrer">GitHub Discussions</a></li>
-              </ul>
-            </div>
-            <div className="footer-col">
-              <h4>Legal</h4>
-              <ul>
-                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Privacy Policy</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Terms of Service</a></li>
-                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Fair Use</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noopener noreferrer">Source Code</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/issues" target="_blank" rel="noopener noreferrer">Raise Issue</a></li>
+                <li><a href="https://github.com/bugsNburgers/GitVital/blob/main/gitvital/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribution Guide</a></li>
               </ul>
             </div>
           </div>
           <div className="footer-bottom">
             <span>© 2026 GitVital. All rights reserved.</span>
-            <a href="https://github.com/bugsNburgers/GitVital" target="_blank" rel="noopener noreferrer" className="github-link">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
-              Source Code
-            </a>
           </div>
         </div>
       </footer>

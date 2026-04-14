@@ -823,13 +823,10 @@ export default function UserProfilePage() {
 
                         <div className="nav-icons">
                             <div className="nav-links-inline">
-                                <a href="/" className="nav-link">Explore</a>
+                                <a href="/?focus=analyze" className="nav-link">Analyze</a>
+                                <a href="/compare" className="nav-link">Compare</a>
                                 <a href="/leaderboard" className="nav-link">Leaderboard</a>
-                                {user?.loggedIn ? (
-                                    <a href={`/${user.githubUsername}`} className="nav-link-profile">My Profile</a>
-                                ) : (
-                                    <a href={AUTH_URL} className="nav-link">Login</a>
-                                )}
+                                <a href="https://github.com/bugsNburgers/GitVital#readme" className="nav-link" target="_blank" rel="noopener noreferrer">Docs</a>
                             </div>
                             <div className="nav-user">
                                 <div className="nav-avatar">{owner.charAt(0).toUpperCase()}</div>
