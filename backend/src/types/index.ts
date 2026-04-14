@@ -148,6 +148,7 @@ export interface UserContributionMetrics {
 
 export interface UserJobData {
   username: string;
+  userId?: string;
 }
 
 export type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
