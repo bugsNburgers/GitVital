@@ -17,24 +17,7 @@ export default function GitvitalLanding() {
     totalRepos: 0,
     avgMs: 0,
   });
-  const [showIpNotice, setShowIpNotice] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    // Check if the user has already acknowledged the IP notice
-    if (typeof window !== 'undefined' && !localStorage.getItem('gitvital_ip_notice_ack')) {
-      setShowIpNotice(true);
-      // Disable scrolling when modal is open
-      document.body.style.overflow = 'hidden';
-    }
-  }, []);
-
-  const handleAckIpNotice = () => {
-    localStorage.setItem('gitvital_ip_notice_ack', 'true');
-    setShowIpNotice(false);
-    // Re-enable scrolling
-    document.body.style.overflow = 'auto';
-  };
 
   useEffect(() => {
     fetch(`${API_BASE}/api/me`, { credentials: 'include' })
@@ -277,30 +260,6 @@ export default function GitvitalLanding() {
   return (
     <>
       <ScrollPulse />
-
-      {showIpNotice && (
-        <div className="ip-modal-overlay">
-          <div className="ip-modal">
-            <div className="ip-modal-header">
-              <div className="ip-modal-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="m9 12 2 2 4-4" /></svg>
-              </div>
-              <h2 className="ip-modal-title">API Rate Limiting Warning</h2>
-            </div>
-            <div className="ip-modal-body">
-              <p>
-                To provide you with lightning-fast analysis and protect our AI systems from abuse, GitVital temporarily collects your <strong>IP address</strong> for <strong>rate-limiting purposes</strong> Hence please approve the pop-up permission <strong>"Access other apps and services on this device"</strong> shown on your browser.
-              </p>
-              <p>
-                <strong>Why is this safe?</strong> We process your IP strictly for request counting. It is completely anonymous—we do not store, track, or share your IP with any third parties.
-              </p>
-            </div>
-            <div className="ip-modal-actions">
-              <button className="ip-modal-btn" onClick={handleAckIpNotice}>I understand, let's go!</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style dangerouslySetInnerHTML={{
         __html: `
