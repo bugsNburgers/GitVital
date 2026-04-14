@@ -2913,6 +2913,16 @@ app.get('/api/me', (req: Request, res: Response) => {
 // A simple endpoint that deployment platforms (Render, Railway) use
 // to check if our server is alive and healthy.
 
+// Lightweight liveness probe for keep-alive pingers.
+// Does not touch dependencies so it stays fast and stable.
+app.get('/healthz', (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    env: config.nodeEnv,
+  });
+});
+
 app.get('/health', async (_req: Request, res: Response) => {
   let redisStatus = 'error';
   try {
