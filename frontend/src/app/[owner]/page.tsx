@@ -519,6 +519,8 @@ export default function UserProfilePage() {
           --green: #22c55e; --yellow: #eab308; --red: #ef4444;
           --orange: #FF5E00; --orange-light: #FFA066; --orange-dim: rgba(255,94,0,0.12);
           --font: 'Inter', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
+          --page-max-width: 1200px;
+          --page-padding: 24px;
         }
         .profile-root body, body { font-family: var(--font) !important; }
         .profile-root { background: var(--bg) !important; min-height: 100vh; }
@@ -545,7 +547,7 @@ export default function UserProfilePage() {
           background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
           border-bottom: 1px solid var(--border);
         }
-                .cmp-nav-inner { width: 100%; max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+                .cmp-nav-inner { width: 100%; max-width: var(--page-max-width); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .cmp-logo { display: flex; align-items: center; cursor: pointer; }
         .cmp-logo img { height: 36px; }
                 .nav-links { display: flex; align-items: center; gap: 2px; list-style: none; }
@@ -571,7 +573,7 @@ export default function UserProfilePage() {
                 .nav-username { font-size: 12px; font-weight: 600; }
 
         .profile-root { background: var(--bg); min-height: 100vh; font-family: var(--font); color: var(--text); }
-        .page-main { max-width: 1200px; margin: 0 auto; padding: 90px 24px 60px; display: flex; flex-direction: column; gap: 24px; }
+        .page-main { max-width: var(--page-max-width); margin: 0 auto; padding: 90px var(--page-padding) 60px; display: flex; flex-direction: column; gap: 24px; }
 
         .status-banner {
           background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
@@ -796,6 +798,45 @@ export default function UserProfilePage() {
           .achievements-grid, .repo-grid { grid-template-columns: 1fr; }
                     .nav-links { display: none; }
           .page-main { padding-top: 80px; }
+        }
+
+        /* LARGE SCREENS — 1440px (15-16") */
+        @media (min-width: 1440px) {
+          :root { --page-max-width: 1360px; --page-padding: 36px; }
+          .profile-name h1 { font-size: 36px; }
+          .profile-avatar-img { width: 152px; height: 152px; }
+          .achievements-grid { grid-template-columns: repeat(4, 1fr); }
+          .repo-grid { grid-template-columns: repeat(3, 1fr); }
+          .score-summary-val { font-size: 48px; }
+          .profile-hdr { padding: 38px; gap: 38px; }
+          .section-title { font-size: 20px; }
+          .issue-stat-value, .pr-stat-value { font-size: 32px; }
+        }
+
+        /* LARGE SCREENS — 1600px (16.6") */
+        @media (min-width: 1600px) {
+          :root { --page-max-width: 1500px; --page-padding: 48px; }
+          .profile-name h1 { font-size: 40px; }
+          .profile-avatar-img { width: 160px; height: 160px; }
+          .profile-title { font-size: 16px; }
+          .score-summary-val { font-size: 52px; }
+          .profile-hdr { padding: 42px; gap: 42px; }
+          .repo-name { font-size: 17px; }
+          .section-title { font-size: 21px; }
+          .badge-title { font-size: 15px; }
+          .issue-stat-value, .pr-stat-value { font-size: 34px; }
+        }
+
+        /* EXTRA LARGE SCREENS — 1920px */
+        @media (min-width: 1920px) {
+          :root { --page-max-width: 1760px; --page-padding: 64px; }
+          .profile-name h1 { font-size: 44px; }
+          .profile-avatar-img { width: 170px; height: 170px; }
+          .score-summary-val { font-size: 56px; }
+          .profile-hdr { padding: 48px; gap: 48px; }
+          .section-title { font-size: 22px; }
+          .issue-stat-value, .pr-stat-value { font-size: 36px; }
+          .page-main { gap: 28px; }
         }
       `,
                 }}

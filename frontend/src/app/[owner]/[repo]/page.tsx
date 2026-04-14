@@ -500,6 +500,8 @@ export default function RepoDashboardPage() {
           --orange-dim: rgba(255,94,0,0.12);
           --font: 'Inter', system-ui, sans-serif;
           --mono: 'Geist Mono', monospace;
+          --page-max-width: 1120px;
+          --page-padding: 24px;
         }
 
         body { font-family: var(--font); background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
@@ -512,7 +514,7 @@ export default function RepoDashboardPage() {
           border-bottom: 1px solid var(--border);
         }
         .dash-nav-inner {
-          width: 100%; max-width: 1120px; margin: 0 auto;
+          width: 100%; max-width: var(--page-max-width); margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between; gap: 16px;
         }
         .dash-logo {
@@ -562,7 +564,7 @@ export default function RepoDashboardPage() {
         .btn-icon:hover { color: var(--text-secondary); border-color: var(--border-hover); }
 
         .dash-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
-        .dash-main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; display: flex; flex-direction: column; gap: 16px; }
+        .dash-main { max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 80px; display: flex; flex-direction: column; gap: 16px; }
 
         .card {
           background: var(--bg-card); border: 1px solid var(--border);
@@ -750,6 +752,52 @@ export default function RepoDashboardPage() {
           .flags-grid { grid-template-columns: 1fr; }
           .dash-main { padding: 24px 16px 60px; }
           .dash-breadcrumb { display: none; }
+        }
+
+        /* LARGE SCREENS — 1440px (15-16") */
+        @media (min-width: 1440px) {
+          :root { --page-max-width: 1340px; --page-padding: 36px; }
+          .score-big { font-size: 48px; }
+          .health-meta h2 { font-size: 24px; }
+          .health-meta p { font-size: 15px; max-width: 440px; }
+          .metric-card { padding: 20px; }
+          .metric-card-val { font-size: 24px; }
+          .card-pad { padding: 32px; }
+          .commits-chart { height: 200px; }
+          .flags-grid { grid-template-columns: repeat(4, 1fr); }
+          .rec-grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        /* LARGE SCREENS — 1600px (16.6") */
+        @media (min-width: 1600px) {
+          :root { --page-max-width: 1500px; --page-padding: 48px; }
+          .score-big { font-size: 52px; }
+          .score-ring-wrap { width: 180px; height: 180px; }
+          .health-meta h2 { font-size: 26px; }
+          .health-meta p { font-size: 15.5px; max-width: 480px; }
+          .metric-card { padding: 22px; }
+          .metric-card-val { font-size: 26px; }
+          .metric-card-label { font-size: 12px; }
+          .card-pad { padding: 36px; }
+          .commits-chart { height: 220px; }
+          .hstat-val { font-size: 24px; }
+          .flag-title { font-size: 13px; }
+          .flag-desc { font-size: 12px; }
+          .ai-text { font-size: 15px; }
+          .dash-main { gap: 20px; }
+        }
+
+        /* EXTRA LARGE SCREENS — 1920px */
+        @media (min-width: 1920px) {
+          :root { --page-max-width: 1760px; --page-padding: 64px; }
+          .score-big { font-size: 58px; }
+          .score-ring-wrap { width: 200px; height: 200px; }
+          .health-meta h2 { font-size: 28px; }
+          .metric-card-val { font-size: 28px; }
+          .card-pad { padding: 40px; }
+          .commits-chart { height: 240px; }
+          .hstat-val { font-size: 26px; }
+          .dash-main { gap: 24px; }
         }
 
         /* ── Issue Recommendations ── */

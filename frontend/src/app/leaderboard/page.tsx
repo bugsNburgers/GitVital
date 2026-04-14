@@ -113,12 +113,14 @@ export default function LeaderboardPage() {
           --orange: #FF5E00; --orange-light: #FFA066; --orange-dim: rgba(255,94,0,0.12);
           --green: #22c55e; --blue: #3b82f6;
           --font: 'Inter', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
+          --page-max-width: 1200px;
+          --page-padding: 24px;
         }
         body { font-family: var(--font); background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
 
         /* NAV */
-        .lb-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 58px; display: flex; align-items: center; padding: 0 24px; background: rgba(8,9,9,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
-        .lb-nav-inner { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .lb-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 58px; display: flex; align-items: center; padding: 0 32px; background: rgba(8,9,9,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+        .lb-nav-inner { width: 100%; max-width: var(--page-max-width, 1200px); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .lb-logo { display: flex; align-items: center; cursor: pointer; }
         .lb-logo img { height: 36px; }
         .lb-nav-links { display: flex; align-items: center; gap: 2px; }
@@ -167,7 +169,7 @@ export default function LeaderboardPage() {
 
         /* LAYOUT */
         .lb-root { background: var(--bg); min-height: 100vh; color: var(--text); font-family: var(--font); }
-        .lb-main { max-width: 1200px; margin: 0 auto; padding: 84px 24px 60px; }
+        .lb-main { max-width: var(--page-max-width); margin: 0 auto; padding: 84px var(--page-padding) 60px; }
         .lb-profile-link { color: var(--orange) !important; }
 
         /* HERO */
@@ -270,11 +272,48 @@ export default function LeaderboardPage() {
         .pg-num:not(.active):hover { background: rgba(255,255,255,0.06); }
 
         /* FOOTER */
-        .lb-footer { margin-top: 60px; border-top: 1px solid var(--border); padding: 28px 24px; display: flex; justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 16px; max-width: 1200px; margin-left: auto; margin-right: auto; }
+        .lb-footer { margin-top: 60px; border-top: 1px solid var(--border); padding: 28px var(--page-padding); display: flex; justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 16px; max-width: var(--page-max-width); margin-left: auto; margin-right: auto; }
         .lb-footer-text { font-size: 13px; color: var(--text-muted); }
 
+        /* SMALL SCREENS */
         @media (max-width: 900px) { .lb-stats { grid-template-columns: 1fr; } .lb-nav-links { display: none; } .td-repos { display: none; } }
         @media (max-width: 600px) { .lb-nav-search { display: none; } .lang-badge { display: none; } .lb-hero { flex-direction: column; align-items: flex-start; } }
+
+        /* LARGE SCREENS — 1440px (15-16") */
+        @media (min-width: 1440px) {
+          :root { --page-max-width: 1360px; --page-padding: 36px; }
+          .lb-hero-title { font-size: 52px; }
+          .lb-hero-sub { font-size: 15.5px; }
+          .lb-stat-val { font-size: 24px; }
+          td { padding: 20px 22px; font-size: 14.5px; }
+          thead th { padding: 15px 22px; }
+          .dev-name { font-size: 14.5px; }
+          .dev-avatar { width: 46px; height: 46px; }
+          .td-score { font-size: 17px; }
+        }
+
+        /* LARGE SCREENS — 1600px (16.6") */
+        @media (min-width: 1600px) {
+          :root { --page-max-width: 1500px; --page-padding: 48px; }
+          .lb-hero-title { font-size: 56px; }
+          .lb-stat-card { padding: 24px 28px; }
+          .lb-stat-val { font-size: 26px; }
+          .lb-hero-sub { font-size: 16px; max-width: 640px; }
+          td { padding: 22px 24px; font-size: 15px; }
+          .dev-name { font-size: 15px; }
+          .dev-avatar { width: 48px; height: 48px; }
+          .td-score { font-size: 18px; }
+        }
+
+        /* EXTRA LARGE SCREENS — 1920px */
+        @media (min-width: 1920px) {
+          :root { --page-max-width: 1760px; --page-padding: 64px; }
+          .lb-hero-title { font-size: 64px; }
+          .lb-stat-card { padding: 28px 32px; }
+          .lb-stat-val { font-size: 28px; }
+          .lb-hero-sub { font-size: 17px; max-width: 720px; }
+          td { padding: 24px 28px; font-size: 15.5px; }
+        }
         ` }} />
 
       <div className="lb-root">

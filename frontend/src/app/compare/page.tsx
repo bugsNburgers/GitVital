@@ -509,6 +509,8 @@ export default function RepoComparePage() {
           --red: #ef4444; --red-dim: rgba(239,68,68,0.12);
           --orange: #FF5E00; --orange-light: #FFA066; --orange-dim: rgba(255,94,0,0.12);
           --font: 'Inter', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
+          --page-max-width: 1120px;
+          --page-padding: 24px;
         }
         body { font-family: var(--font); background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
 
@@ -519,7 +521,7 @@ export default function RepoComparePage() {
           background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
           border-bottom: 1px solid var(--border);
         }
-        .cmp-nav-inner { width: 100%; max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .cmp-nav-inner { width: 100%; max-width: var(--page-max-width); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .cmp-logo { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
         .cmp-logo img { height: 36px; }
         .nav-links { display: flex; align-items: center; gap: 2px; list-style: none; }
@@ -551,7 +553,7 @@ export default function RepoComparePage() {
 
         /* PAGE */
         .cmp-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
-        .cmp-main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 120px; }
+        .cmp-main { max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 120px; }
         .section-gap { display: flex; flex-direction: column; gap: 16px; }
 
         /* HEADING */
@@ -649,9 +651,42 @@ export default function RepoComparePage() {
         .float-bar-btn:hover { background: rgba(255,94,0,0.18); }
         .float-bar-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-        /* RESPONSIVE */
+        /* RESPONSIVE - SMALL SCREENS */
         @media (max-width: 900px) { .input-grid { grid-template-columns: 1fr 1fr; } .nav-links { display: none; } }
         @media (max-width: 600px) { .input-grid { grid-template-columns: 1fr; } .cmp-main { padding: 24px 16px 120px; } .float-bar { flex-direction: column; gap: 12px; bottom: 16px; } }
+
+        /* LARGE SCREENS — 1440px (15-16") */
+        @media (min-width: 1440px) {
+          :root { --page-max-width: 1340px; --page-padding: 36px; }
+          .cmp-heading h1 { font-size: clamp(30px, 3.5vw, 42px); }
+          .spark-card { padding: 18px 22px; }
+          .spark-card-commits { font-size: 26px; }
+          .radar-card { padding: 36px; }
+          td { padding: 14px 20px; font-size: 13px; }
+          th { padding: 13px 20px; }
+        }
+
+        /* LARGE SCREENS — 1600px (16.6") */
+        @media (min-width: 1600px) {
+          :root { --page-max-width: 1500px; --page-padding: 48px; }
+          .cmp-heading h1 { font-size: clamp(32px, 3.5vw, 46px); }
+          .spark-card { padding: 20px 24px; }
+          .spark-card-commits { font-size: 28px; }
+          .radar-card { padding: 40px; }
+          td { padding: 14px 22px; font-size: 13.5px; }
+          th { padding: 14px 22px; }
+          .input-grid { gap: 10px; }
+          .section-gap { gap: 20px; }
+        }
+
+        /* EXTRA LARGE SCREENS — 1920px */
+        @media (min-width: 1920px) {
+          :root { --page-max-width: 1760px; --page-padding: 64px; }
+          .cmp-heading h1 { font-size: 52px; }
+          .spark-card-commits { font-size: 32px; }
+          td { padding: 16px 24px; font-size: 14px; }
+          .section-gap { gap: 24px; }
+        }
 
         /* AI INSIGHTS */
         .ai-cmp-btn {
