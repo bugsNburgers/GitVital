@@ -56,6 +56,7 @@ interface UserProfileResponse {
     contribution: {
         externalPRCount: number;
         externalMergedPRCount: number;
+        externalOpenPRCount: number;
         contributionAcceptanceRate: number;
         analyzedAt: string | null;
     };
@@ -544,27 +545,29 @@ export default function UserProfilePage() {
           background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
           border-bottom: 1px solid var(--border);
         }
-        .cmp-nav-inner { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+                .cmp-nav-inner { width: 100%; max-width: 1120px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .cmp-logo { display: flex; align-items: center; cursor: pointer; }
         .cmp-logo img { height: 36px; }
-        .nav-search { flex: 1; max-width: 400px; position: relative; }
-        .nav-search input {
-          width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-          border-radius: 8px; padding: 6px 14px 6px 36px; color: var(--text); font-size: 13px;
-          transition: border-color 0.2s;
-        }
-        .nav-search input:focus { outline: none; border-color: rgba(255,94,0,0.4); }
-        .nav-search span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 16px; }
-        .nav-icons { display: flex; align-items: center; gap: 16px; }
-        .nav-links-inline { display: flex; gap: 20px; align-items: center; margin-right: 16px; }
-        .nav-link { color: var(--text-muted); font-size: 13px; text-decoration: none; }
-        .nav-link-profile { color: var(--orange); font-size: 13px; text-decoration: none; font-weight: 700; }
+                .nav-links { display: flex; align-items: center; gap: 2px; list-style: none; }
+                .nav-links a {
+                    color: var(--text-muted); text-decoration: none; font-size: 13.5px; font-weight: 450;
+                    padding: 5px 11px; border-radius: 6px; transition: color 0.15s, background 0.15s;
+                }
+                .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+                .nav-links a.active { color: var(--text); }
+                .cmp-nav-actions { display: inline-flex; align-items: center; gap: 8px; }
         .nav-user {
-          display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px;
+                    display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 6px;
           background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 20px;
+                    color: var(--text-secondary); text-decoration: none;
+                    transition: color 0.15s, border-color 0.15s;
         }
-        .nav-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--orange-dim); color: var(--orange); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
-        .nav-username { font-size: 12px; font-weight: 600; }
+                .nav-user:hover { color: var(--text); border-color: var(--border-hover); }
+                .nav-avatar {
+                    width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+                    border: 1px solid rgba(255,255,255,0.14);
+                }
+                .nav-username { font-size: 12px; font-weight: 600; }
 
         .profile-root { background: var(--bg); min-height: 100vh; font-family: var(--font); color: var(--text); }
         .page-main { max-width: 1200px; margin: 0 auto; padding: 90px 24px 60px; display: flex; flex-direction: column; gap: 24px; }
@@ -778,9 +781,6 @@ export default function UserProfilePage() {
         .footer-left { display: flex; align-items: center; gap: 12px; }
         .footer-icon { width: 28px; height: 28px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--orange); }
         .footer-text { font-size: 13px; color: var(--text-muted); font-weight: 500; }
-        .footer-links { display: flex; gap: 24px; }
-        .footer-links a { color: var(--text-muted); font-size: 13px; text-decoration: none; transition: color 0.2s; }
-        .footer-links a:hover { color: var(--orange-light); }
 
         .spark-svg { width: 100%; height: 100%; overflow: visible; }
 
@@ -793,7 +793,7 @@ export default function UserProfilePage() {
         }
         @media (max-width: 600px) {
           .achievements-grid, .repo-grid { grid-template-columns: 1fr; }
-          .nav-search { display: none; }
+                    .nav-links { display: none; }
           .page-main { padding-top: 80px; }
         }
       `,
@@ -805,32 +805,23 @@ export default function UserProfilePage() {
                     <div className="cmp-nav-inner">
                         <div className="cmp-logo" onClick={() => router.push("/")}>
                             <img src="/gitvital_logo_fixed.svg" alt="GitVital" />
-                        </div>
 
-                        <div className="nav-search">
-                            <span className="material-symbols-outlined">search</span>
-                            <input
-                                type="text"
-                                placeholder="Search developers or repos..."
-                                onKeyDown={(event) => {
-                                    if (event.key !== "Enter") return;
-                                    const value = (event.currentTarget.value || "").trim();
-                                    if (!value) return;
-                                    router.push(`/${value}`);
-                                }}
-                            />
-                        </div>
+                            <ul className="nav-links">
+                                <li><a href="/?focus=analyze">Analyze</a></li>
+                                <li><a href="/compare">Compare</a></li>
+                                <li><a href="/leaderboard">Leaderboard</a></li>
+                                <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
+                            </ul>
 
-                        <div className="nav-icons">
-                            <div className="nav-links-inline">
-                                <a href="/?focus=analyze" className="nav-link">Analyze</a>
-                                <a href="/compare" className="nav-link">Compare</a>
-                                <a href="/leaderboard" className="nav-link">Leaderboard</a>
-                                <a href="https://github.com/bugsNburgers/GitVital#readme" className="nav-link" target="_blank" rel="noopener noreferrer">Docs</a>
-                            </div>
-                            <div className="nav-user">
-                                <div className="nav-avatar">{owner.charAt(0).toUpperCase()}</div>
-                                <span className="nav-username">{owner}</span>
+                            <div className="cmp-nav-actions">
+                                <a href={`/${owner}`} className="nav-user" rel="noopener noreferrer">
+                                    <img
+                                        src={(profile?.avatarUrl || `https://github.com/${owner}.png`) + "?size=64"}
+                                        alt={`${owner} avatar`}
+                                        className="nav-avatar"
+                                    />
+                                    <span className="nav-username">{owner}</span>
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -1038,7 +1029,7 @@ export default function UserProfilePage() {
                                             Currently Open
                                         </span>
                                         <span className="pr-stat-value open">
-                                            {Math.max(0, (profile.contribution.externalPRCount ?? 0) - (profile.contribution.externalMergedPRCount ?? 0)).toLocaleString()}
+                                            {(profile.contribution.externalOpenPRCount ?? 0).toLocaleString()}
                                         </span>
                                         <span className="pr-stat-hint">
                                             <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
@@ -1252,11 +1243,6 @@ export default function UserProfilePage() {
                     <div className="footer-left">
                         <div className="footer-icon"><span className="material-symbols-outlined">pulse_alert</span></div>
                         <span className="footer-text">© 2026 Git Vital Analytics. Build with integrity.</span>
-                    </div>
-                    <div className="footer-links">
-                        <a href="#">Privacy Policy</a>
-                        <a href="#">Terms of Service</a>
-                        <a href="#">Documentation</a>
                     </div>
                 </div>
             </div>

@@ -1568,14 +1568,8 @@ export default function RepoDashboardPage() {
           </>)}
         </main>
 
-        <footer style={{ borderTop: "1px solid var(--border)", padding: "24px", maxWidth: 1120, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12.5px", color: "var(--text-muted)", flexWrap: "wrap", gap: 12 }}>
+        <footer style={{ borderTop: "1px solid var(--border)", padding: "24px", maxWidth: 1120, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "flex-start", fontSize: "12.5px", color: "var(--text-muted)", flexWrap: "wrap", gap: 12 }}>
           <span>© 2026 Git Vital Analytics</span>
-          <div style={{ display: "flex", gap: 20 }}>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Documentation</a>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>API</a>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Status</a>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Terms</a>
-          </div>
         </footer>
       </div>
     </>

@@ -35,6 +35,7 @@ import { CLOSED_ISSUE_COUNT_QUERY } from '../github/queries';
 import { setRepoMetricsCache } from '../cache/repoCache';
 import { decryptAccessToken } from '../security/tokenCrypto';
 import { upsertRepo, insertRepoMetrics, upsertHealthTimeline } from '../db/repoQueries';
+import { upsertAnalysisJobByBullId } from '../db/analysisJobQueries';
 
 // API constraints from Planscribble.md
 const MAX_COMMITS = 1000;
@@ -276,6 +277,8 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
   const { owner, repo, userId, forceFallbackAdvice } = job.data;
   const logPrefix = `[Job ${job.id}] ${owner}/${repo}`;
   const isDirectMode = String(job.id ?? '').startsWith('direct__');
+  const bullJobId = String(job.id);
+  let repoDbId: string | null = null;
 
   console.log(`\n🔬 ${logPrefix} — Starting analysis...`);
 
@@ -521,10 +524,18 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     console.log(`   ${logPrefix} — Step 11: Storing metrics in database...`);
     const fetchedAt = new Date().toISOString();
-    let repoDbId: string | null = null;
     try {
       repoDbId = await upsertRepo(owner, repo, metadata);
       if (repoDbId) {
+        await upsertAnalysisJobByBullId({
+          repoId: repoDbId,
+          userId,
+          bullJobId,
+          status: 'processing',
+          progress: 90,
+          error: null,
+          completedAt: null,
+        });
         await insertRepoMetrics(repoDbId, metrics);
         console.log(`   ${logPrefix} — Step 11: Metrics stored in NeonDB ✓ (repoId: ${repoDbId})`);
       } else {
@@ -567,6 +578,17 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 14: Update job status to "done"
     // ──────────────────────────────────────────────
     await setJobState(job.id!, 'done');
+    if (repoDbId) {
+      await upsertAnalysisJobByBullId({
+        repoId: repoDbId,
+        userId,
+        bullJobId,
+        status: 'done',
+        progress: 100,
+        error: null,
+        completedAt: new Date().toISOString(),
+      });
+    }
     await safeUpdateProgress(job, 100);
     console.log(`   ${logPrefix} — Step 14: Status → done ✓`);
 
@@ -604,6 +626,17 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         case 401:
           console.error(`❌ ${logPrefix} — OAuth token expired or invalid`);
           await setJobState(job.id!, 'failed', 'OAuth token expired');
+          if (repoDbId) {
+            await upsertAnalysisJobByBullId({
+              repoId: repoDbId,
+              userId,
+              bullJobId,
+              status: 'failed',
+              progress: 100,
+              error: 'OAuth token expired',
+              completedAt: new Date().toISOString(),
+            });
+          }
           // UnrecoverableError tells BullMQ: "Don't retry this job."
           throw new UnrecoverableError('OAuth token expired. Please re-authenticate.');
 
@@ -635,6 +668,17 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         case 404:
           console.error(`❌ ${logPrefix} — Repository not found or is private`);
           await setJobState(job.id!, 'failed', 'Repository not found or is private');
+          if (repoDbId) {
+            await upsertAnalysisJobByBullId({
+              repoId: repoDbId,
+              userId,
+              bullJobId,
+              status: 'failed',
+              progress: 100,
+              error: 'Repository not found or is private',
+              completedAt: new Date().toISOString(),
+            });
+          }
           throw new UnrecoverableError('Repository not found or is private.');
 
         default:

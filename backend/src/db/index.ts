@@ -20,4 +20,6 @@ export type {
 export { pgPool, dbQuery } from './pool';
 export { upsertRepo, insertRepoMetrics, upsertHealthTimeline, getStaleReposFromDb } from './repoQueries';
 export type { RepoRefreshRow } from './repoQueries';
+export { upsertAnalysisJobByBullId } from './analysisJobQueries';
+export type { AnalysisJobStatus } from './analysisJobQueries';
 export { recomputeAllDeveloperScores, getLeaderboardLastUpdated, getLeaderboardStats } from './userQueries';
