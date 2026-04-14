@@ -242,7 +242,7 @@ export default function LeaderboardPage() {
         .dev-handle { font-size: 12px; color: var(--text-muted); }
 
         .td-score { font-family: var(--mono); font-size: 16px; font-weight: 800; color: var(--orange); white-space: nowrap; }
-        .lang-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; background: var(--orange-dim); border: 1px solid rgba(255,94,0,0.2); color: var(--orange-light); font-size: 11px; font-weight: 700; }
+        .lang-badge { display: none; }
         .td-repos { color: var(--text-secondary); font-weight: 600; }
         .td-pct { text-align: right; }
         .pct-badge { display: inline-block; padding: 3px 10px; border-radius: 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -436,7 +436,6 @@ export default function LeaderboardPage() {
                     <th className="td-rank">Rank</th>
                     <th>Developer</th>
                     <th>Score</th>
-                    <th>Language</th>
                     <th className="td-repos">Repos</th>
                     <th>Percentile</th>
                   </tr>
@@ -457,14 +456,13 @@ export default function LeaderboardPage() {
                           </div>
                         </td>
                         <td><div className="lb-skel-text" style={{ width: 50 }} /></td>
-                        <td><div className="lb-skel-text" style={{ width: 70 }} /></td>
                         <td className="td-repos"><div className="lb-skel-text" style={{ width: 30 }} /></td>
                         <td><div className="lb-skel-text" style={{ width: 60, marginLeft: "auto" }} /></td>
                       </tr>
                     ))
                   ) : paged.length === 0 ? (
                     <tr>
-                      <td colSpan={6}>
+                      <td colSpan={5}>
                         <div className="lb-empty">
                           <span className="material-symbols-outlined lb-empty-icon">leaderboard</span>
                           <h3>{leaders.length === 0 ? "Leaderboard is building" : "No results"}</h3>
@@ -503,7 +501,6 @@ export default function LeaderboardPage() {
                           </div>
                         </td>
                         <td className="td-score">{leader.score}</td>
-                        <td><span className="lang-badge">{leader.lang}</span></td>
                         <td className="td-repos">{leader.repos}</td>
                         <td className="td-pct">
                           <span className={`pct-badge pct-${leader.tier}`}>{leader.percentile}</span>

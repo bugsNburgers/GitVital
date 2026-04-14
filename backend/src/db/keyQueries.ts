@@ -63,17 +63,17 @@ LIMIT 1;
 
 export const GET_LEADERBOARD_WITH_LANGUAGE_FILTER_SQL = `
 WITH repo_totals AS (
-    SELECT r.owner AS username, COUNT(*)::int AS repos_count
+    SELECT LOWER(r.owner) AS username, COUNT(*)::int AS repos_count
     FROM repos r
-    GROUP BY r.owner
+    GROUP BY LOWER(r.owner)
 ),
 repo_language_counts AS (
     SELECT
-        r.owner AS username,
+        LOWER(r.owner) AS username,
         COALESCE(NULLIF(r.language, ''), 'Unknown') AS language,
         COUNT(*)::int AS language_count
     FROM repos r
-    GROUP BY r.owner, COALESCE(NULLIF(r.language, ''), 'Unknown')
+    GROUP BY LOWER(r.owner), COALESCE(NULLIF(r.language, ''), 'Unknown')
 ),
 primary_languages AS (
     SELECT username, language
@@ -107,12 +107,12 @@ FROM (
     FROM users u
     WHERE u.developer_score > 0
 ) lr
-LEFT JOIN repo_totals rt ON rt.username = lr.username
-LEFT JOIN primary_languages pl ON pl.username = lr.username
+LEFT JOIN repo_totals rt ON rt.username = LOWER(lr.username)
+LEFT JOIN primary_languages pl ON pl.username = LOWER(lr.username)
 WHERE ($1::text IS NULL OR EXISTS (
     SELECT 1
     FROM repos r
-    WHERE r.owner = lr.username AND LOWER(COALESCE(r.language, '')) = LOWER($1)
+    WHERE LOWER(r.owner) = LOWER(lr.username) AND LOWER(COALESCE(r.language, '')) = LOWER($1)
 ))
 ORDER BY lr.developer_score DESC
 LIMIT 100;
