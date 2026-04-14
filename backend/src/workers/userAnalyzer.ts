@@ -6,6 +6,7 @@ import { GitHubClient, AuthExpiredError, RateLimitError } from '../github/client
 import { fetchUserMergedPRs as fetchUserMergedPRsFromGitHub } from '../github/fetchUserMergedPRs';
 import { setUserContributionCache, UserContributionMetricsCacheValue } from '../cache/userCache';
 import { decryptAccessToken } from '../security/tokenCrypto';
+import { dbQuery } from '../db/pool';
 
 const MAX_USER_PRS = 500;
 
@@ -178,6 +179,62 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
             analyzedAt: new Date().toISOString(),
         };
         await setUserContributionCache(username, cachePayload, config.cacheTtlSeconds);
+
+        // Persist contribution metrics into NeonDB for durable history.
+        try {
+            await dbQuery(
+                `UPDATE users
+                 SET external_pr_count = $1,
+                     external_merged_pr_count = $2,
+                     contribution_acceptance_rate = $3,
+                     updated_at = NOW()
+                 WHERE LOWER(username) = LOWER($4)`,
+                [
+                    metrics.externalPRCount,
+                    metrics.externalMergedPRCount,
+                    metrics.contributionAcceptanceRate,
+                    username,
+                ],
+            );
+
+            await dbQuery(
+                `INSERT INTO user_contribution_history (
+                   user_id,
+                   username,
+                   external_pr_count,
+                   external_merged_pr_count,
+                   contribution_acceptance_rate,
+                   analyzed_at,
+                   source,
+                   payload
+                 )
+                 SELECT
+                   u.id,
+                   $1,
+                   $2,
+                   $3,
+                   $4,
+                   NOW(),
+                   'user-analysis-worker',
+                   $5::jsonb
+                 FROM users u
+                 WHERE LOWER(u.username) = LOWER($1)
+                 LIMIT 1`,
+                [
+                    username,
+                    metrics.externalPRCount,
+                    metrics.externalMergedPRCount,
+                    metrics.contributionAcceptanceRate,
+                    JSON.stringify({
+                        mergedPRCount: mergedPRs.length,
+                        tokenSource,
+                        userId: userId ?? null,
+                    }),
+                ],
+            );
+        } catch (dbError) {
+            console.warn(`[UserWorker] Failed to persist contribution metrics for ${username} (non-fatal).`, dbError);
+        }
 
         await safeUpdateProgress(job, 95);
 

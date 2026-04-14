@@ -21,10 +21,11 @@ import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
 import { getLeaderboardWithLanguageFilter, type Queryable } from '../db';
 import { getLeaderboardLastUpdated, getLeaderboardStats } from '../db/userQueries';
-import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
+import { getFreshRepoMetricsCache, clearRepoMetricsCache, setRepoMetricsCache } from '../cache/repoCache';
 import {
   clearUserContributionCache,
   getFreshUserContributionCache,
+  setUserContributionCache,
   UserContributionMetricsCacheValue,
 } from '../cache/userCache';
 import { JobData, JobStatus, UserJobData } from '../types';
@@ -876,6 +877,153 @@ async function fetchAllOwnedRepos(
   return repos;
 }
 
+type RepoMetricsSource = 'redis_cache' | 'db_fallback' | 'none';
+
+interface RepoMetricsLookupResult<T> {
+  source: RepoMetricsSource;
+  metrics: T | null;
+  fetchedAt: string | null;
+  ttlSeconds: number | null;
+}
+
+type UserContributionSource = 'redis_cache' | 'db_fallback' | 'none';
+
+interface UserContributionLookupResult {
+  source: UserContributionSource;
+  value: UserContributionMetricsCacheValue | null;
+  ttlSeconds: number | null;
+}
+
+async function getRepoMetricsFromCacheOrDb<T extends object = Record<string, unknown>>(
+  owner: string,
+  repo: string,
+  reseedCacheTtlSeconds = 3600,
+): Promise<RepoMetricsLookupResult<T>> {
+  const cached = await getFreshRepoMetricsCache<T>(owner, repo);
+  if (cached) {
+    return {
+      source: 'redis_cache',
+      metrics: cached.value,
+      fetchedAt: (cached.value as Record<string, unknown>)._fetchedAt as string | null ?? null,
+      ttlSeconds: cached.ttlSeconds,
+    };
+  }
+
+  if (!sqlDb) {
+    return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+  }
+
+  try {
+    const repoRow = await sqlDb.query<{ id: string }>(
+      `SELECT id FROM repos WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2) LIMIT 1`,
+      [owner, repo],
+    );
+
+    if (!repoRow.rows[0]) {
+      return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+    }
+
+    const metricsRow = await sqlDb.query<{ metrics_json: unknown; analyzed_at: string }>(
+      `SELECT metrics_json, analyzed_at FROM repo_metrics WHERE repo_id = $1 ORDER BY analyzed_at DESC LIMIT 1`,
+      [repoRow.rows[0].id],
+    );
+
+    const metricsJson = metricsRow.rows[0]?.metrics_json;
+    if (!metricsJson || typeof metricsJson !== 'object' || Array.isArray(metricsJson)) {
+      return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+    }
+
+    const fetchedAt = metricsRow.rows[0].analyzed_at;
+    const metrics = metricsJson as T;
+
+    try {
+      await setRepoMetricsCache(owner, repo, metrics as unknown as Record<string, unknown>, reseedCacheTtlSeconds, fetchedAt);
+    } catch {
+      // Non-fatal: DB fallback still returns successfully even if reseed fails.
+    }
+
+    return {
+      source: 'db_fallback',
+      metrics,
+      fetchedAt,
+      ttlSeconds: null,
+    };
+  } catch (error) {
+    console.warn('[RepoMetricsLookup] DB fallback lookup failed:', { owner, repo, error });
+    return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+  }
+}
+
+async function getUserContributionFromCacheOrDb(
+  username: string,
+): Promise<UserContributionLookupResult> {
+  const normalizedUsername = username.toLowerCase();
+  const cached = await getFreshUserContributionCache<UserContributionMetricsCacheValue>(normalizedUsername);
+  if (cached) {
+    return {
+      source: 'redis_cache',
+      value: cached.value,
+      ttlSeconds: cached.ttlSeconds,
+    };
+  }
+
+  if (!sqlDb) {
+    return { source: 'none', value: null, ttlSeconds: null };
+  }
+
+  try {
+    const rows = await sqlDb.query<{
+      external_pr_count: number | null;
+      external_merged_pr_count: number | null;
+      contribution_acceptance_rate: string | number | null;
+      analyzed_at: string | null;
+      updated_at: string | null;
+    }>(
+      `SELECT
+         u.external_pr_count,
+         u.external_merged_pr_count,
+         u.contribution_acceptance_rate,
+         h.analyzed_at,
+         u.updated_at
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT analyzed_at
+         FROM user_contribution_history h
+         WHERE LOWER(h.username) = LOWER(u.username)
+         ORDER BY analyzed_at DESC
+         LIMIT 1
+       ) h ON true
+       WHERE LOWER(u.username) = LOWER($1)
+       LIMIT 1`,
+      [normalizedUsername],
+    );
+
+    if (!rows.rows[0]) {
+      return { source: 'none', value: null, ttlSeconds: null };
+    }
+
+    const row = rows.rows[0];
+    const payload: UserContributionMetricsCacheValue = {
+      username: normalizedUsername,
+      externalPRCount: Number(row.external_pr_count ?? 0),
+      externalMergedPRCount: Number(row.external_merged_pr_count ?? 0),
+      contributionAcceptanceRate: Number(row.contribution_acceptance_rate ?? 0),
+      analyzedAt: row.analyzed_at ?? row.updated_at ?? new Date().toISOString(),
+    };
+
+    await setUserContributionCache(normalizedUsername, payload, config.cacheTtlSeconds);
+
+    return {
+      source: 'db_fallback',
+      value: payload,
+      ttlSeconds: null,
+    };
+  } catch (error) {
+    console.warn('[UserContributionLookup] DB fallback lookup failed:', { username: normalizedUsername, error });
+    return { source: 'none', value: null, ttlSeconds: null };
+  }
+}
+
 function normalizeJobStatus(status: string | null): JobStatus | null {
   if (status === 'queued' || status === 'processing' || status === 'done' || status === 'failed') {
     return status;
@@ -1419,60 +1567,22 @@ app.get(
         return;
       }
 
-      // Step 1: Check the Redis cache first (fast path)
-      const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
-
-      if (cached) {
-        const payload = cached.value as Record<string, unknown>;
-        const fetchedAt = (payload._fetchedAt as string | undefined) ?? null;
+      const lookup = await getRepoMetricsFromCacheOrDb<Record<string, unknown>>(owner, repo);
+      if (lookup.metrics) {
+        const fetchedAt = lookup.fetchedAt;
         const cachedAgeHours = fetchedAt
           ? Number(((Date.now() - new Date(fetchedAt).getTime()) / 3_600_000).toFixed(1))
           : null;
         res.json({
-          ...payload,
+          ...lookup.metrics,
           _meta: {
-            source: 'redis_cache',
+            source: lookup.source,
             fetchedAt,
-            ttlSeconds: cached.ttlSeconds,
+            ttlSeconds: lookup.ttlSeconds,
             cachedAgeHours,
           },
         });
         return;
-      }
-
-      // Step 2: If not in Redis, try NeonDB (most recent persisted metrics row)
-      if (sqlDb) {
-        try {
-          const repoRow = await sqlDb.query<{ id: string }>(
-            `SELECT id FROM repos WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2) LIMIT 1`,
-            [owner, repo],
-          );
-          if (repoRow.rows[0]) {
-            const metricsRow = await sqlDb.query<{ metrics_json: unknown; analyzed_at: string }>(
-              `SELECT metrics_json, analyzed_at FROM repo_metrics WHERE repo_id = $1 ORDER BY analyzed_at DESC LIMIT 1`,
-              [repoRow.rows[0].id],
-            );
-            if (metricsRow.rows[0]?.metrics_json) {
-              const dbMetrics = metricsRow.rows[0].metrics_json as Record<string, unknown>;
-              const fetchedAt = metricsRow.rows[0].analyzed_at;
-              const cachedAgeHours = Number(
-                ((Date.now() - new Date(fetchedAt).getTime()) / 3_600_000).toFixed(1),
-              );
-              // Re-seed Redis for 1 hour so next request is fast
-              try {
-                const { setRepoMetricsCache } = await import('../cache/repoCache');
-                await setRepoMetricsCache(owner, repo, dbMetrics, 3600, fetchedAt);
-              } catch { /* non-fatal */ }
-              res.json({
-                ...dbMetrics,
-                _meta: { source: 'db_fallback', fetchedAt, ttlSeconds: null, cachedAgeHours },
-              });
-              return;
-            }
-          }
-        } catch (dbErr) {
-          console.warn('[GET /api/repo] DB lookup failed (non-fatal):', dbErr);
-        }
       }
 
       res.status(404).json({
@@ -1538,12 +1648,8 @@ app.get(
       // Fetch metrics for each repo from cache or DB
       const results = await Promise.all(
         repoPairs.map(async ({ owner, repo }) => {
-          const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
-          if (cached) {
-            return { owner, repo, metrics: cached.value };
-          }
-          // TODO: Fetch from Prisma when schema is set up
-          return { owner, repo, metrics: null };
+          const lookup = await getRepoMetricsFromCacheOrDb<Record<string, unknown>>(owner, repo);
+          return { owner, repo, metrics: lookup.metrics };
         }),
       );
 
@@ -1771,9 +1877,9 @@ app.get(
       const username = req.params.username as string;
       const headers = await buildGitHubRestHeaders(req, username);
 
-      const [userResponse, contributionCache, githubRepos] = await Promise.all([
+      const [userResponse, contributionLookup, githubRepos] = await Promise.all([
         fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
-        getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+        getUserContributionFromCacheOrDb(username),
         fetchAllOwnedRepos(username, headers),
       ]);
 
@@ -1821,9 +1927,9 @@ app.get(
       const reposWithMetrics = await Promise.all(
         publicRepos.map(async (repo): Promise<UserProfileRepoResponse> => {
           const ownerFromFullName = repo.full_name.split('/')[0] || username;
-          const cached = await getFreshRepoMetricsCache<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
-          const healthScore = cached && typeof cached.value?.healthScore === 'number'
-            ? Number(cached.value.healthScore)
+          const lookup = await getRepoMetricsFromCacheOrDb<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
+          const healthScore = lookup.metrics && typeof lookup.metrics.healthScore === 'number'
+            ? Number(lookup.metrics.healthScore)
             : null;
 
           return {
@@ -1852,7 +1958,7 @@ app.get(
         .map((repo) => repo.healthScore)
         .filter((score): score is number => score !== null);
 
-      const contribution = contributionCache?.value ?? null;
+      const contribution = contributionLookup.value;
       const developerScore = computeDeveloperScore(
         analyzedScores,
         contribution,
@@ -1944,6 +2050,39 @@ app.get(
         lastAnalyzedAt: contribution?.analyzedAt ?? null,
       };
 
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO user_profile_snapshots (
+               user_id,
+               username,
+               snapshot,
+               developer_score,
+               reliability_pct,
+               captured_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2::jsonb,
+               $3,
+               $4,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              githubUser.login,
+              JSON.stringify(profile),
+              developerScore,
+              reliabilityPct,
+            ],
+          );
+        } catch (snapshotError) {
+          console.warn('[UserProfile] Failed to persist user profile snapshot (non-fatal):', snapshotError);
+        }
+      }
+
       res.json(profile);
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -1984,9 +2123,9 @@ app.post(
       const headers = await buildGitHubRestHeaders(req, username);
 
       // Fetch GitHub user + repos + contribution cache in parallel
-      const [userResponse, contributionCache, githubRepos] = await Promise.all([
+      const [userResponse, contributionLookup, githubRepos] = await Promise.all([
         fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
-        getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+        getUserContributionFromCacheOrDb(username),
         fetchAllOwnedRepos(username, headers),
       ]);
 
@@ -2015,14 +2154,14 @@ app.post(
           repoNames.push(repo.name);
           repoLanguages.push(repo.language);
           const ownerFromFullName = repo.full_name.split('/')[0] || username;
-          const cached = await getFreshRepoMetricsCache<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
-          if (cached && typeof cached.value?.healthScore === 'number') {
-            repoHealthScores.push(Number(cached.value.healthScore));
+          const lookup = await getRepoMetricsFromCacheOrDb<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
+          if (lookup.metrics && typeof lookup.metrics.healthScore === 'number') {
+            repoHealthScores.push(Number(lookup.metrics.healthScore));
           }
         }),
       );
 
-      const contribution = contributionCache?.value ?? null;
+      const contribution = contributionLookup.value;
 
       const profileData: UserProfileData = {
         username: githubUser.login,
@@ -2041,6 +2180,42 @@ app.post(
       };
 
       const insights = await generateUserInsights(profileData);
+
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO ai_user_insights_history (
+               user_id,
+               username,
+               source,
+               model,
+               input_profile,
+               output_insight,
+               generated_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2,
+               $3,
+               $4::jsonb,
+               $5::jsonb,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              githubUser.login,
+              insights.source,
+              null,
+              JSON.stringify(profileData),
+              JSON.stringify(insights),
+            ],
+          );
+        } catch (insightPersistErr) {
+          console.warn('[AI][UserInsights] Failed to persist insights history (non-fatal):', insightPersistErr);
+        }
+      }
 
       res.json(insights);
     } catch (error) {
@@ -2096,11 +2271,11 @@ app.get(
       }
 
       // 1. Check repo metrics cache — repo must have been analyzed first.
-      const cached = await getFreshRepoMetricsCache<{
+      const lookup = await getRepoMetricsFromCacheOrDb<{
         issueMetrics?: { labelBreakdown?: { label: string; count: number; githubFilterUrl: string }[] } | null;
       }>(owner, repo);
 
-      if (!cached) {
+      if (!lookup.metrics) {
         res.status(404).json({
           error: 'No metrics found for this repository. Analyze it first before requesting recommendations.',
         });
@@ -2161,9 +2336,9 @@ app.get(
       if (effectiveUsername) {
         try {
           const userHeaders = await buildGitHubRestHeaders(req, effectiveUsername);
-          const [ghUserRes, contribCache, repos] = await Promise.all([
+          const [ghUserRes, contribLookup, repos] = await Promise.all([
             fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(effectiveUsername)}`, { headers: userHeaders }),
-            getFreshUserContributionCache<UserContributionMetricsCacheValue>(effectiveUsername),
+            getUserContributionFromCacheOrDb(effectiveUsername),
             fetchAllOwnedRepos(effectiveUsername, userHeaders),
           ]);
 
@@ -2175,9 +2350,9 @@ app.get(
             userProfile = {
               username: ghUserData.login,
               topLanguage: getTopLanguage(repos),
-              externalPRCount: contribCache?.value?.externalPRCount ?? 0,
-              externalMergedPRCount: contribCache?.value?.externalMergedPRCount ?? 0,
-              contributionAcceptanceRate: contribCache?.value?.contributionAcceptanceRate ?? 0,
+              externalPRCount: contribLookup.value?.externalPRCount ?? 0,
+              externalMergedPRCount: contribLookup.value?.externalMergedPRCount ?? 0,
+              contributionAcceptanceRate: contribLookup.value?.contributionAcceptanceRate ?? 0,
               followers: ghUserData.followers ?? 0,
               issuesOpened: 0, // not critical for matching; keep 0 to avoid extra API call
               repoLanguages,
@@ -2192,6 +2367,52 @@ app.get(
 
       // 5. Generate recommendations (pass forceRefresh for fresh batch).
       const result = await generateIssueRecommendations(userProfile, repoIssues, owner, repo, forceRefresh);
+
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO ai_issue_recommendations_history (
+               requested_by_user_id,
+               requested_by_username,
+               owner,
+               repo,
+               source,
+               model,
+               input_payload,
+               output_recommendations,
+               generated_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2,
+               $3,
+               $4,
+               $5,
+               $6::jsonb,
+               $7::jsonb,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              authedUsername,
+              owner,
+              repo,
+              (result as { source?: string }).source ?? 'rule-based',
+              null,
+              JSON.stringify({
+                userProfile,
+                issueCount: repoIssues.length,
+                refresh: forceRefresh,
+              }),
+              JSON.stringify(result),
+            ],
+          );
+        } catch (recommendPersistErr) {
+          console.warn('[Recommendations] Failed to persist recommendations history (non-fatal):', recommendPersistErr);
+        }
+      }
 
       res.json(result);
     } catch (error) {
@@ -2254,9 +2475,9 @@ app.post(
         validRepos.map(async (repoRef) => {
           const [owner, repoName] = repoRef.split('/');
           if (!owner || !repoName) return null;
-          const cached = await getFreshRepoMetricsCache<object>(owner, repoName);
-          if (!cached) return null;
-          return { repo: repoRef, metrics: cached.value } as RepoMetricsForCompare;
+          const lookup = await getRepoMetricsFromCacheOrDb<object>(owner, repoName);
+          if (!lookup.metrics) return null;
+          return { repo: repoRef, metrics: lookup.metrics } as RepoMetricsForCompare;
         }),
       );
 
@@ -2272,6 +2493,46 @@ app.post(
       }
 
       const result = await generateCompareInsights(validEntries);
+
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO ai_compare_insights_history (
+               requested_by_user_id,
+               requested_by_username,
+               repos,
+               source,
+               model,
+               input_metrics,
+               output_insight,
+               generated_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2::text[],
+               $3,
+               $4,
+               $5::jsonb,
+               $6::jsonb,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              sessionUsername,
+              validRepos,
+              result.source,
+              null,
+              JSON.stringify(validEntries),
+              JSON.stringify(result),
+            ],
+          );
+        } catch (comparePersistErr) {
+          console.warn('[AI][Compare] Failed to persist compare insights history (non-fatal):', comparePersistErr);
+        }
+      }
+
       res.json(result);
     } catch (error) {
       console.error('[AI][Compare] Error generating compare insights:', error);
@@ -2359,13 +2620,13 @@ app.get(
       // Strip .svg extension if provided so cache fetch works
       const repo = (req.params.repo as string).replace(/\.svg$/, '');
 
-      // Fetch actual score from Redis Cache (or soon DB)
+      // Fetch score from cache with Neon DB fallback
       let score = 0;
       let statusText = "Unanalyzed";
 
-      const cached = await getFreshRepoMetricsCache<any>(owner, repo);
-      if (cached && cached.value && typeof cached.value.healthScore === 'number') {
-        score = Math.round(cached.value.healthScore);
+      const lookup = await getRepoMetricsFromCacheOrDb<{ healthScore?: unknown }>(owner, repo);
+      if (lookup.metrics && typeof lookup.metrics.healthScore === 'number') {
+        score = Math.round(Number(lookup.metrics.healthScore));
         statusText = `${score}/100`;
       }
 
