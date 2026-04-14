@@ -66,7 +66,6 @@ It also gamifies open-source contributions by aggregating a **Developer Health S
 
 GitVital is built as an asynchronous data pipeline designed to handle extensive third-party API rate limits and complex data aggregation.
 
-> **Note:** Place diagram in `./docs`
 <div align="center">
   <!-- <img src="./docs/architecture-diagram.png" alt="Architecture Diagram" width="800"/> -->
   <p><em>GitVital Architecture: Next.js, Express, BullMQ, Redis, PostgreSQL. (Placeholder)</em></p>
