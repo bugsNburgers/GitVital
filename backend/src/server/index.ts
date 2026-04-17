@@ -62,7 +62,9 @@ const MAX_PENDING_ANALYSES_PER_USER = 5;
 const MAX_ANALYZE_REQUESTS_PER_WINDOW_AUTH = 20;
 const MAX_ANALYZE_REQUESTS_PER_WINDOW_ANON = 10;
 const MAX_UNIQUE_REPOS_PER_USER_PER_DAY = 20;
-const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 10;
+const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 5;
+const MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY = 20;
+const MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY = 1;
 const MAX_GEMINI_ANALYSES_PER_USER_PER_DAY = 20;
 const MAX_GEMINI_ANALYSES_PER_IP_PER_DAY = 10;
 const RAPID_FIRE_WINDOW_SECONDS = 60;
@@ -450,12 +452,25 @@ function currentDayBucket(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function getNextUtcMidnightIso(): string {
+  const now = new Date();
+  return new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+  )).toISOString();
+}
+
 function getDailyUniqueRepoKey(scope: 'user' | 'ip', id: string): string {
   return `abuse:unique-repos:${scope}:${id}:${currentDayBucket()}`;
 }
 
 function getDailyAnalysisCountKey(scope: 'user' | 'ip', id: string): string {
   return `abuse:analysis-count:${scope}:${id}:${currentDayBucket()}`;
+}
+
+function getDailyCompareInsightsCountKey(scope: 'user' | 'ip', id: string): string {
+  return `abuse:compare-insights-count:${scope}:${id}:${currentDayBucket()}`;
 }
 
 function getRapidFireKey(ip: string): string {
@@ -467,19 +482,60 @@ async function enforceDailyUniqueRepoLimit(
   subjectId: string,
   normalizedRepo: string,
   maxUniqueReposPerDay: number,
-): Promise<{ allowed: boolean; count: number }> {
+): Promise<{ allowed: boolean; count: number; remaining: number; limit: number }> {
   const key = getDailyUniqueRepoKey(scope, subjectId);
   const wasAdded = await redis.sadd(key, normalizedRepo);
   await redis.expire(key, DAILY_LIMIT_TTL_SECONDS);
 
-  const count = await redis.scard(key);
-  const allowed = count <= maxUniqueReposPerDay;
+  const rawCount = await redis.scard(key);
+  const allowed = rawCount <= maxUniqueReposPerDay;
+
+  let count = rawCount;
 
   if (!allowed && wasAdded === 1) {
     await redis.srem(key, normalizedRepo);
+    count = Math.max(0, rawCount - 1);
   }
 
-  return { allowed, count };
+  return {
+    allowed,
+    count,
+    remaining: Math.max(0, maxUniqueReposPerDay - count),
+    limit: maxUniqueReposPerDay,
+  };
+}
+
+async function getDailyCounterValue(key: string): Promise<number> {
+  const raw = await redis.get(key);
+  const parsed = Number(raw ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function checkAndIncrementDailyCounterLimit(
+  key: string,
+  limit: number,
+): Promise<{ allowed: boolean; used: number; remaining: number; limit: number }> {
+  const current = await getDailyCounterValue(key);
+  if (current >= limit) {
+    return {
+      allowed: false,
+      used: current,
+      remaining: 0,
+      limit,
+    };
+  }
+
+  const used = await redis.incr(key);
+  if (used === 1) {
+    await redis.expire(key, DAILY_LIMIT_TTL_SECONDS);
+  }
+
+  return {
+    allowed: true,
+    used,
+    remaining: Math.max(0, limit - used),
+    limit,
+  };
 }
 
 async function incrementDailyAnalysisCount(scope: 'user' | 'ip', subjectId: string): Promise<number> {
@@ -1306,7 +1362,14 @@ app.post(
             count: userDaily.count,
             maxAllowed: MAX_UNIQUE_REPOS_PER_USER_PER_DAY,
           });
-          res.status(429).json({ error: 'Daily repository analysis limit reached for this account.' });
+          res.status(429).json({
+            error: 'Daily repository analysis limit reached for this account.',
+            code: 'ANALYZE_DAILY_LIMIT_EXCEEDED',
+            scope: 'user',
+            remaining: userDaily.remaining,
+            limit: userDaily.limit,
+            resetAt: getNextUtcMidnightIso(),
+          });
           return;
         }
       } else {
@@ -1323,7 +1386,15 @@ app.post(
             count: ipDaily.count,
             maxAllowed: MAX_UNIQUE_REPOS_PER_IP_PER_DAY,
           });
-          res.status(429).json({ error: 'Daily repository analysis limit reached for this IP.' });
+          res.status(429).json({
+            error: 'Daily repository analysis limit reached for this IP. Login for more requests.',
+            code: 'ANALYZE_DAILY_LIMIT_EXCEEDED',
+            scope: 'ip',
+            remaining: ipDaily.remaining,
+            limit: ipDaily.limit,
+            resetAt: getNextUtcMidnightIso(),
+            loginRecommended: true,
+          });
           return;
         }
       }
@@ -2437,17 +2508,52 @@ app.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const rawRepos = req.body.repos as unknown[];
-
-      // Auth guard — must be logged in for AI comparison
       const sessionUserId = (req.session as any)?.userId as number | string | undefined;
       const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
-      if (!sessionUserId || !sessionUsername) {
-        res.status(401).json({ error: 'Login required to generate AI comparison insights.', code: 'LOGIN_REQUIRED' });
+
+      const requesterIp = getClientIp(req);
+      const compareScope = sessionUserId !== undefined && sessionUserId !== null && sessionUsername
+        ? {
+          scope: 'user' as const,
+          id: String(sessionUserId),
+          limit: MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY,
+        }
+        : {
+          scope: 'ip' as const,
+          id: requesterIp,
+          limit: MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY,
+        };
+
+      const compareDaily = await checkAndIncrementDailyCounterLimit(
+        getDailyCompareInsightsCountKey(compareScope.scope, compareScope.id),
+        compareScope.limit,
+      );
+
+      if (!compareDaily.allowed) {
+        if (compareScope.scope === 'ip') {
+          res.status(401).json({
+            error: 'You have used your free AI comparison for today. Login for more requests.',
+            code: 'LOGIN_REQUIRED_COMPARE_DAILY',
+            remaining: compareDaily.remaining,
+            limit: compareDaily.limit,
+            resetAt: getNextUtcMidnightIso(),
+            loginRecommended: true,
+          });
+          return;
+        }
+
+        res.status(429).json({
+          error: 'Daily AI comparison limit reached for this account.',
+          code: 'COMPARE_DAILY_LIMIT_EXCEEDED',
+          remaining: compareDaily.remaining,
+          limit: compareDaily.limit,
+          resetAt: getNextUtcMidnightIso(),
+        });
         return;
       }
 
       // Quota gate
-      const quota = await checkAndIncrementGlobalDailyQuota(sessionUsername);
+      const quota = await checkAndIncrementGlobalDailyQuota(sessionUsername ?? '');
       if (!quota.allowed) {
         res.status(429).json({
           error: 'Daily AI limit reached. Come back tomorrow.',
@@ -2494,7 +2600,7 @@ app.post(
 
       const result = await generateCompareInsights(validEntries);
 
-      if (sqlDb) {
+      if (sqlDb && sessionUsername) {
         try {
           await sqlDb.query(
             `INSERT INTO ai_compare_insights_history (
@@ -2903,6 +3009,50 @@ app.get('/api/me', (req: Request, res: Response) => {
     res.json({ loggedIn: true, userId, githubUsername });
   } else {
     res.json({ loggedIn: false });
+  }
+});
+
+app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req.session as any)?.userId as number | string | undefined;
+    const requesterIp = getClientIp(req);
+    const loggedIn = userId !== undefined && userId !== null;
+
+    const analyzeScope = loggedIn
+      ? { scope: 'user' as const, id: String(userId), limit: MAX_UNIQUE_REPOS_PER_USER_PER_DAY }
+      : { scope: 'ip' as const, id: requesterIp, limit: MAX_UNIQUE_REPOS_PER_IP_PER_DAY };
+
+    const compareScope = loggedIn
+      ? { scope: 'user' as const, id: String(userId), limit: MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY }
+      : { scope: 'ip' as const, id: requesterIp, limit: MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY };
+
+    const [analyzeUsed, compareUsed] = await Promise.all([
+      redis.scard(getDailyUniqueRepoKey(analyzeScope.scope, analyzeScope.id)),
+      getDailyCounterValue(getDailyCompareInsightsCountKey(compareScope.scope, compareScope.id)),
+    ]);
+
+    const resetAt = getNextUtcMidnightIso();
+
+    res.json({
+      loggedIn,
+      analyzeDaily: {
+        scope: analyzeScope.scope,
+        limit: analyzeScope.limit,
+        used: analyzeUsed,
+        remaining: Math.max(0, analyzeScope.limit - analyzeUsed),
+        resetAt,
+      },
+      compareDaily: {
+        scope: compareScope.scope,
+        limit: compareScope.limit,
+        used: compareUsed,
+        remaining: Math.max(0, compareScope.limit - compareUsed),
+        resetAt,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching daily quota status:', error);
+    res.status(500).json({ error: 'Failed to fetch daily quota status' });
   }
 });
 
