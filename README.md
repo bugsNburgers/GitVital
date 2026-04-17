@@ -31,7 +31,8 @@
 </div>
 
 <div align="center">
-  <img src="./docs/screenshot-issue-recommender.png" alt="AI Issue Recommender" width="800"/>
+  <img src="https://github.com/user-attachments/assets/f57cee65-2d0c-41a9-8747-278bbfa3a427" alt="AI Issue Recommender" width="800"/>
+
   <p><em>AI Issue Recommender matching developer patterns with ideal "next issue" to fix.</em></p>
   
   <img src="./docs/screenshot-ai-profile-insights.png" alt="AI Profile Insights" width="800"/>
