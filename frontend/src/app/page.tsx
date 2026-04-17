@@ -2119,19 +2119,19 @@ export default function GitvitalLanding() {
           <div className="testimonials-scroll-row">
             <div className="testimonials-scroll-track">
 
-              <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">Srujan · @SrujanJamthnalli · Backend Eng at Swiggy</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567 · Full Stack Dev</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm · Staff Eng</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">Srujan · @SrujanJamthnalli</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">Shreyas G Shetty · @shreyasgshetty</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24 · SDE-2 at Flipkart</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17 · IIT Bombay</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17</div></div>
 
-              <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">Srujan · @SrujanJamthnalli · Backend Eng at Swiggy</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567 · Full Stack Dev</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm · Staff Eng</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">Srujan · @SrujanJamthnalli</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">Shreyas G Shetty · @shreyasgshetty</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24 · SDE-2 at Flipkart</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17 · IIT Bombay</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17</div></div>
             </div>
           </div>
         </div>
