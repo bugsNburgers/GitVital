@@ -53,6 +53,7 @@ export default function LeaderboardPage() {
   const [langFilter, setLangFilter] = useState("All Languages");
   const [currentPage, setCurrentPage] = useState(1);
   const [user, setUser] = useState<{ loggedIn: boolean; githubUsername?: string } | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [stats, setStats] = useState<LeaderboardStats | null>(null);
@@ -64,10 +65,20 @@ export default function LeaderboardPage() {
     fetch(`${API_BASE}/api/me`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => setUser(d))
-      .catch(() => setUser({ loggedIn: false }));
+      .catch(() => setUser({ loggedIn: false }))
+      .finally(() => setUserLoading(false));
   }, []);
 
   useEffect(() => {
+    if (userLoading) return;
+    if (!user?.loggedIn) {
+      setLeaders([]);
+      setUpdatedAt(null);
+      setStats(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     const url = langFilter !== "All Languages"
@@ -85,7 +96,7 @@ export default function LeaderboardPage() {
       })
       .catch((e) => setError(e.message ?? "Failed to load leaderboard"))
       .finally(() => setLoading(false));
-  }, [langFilter]);
+  }, [langFilter, user?.loggedIn, userLoading]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -278,6 +289,73 @@ export default function LeaderboardPage() {
         .lb-footer { margin-top: 60px; border-top: 1px solid var(--border); padding: 28px var(--page-padding); display: flex; justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 16px; max-width: var(--page-max-width); margin-left: auto; margin-right: auto; }
         .lb-footer-text { font-size: 13px; color: var(--text-muted); }
 
+        /* LOGIN GATE */
+        .lb-gate-wrap {
+          min-height: calc(100vh - 58px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 96px 24px 40px;
+        }
+        .lb-gate-card {
+          width: min(860px, 100%);
+          border-radius: 24px;
+          border: 1px solid rgba(255,255,255,0.08);
+          background:
+            radial-gradient(120% 140% at 70% -20%, rgba(255,94,0,0.16), transparent 55%),
+            linear-gradient(180deg, rgba(14,15,16,0.94), rgba(8,9,9,0.98));
+          box-shadow: 0 22px 60px rgba(0,0,0,0.5);
+          padding: clamp(28px, 6vw, 56px);
+          text-align: center;
+        }
+        .lb-gate-lock {
+          width: 64px;
+          height: 64px;
+          margin: 0 auto 20px;
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255,94,0,0.18);
+          color: var(--orange-light);
+        }
+        .lb-gate-lock span { font-size: 34px; }
+        .lb-gate-title {
+          font-size: clamp(30px, 4.2vw, 44px);
+          line-height: 1.12;
+          font-weight: 800;
+          letter-spacing: -0.035em;
+          margin-bottom: 12px;
+        }
+        .lb-gate-sub {
+          color: var(--text-secondary);
+          font-size: clamp(15px, 2.1vw, 21px);
+          max-width: 650px;
+          margin: 0 auto 30px;
+          line-height: 1.55;
+        }
+        .lb-gate-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          border: none;
+          border-radius: 14px;
+          padding: 15px 30px;
+          background: var(--orange);
+          color: #fff;
+          font-size: 28px;
+          font-size: clamp(16px, 2.4vw, 36px);
+          font-weight: 800;
+          text-decoration: none;
+          transition: background 0.18s ease, transform 0.18s ease;
+        }
+        .lb-gate-btn:hover {
+          background: #e55400;
+          transform: translateY(-1px);
+        }
+        .lb-gate-btn svg { width: 24px; height: 24px; }
+
         /* SMALL SCREENS */
         @media (max-width: 900px) { .lb-stats { grid-template-columns: 1fr; } .lb-nav-links { display: none; } .td-repos { display: none; } }
         @media (max-width: 600px) { .lb-nav-search { display: none; } .lang-badge { display: none; } .lb-hero { flex-direction: column; align-items: flex-start; } }
@@ -365,186 +443,210 @@ export default function LeaderboardPage() {
         </nav>
 
         <main className="lb-main">
-          {/* HERO */}
-          <div className="lb-hero">
-            <div>
-              <h1 className="lb-hero-title">Developer <span>Leaderboard</span></h1>
-              <p className="lb-hero-sub">Recognizing the world&apos;s most impactful open-source contributors based on verified repo health, velocity, and community impact.</p>
-              <div className="lb-hero-meta">
-                <span className="material-symbols-outlined">update</span>
-                {loading ? "Loading…" : updatedAt
-                  ? `Updated daily at 3 AM · Last refresh: ${formatRelative(updatedAt)}`
-                  : "Scores updated nightly · Analyze your repos to appear here"}
-              </div>
+          {!userLoading && !user?.loggedIn && (
+            <div className="lb-gate-wrap">
+              <section className="lb-gate-card" aria-label="Login required to access leaderboard">
+                <div className="lb-gate-lock" aria-hidden="true">
+                  <span className="material-symbols-outlined">lock</span>
+                </div>
+                <h1 className="lb-gate-title">Sign in to unlock the Developer Leaderboard</h1>
+                <p className="lb-gate-sub">
+                  GitVital ranking insights are available only to logged-in users. Sign in with GitHub to view rankings, scores, and contributor stats.
+                </p>
+                <a href={AUTH_URL} className="lb-gate-btn" rel="noopener noreferrer">
+                  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                  </svg>
+                  Sign In with GitHub
+                </a>
+              </section>
             </div>
-          </div>
+          )}
 
-          {/* STAT CARDS */}
-          <div className="lb-stats">
-            {[
-              {
-                icon: "groups",
-                val: loading ? null : stats ? compactNum(stats.totalDevelopers) : "—",
-                lbl: "Ranked Developers",
-              },
-              {
-                icon: "code_blocks",
-                val: loading ? null : stats ? compactNum(stats.totalRepos) : "—",
-                lbl: "Repos Analyzed",
-              },
-              {
-                icon: "bolt",
-                val: loading ? null : updatedAt ? "Daily" : "Nightly",
-                lbl: "Update Frequency",
-              },
-            ].map((s) => (
-              <div key={s.lbl} className="lb-stat-card">
-                <div className="lb-stat-icon"><span className="material-symbols-outlined">{s.icon}</span></div>
+          {!userLoading && user?.loggedIn && (
+            <>
+              {/* HERO */}
+              <div className="lb-hero">
                 <div>
-                  {s.val === null
-                    ? <div className="lb-stat-skel" />
-                    : <div className="lb-stat-val">{s.val}</div>
-                  }
-                  <div className="lb-stat-lbl">{s.lbl}</div>
+                  <h1 className="lb-hero-title">Developer <span>Leaderboard</span></h1>
+                  <p className="lb-hero-sub">Recognizing the world&apos;s most impactful open-source contributors based on verified repo health, velocity, and community impact.</p>
+                  <div className="lb-hero-meta">
+                    <span className="material-symbols-outlined">update</span>
+                    {loading ? "Loading…" : updatedAt
+                      ? `Updated daily at 3 AM · Last refresh: ${formatRelative(updatedAt)}`
+                      : "Scores updated nightly · Analyze your repos to appear here"}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
 
-          {/* JOIN CTA — only when logged in but not in leaderboard yet */}
-          {user?.loggedIn && !loading && leaders.length > 0 && !userInLeaderboard && (
-            <div className="lb-join-cta">
-              <div className="lb-join-cta-text">
-                <span className="material-symbols-outlined">emoji_events</span>
-                You&apos;re not on the leaderboard yet — analyze your repos to get your developer score.
+              {/* STAT CARDS */}
+              <div className="lb-stats">
+                {[
+                  {
+                    icon: "groups",
+                    val: loading ? null : stats ? compactNum(stats.totalDevelopers) : "—",
+                    lbl: "Ranked Developers",
+                  },
+                  {
+                    icon: "code_blocks",
+                    val: loading ? null : stats ? compactNum(stats.totalRepos) : "—",
+                    lbl: "Repos Analyzed",
+                  },
+                  {
+                    icon: "bolt",
+                    val: loading ? null : updatedAt ? "Daily" : "Nightly",
+                    lbl: "Update Frequency",
+                  },
+                ].map((s) => (
+                  <div key={s.lbl} className="lb-stat-card">
+                    <div className="lb-stat-icon"><span className="material-symbols-outlined">{s.icon}</span></div>
+                    <div>
+                      {s.val === null
+                        ? <div className="lb-stat-skel" />
+                        : <div className="lb-stat-val">{s.val}</div>
+                      }
+                      <div className="lb-stat-lbl">{s.lbl}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <a href={`/${user.githubUsername}`} className="lb-join-btn">Go to my profile →</a>
-            </div>
-          )}
 
-          {/* ERROR */}
-          {error && (
-            <div className="lb-error">
-              <span className="material-symbols-outlined">error</span>
-              {error}
-            </div>
-          )}
+              {/* JOIN CTA — only when logged in but not in leaderboard yet */}
+              {user?.loggedIn && !loading && leaders.length > 0 && !userInLeaderboard && (
+                <div className="lb-join-cta">
+                  <div className="lb-join-cta-text">
+                    <span className="material-symbols-outlined">emoji_events</span>
+                    You&apos;re not on the leaderboard yet — analyze your repos to get your developer score.
+                  </div>
+                  <a href={`/${user.githubUsername}`} className="lb-join-btn">Go to my profile →</a>
+                </div>
+              )}
 
-          {/* TABLE */}
-          <div className="lb-table-wrap">
-            <div className="lb-table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th className="td-rank">Rank</th>
-                    <th>Developer</th>
-                    <th>Score</th>
-                    <th className="td-repos">Repos Analyzed</th>
-                    <th>Percentile</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    // Skeleton rows
-                    Array.from({ length: 6 }).map((_, i) => (
-                      <tr key={i} className="lb-skel-row">
-                        <td><div className="lb-skel-text" style={{ width: 36, height: 36, borderRadius: "50%" }} /></td>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                            <span className="lb-skel-avatar" />
-                            <div>
-                              <div className="lb-skel-text" style={{ width: 120, marginBottom: 6 }} />
-                              <div className="lb-skel-text" style={{ width: 80, height: 10 }} />
-                            </div>
-                          </div>
-                        </td>
-                        <td><div className="lb-skel-text" style={{ width: 50 }} /></td>
-                        <td className="td-repos"><div className="lb-skel-text" style={{ width: 30 }} /></td>
-                        <td><div className="lb-skel-text" style={{ width: 60, marginLeft: "auto" }} /></td>
+              {/* ERROR */}
+              {error && (
+                <div className="lb-error">
+                  <span className="material-symbols-outlined">error</span>
+                  {error}
+                </div>
+              )}
+
+              {/* TABLE */}
+              <div className="lb-table-wrap">
+                <div className="lb-table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th className="td-rank">Rank</th>
+                        <th>Developer</th>
+                        <th>Score</th>
+                        <th className="td-repos">Repos Analyzed</th>
+                        <th>Percentile</th>
                       </tr>
-                    ))
-                  ) : paged.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>
-                        <div className="lb-empty">
-                          <span className="material-symbols-outlined lb-empty-icon">leaderboard</span>
-                          <h3>{leaders.length === 0 ? "Leaderboard is building" : "No results"}</h3>
-                          <p>
-                            {leaders.length === 0
-                              ? "Scores are computed nightly. Analyze your repos and check back tomorrow — or be the first!"
-                              : "No developers match your search or filter."}
-                          </p>
-                          {leaders.length === 0 && user?.loggedIn && (
-                            <a href={`/${user.githubUsername}`} className="lb-join-btn" style={{ marginTop: 8 }}>
-                              Analyze my repos
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    paged.map((leader) => {
-                      const leaderUsername = leader.handle.replace("@", "").toLowerCase();
-                      const isOwnProfile = user?.loggedIn && user.githubUsername?.toLowerCase() === leaderUsername;
-                      return (
-                        <tr
-                          key={leader.handle}
-                          className={isOwnProfile ? "row-own" : "row-locked"}
-                          onClick={isOwnProfile ? () => router.push(`/${leader.handle.replace("@", "")}`) : undefined}
-                          title={isOwnProfile ? "View your profile" : undefined}
-                        >
-                          <td className="td-rank">
-                            {leader.tier !== "other" ? (
-                              <div className={`rank-medal rank-${leader.tier}`}>
-                                <span className="material-symbols-outlined">workspace_premium</span>
-                              </div>
-                            ) : (
-                              <div className="rank-num">{leader.rank}</div>
-                            )}
-                          </td>
-                          <td className="td-dev">
-                            <div className="dev-row">
-                              <img alt={leader.name} className={`dev-avatar tier-${leader.tier}`} src={leader.img} />
-                              <div>
-                                <div className="dev-name">
-                                  {leader.name}
-                                  {isOwnProfile && (
-                                    <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: '0.1em', background: 'var(--orange-dim)', padding: '1px 6px', borderRadius: 4, verticalAlign: 'middle' }}>You</span>
-                                  )}
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        // Skeleton rows
+                        Array.from({ length: 6 }).map((_, i) => (
+                          <tr key={i} className="lb-skel-row">
+                            <td><div className="lb-skel-text" style={{ width: 36, height: 36, borderRadius: "50%" }} /></td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                <span className="lb-skel-avatar" />
+                                <div>
+                                  <div className="lb-skel-text" style={{ width: 120, marginBottom: 6 }} />
+                                  <div className="lb-skel-text" style={{ width: 80, height: 10 }} />
                                 </div>
-                                <div className="dev-handle">{leader.handle}</div>
                               </div>
+                            </td>
+                            <td><div className="lb-skel-text" style={{ width: 50 }} /></td>
+                            <td className="td-repos"><div className="lb-skel-text" style={{ width: 30 }} /></td>
+                            <td><div className="lb-skel-text" style={{ width: 60, marginLeft: "auto" }} /></td>
+                          </tr>
+                        ))
+                      ) : paged.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>
+                            <div className="lb-empty">
+                              <span className="material-symbols-outlined lb-empty-icon">leaderboard</span>
+                              <h3>{leaders.length === 0 ? "Leaderboard is building" : "No results"}</h3>
+                              <p>
+                                {leaders.length === 0
+                                  ? "Scores are computed nightly. Analyze your repos and check back tomorrow — or be the first!"
+                                  : "No developers match your search or filter."}
+                              </p>
+                              {leaders.length === 0 && user?.loggedIn && (
+                                <a href={`/${user.githubUsername}`} className="lb-join-btn" style={{ marginTop: 8 }}>
+                                  Analyze my repos
+                                </a>
+                              )}
                             </div>
-                          </td>
-                          <td className="td-score">{leader.score}</td>
-                          <td className="td-repos">{leader.repos}</td>
-                          <td className="td-pct">
-                            <span className={`pct-badge pct-${leader.tier}`}>{leader.percentile}</span>
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                      ) : (
+                        paged.map((leader) => {
+                          const leaderUsername = leader.handle.replace("@", "").toLowerCase();
+                          const isOwnProfile = user?.loggedIn && user.githubUsername?.toLowerCase() === leaderUsername;
+                          return (
+                            <tr
+                              key={leader.handle}
+                              className={isOwnProfile ? "row-own" : "row-locked"}
+                              onClick={isOwnProfile ? () => router.push(`/${leader.handle.replace("@", "")}`) : undefined}
+                              title={isOwnProfile ? "View your profile" : undefined}
+                            >
+                              <td className="td-rank">
+                                {leader.tier !== "other" ? (
+                                  <div className={`rank-medal rank-${leader.tier}`}>
+                                    <span className="material-symbols-outlined">workspace_premium</span>
+                                  </div>
+                                ) : (
+                                  <div className="rank-num">{leader.rank}</div>
+                                )}
+                              </td>
+                              <td className="td-dev">
+                                <div className="dev-row">
+                                  <img alt={leader.name} className={`dev-avatar tier-${leader.tier}`} src={leader.img} />
+                                  <div>
+                                    <div className="dev-name">
+                                      {leader.name}
+                                      {isOwnProfile && (
+                                        <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: '0.1em', background: 'var(--orange-dim)', padding: '1px 6px', borderRadius: 4, verticalAlign: 'middle' }}>You</span>
+                                      )}
+                                    </div>
+                                    <div className="dev-handle">{leader.handle}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="td-score">{leader.score}</td>
+                              <td className="td-repos">{leader.repos}</td>
+                              <td className="td-pct">
+                                <span className={`pct-badge pct-${leader.tier}`}>{leader.percentile}</span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-          {/* PAGINATION */}
-          {!loading && filtered.length > PAGE_SIZE && (
-            <div className="lb-pagination">
-              <div className="lb-info">
-                <span className="material-symbols-outlined">info</span>
-                Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length}
-              </div>
-              <div className="pg-controls">
-                <button className="pg-btn" disabled={currentPage === 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}>Previous</button>
-                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i + 1).map((p) => (
-                  <div key={p} className={`pg-num ${currentPage === p ? "active" : ""}`} onClick={() => setCurrentPage(p)}>{p}</div>
-                ))}
-                <button className="pg-btn" disabled={currentPage === totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}>Next</button>
-              </div>
-            </div>
+              {/* PAGINATION */}
+              {!loading && filtered.length > PAGE_SIZE && (
+                <div className="lb-pagination">
+                  <div className="lb-info">
+                    <span className="material-symbols-outlined">info</span>
+                    Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length}
+                  </div>
+                  <div className="pg-controls">
+                    <button className="pg-btn" disabled={currentPage === 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}>Previous</button>
+                    {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i + 1).map((p) => (
+                      <div key={p} className={`pg-num ${currentPage === p ? "active" : ""}`} onClick={() => setCurrentPage(p)}>{p}</div>
+                    ))}
+                    <button className="pg-btn" disabled={currentPage === totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}>Next</button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </main>
 
