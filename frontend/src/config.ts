@@ -53,6 +53,7 @@ export interface DailyQuotaBucket {
 export interface DailyQuotaResponse {
   loggedIn: boolean;
   analyzeDaily: DailyQuotaBucket;
+  aiDaily: DailyQuotaBucket | null;
   compareDaily: DailyQuotaBucket;
   issueRecommendationsDaily: DailyQuotaBucket | null;
 }
@@ -77,6 +78,7 @@ function isDailyQuotaResponse(payload: unknown): payload is DailyQuotaResponse {
   const value = payload as Partial<DailyQuotaResponse>;
   return typeof value.loggedIn === 'boolean'
     && isDailyQuotaBucket(value.analyzeDaily)
+    && (value.aiDaily === undefined || value.aiDaily === null || isDailyQuotaBucket(value.aiDaily))
     && isDailyQuotaBucket(value.compareDaily)
     && (
       value.issueRecommendationsDaily === undefined
@@ -144,6 +146,7 @@ export async function fetchDailyQuota(apiBase: string = API_BASE, retries: numbe
       return {
         loggedIn: Boolean(value.loggedIn),
         analyzeDaily: value.analyzeDaily as DailyQuotaBucket,
+        aiDaily: value.aiDaily ?? null,
         compareDaily: value.compareDaily as DailyQuotaBucket,
         issueRecommendationsDaily: value.issueRecommendationsDaily ?? null,
       };

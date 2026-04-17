@@ -4,8 +4,8 @@ import { redis } from '../config/redis';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GLOBAL_DAILY_CAP = 200;   // Total Gemini calls per UTC day across all users
-const USER_DAILY_CAP   = 15;    // Per logged-in user per UTC day
+const GLOBAL_DAILY_CAP = 800;   // Total Gemini calls per UTC day across all users
+const USER_DAILY_CAP = 20;    // Per logged-in user per UTC day
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -55,9 +55,9 @@ export interface QuotaCheckResult {
 export async function checkAndIncrementGlobalDailyQuota(
   username: string,
 ): Promise<QuotaCheckResult> {
-  const date     = utcDateKey();
-  const ttl      = secondsUntilMidnightUtc();
-  const resetAt  = new Date(
+  const date = utcDateKey();
+  const ttl = secondsUntilMidnightUtc();
+  const resetAt = new Date(
     Date.UTC(
       new Date().getUTCFullYear(),
       new Date().getUTCMonth(),
@@ -76,7 +76,7 @@ export async function checkAndIncrementGlobalDailyQuota(
     ]);
 
     const globalCount = Number(rawGlobal ?? 0);
-    const userCount   = Number(rawUser   ?? 0);
+    const userCount = Number(rawUser ?? 0);
 
     // Global cap check
     if (globalCount >= GLOBAL_DAILY_CAP) {
@@ -137,9 +137,9 @@ export async function getQuotaStatus(username?: string): Promise<{
     ]);
     return {
       globalUsed: Number(rawGlobal ?? 0),
-      globalCap:  GLOBAL_DAILY_CAP,
-      userUsed:   Number(rawUser ?? 0),
-      userCap:    USER_DAILY_CAP,
+      globalCap: GLOBAL_DAILY_CAP,
+      userUsed: Number(rawUser ?? 0),
+      userCap: USER_DAILY_CAP,
       resetAt,
     };
   } catch {

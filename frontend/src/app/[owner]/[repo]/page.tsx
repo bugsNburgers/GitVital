@@ -965,12 +965,32 @@ export default function RepoDashboardPage() {
         <main className="dash-main">
 
           {dailyQuota && (
-            <div style={{ marginBottom: 12, fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
-              Analyze left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
-              {' · '}
-              Compare AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
-              {' · '}
-              Issue AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.issueRecommendationsDaily?.remaining ?? '—'}</strong>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
+                Analyze left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                {' · '}
+                {user?.loggedIn
+                  ? (
+                    <>
+                      AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                    </>
+                  )
+                  : (
+                    <>
+                      Compare AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                    </>
+                  )}
+              </div>
+              {user?.loggedIn && (
+                <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-muted)" }}>
+                  Combined AI Pool: 20/day across Profile Insights + Issue Recommendations + Compare Insights.
+                </div>
+              )}
+              {user?.loggedIn === false && (
+                <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-muted)" }}>
+                  Logged-out users get Compare AI only (5/day by IP). Sign in to unlock the combined 20/day AI pool.
+                </div>
+              )}
             </div>
           )}
 
@@ -1422,9 +1442,9 @@ export default function RepoDashboardPage() {
               ) : user?.loggedIn === true ? (
                 /* Logged in */
                 <>
-                  {dailyQuota?.issueRecommendationsDaily && (
+                  {dailyQuota && (
                     <div style={{ marginBottom: 12, fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
-                      Personalized issue requests left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.issueRecommendationsDaily.remaining}</strong>
+                      AI requests left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
                     </div>
                   )}
 
@@ -1479,18 +1499,8 @@ export default function RepoDashboardPage() {
                     </div>
                   )}
 
-                  {recErrorCode === 'ISSUE_RECOMMENDATIONS_DAILY_LIMIT_EXCEEDED' && (
-                    <div style={{
-                      background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)',
-                      borderRadius: 12, padding: '14px 18px', fontSize: 13, color: 'rgba(234,179,8,0.9)',
-                      display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8
-                    }}>
-                      🌅 Daily personalized issue recommendation limit reached (10/day). Quota resets at midnight UTC.
-                    </div>
-                  )}
-
                   {/* Generic error (not quota) */}
-                  {recError && recErrorCode !== 'QUOTA_EXCEEDED' && recErrorCode !== 'ISSUE_RECOMMENDATIONS_DAILY_LIMIT_EXCEEDED' && (
+                  {recError && recErrorCode !== 'QUOTA_EXCEEDED' && (
                     <p style={{ fontSize: 13, color: 'var(--red)', marginBottom: 8 }}>{recError}</p>
                   )}
 

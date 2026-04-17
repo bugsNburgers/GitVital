@@ -37,7 +37,7 @@ import { generateIssueRecommendations } from '../ai/issueRecommender';
 import type { RepoIssue, UserProfileSnippet } from '../ai/issueRecommender';
 import { generateCompareInsights } from '../ai/compareInsights';
 import type { RepoMetricsForCompare } from '../ai/compareInsights';
-import { checkAndIncrementGlobalDailyQuota } from '../ai/globalQuotaGate';
+import { checkAndIncrementGlobalDailyQuota, getQuotaStatus } from '../ai/globalQuotaGate';
 
 // Analysis helpers + optional inline workers.
 // Workers only boot inline when EMBED_WORKERS_IN_API=true.
@@ -65,7 +65,6 @@ const MAX_UNIQUE_REPOS_PER_USER_PER_DAY = 20;
 const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 5;
 const MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY = 20;
 const MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY = 5;
-const MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY = 10;
 const MAX_GEMINI_ANALYSES_PER_USER_PER_DAY = 20;
 const MAX_GEMINI_ANALYSES_PER_IP_PER_DAY = 10;
 const RAPID_FIRE_WINDOW_SECONDS = 60;
@@ -472,10 +471,6 @@ function getDailyAnalysisCountKey(scope: 'user' | 'ip', id: string): string {
 
 function getDailyCompareInsightsCountKey(scope: 'user' | 'ip', id: string): string {
   return `abuse:compare-insights-count:${scope}:${id}:${currentDayBucket()}`;
-}
-
-function getDailyIssueRecommendationsCountKey(userId: string): string {
-  return `abuse:issue-recommendations-count:user:${userId}:${currentDayBucket()}`;
 }
 
 function getRapidFireKey(ip: string): string {
@@ -2334,20 +2329,6 @@ app.get(
       }
       const authedUsername = sessionUsername;
 
-      const recommendationsDailyQuota = await checkAndIncrementDailyCounterLimit(
-        getDailyIssueRecommendationsCountKey(String(sessionUserId)),
-        MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
-      );
-      if (!recommendationsDailyQuota.allowed) {
-        res.status(429).json({
-          error: 'Daily personalized issue recommendations limit reached. Come back tomorrow.',
-          code: 'ISSUE_RECOMMENDATIONS_DAILY_LIMIT_EXCEEDED',
-          remaining: recommendationsDailyQuota.remaining,
-          resetAt: getNextUtcMidnightIso(),
-        });
-        return;
-      }
-
       // Quota gate
       const quota = await checkAndIncrementGlobalDailyQuota(authedUsername);
       if (!quota.allowed) {
@@ -2410,10 +2391,9 @@ app.get(
           source: 'rule-based',
           message: 'No open issues found for this repository.',
           dailyQuota: {
-            limit: MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
-            used: recommendationsDailyQuota.used,
-            remaining: recommendationsDailyQuota.remaining,
-            resetAt: getNextUtcMidnightIso(),
+            limit: 20,
+            remaining: quota.remaining,
+            resetAt: quota.resetAt,
           },
         });
         return;
@@ -2517,10 +2497,9 @@ app.get(
       res.json({
         ...result,
         dailyQuota: {
-          limit: MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
-          used: recommendationsDailyQuota.used,
-          remaining: recommendationsDailyQuota.remaining,
-          resetAt: getNextUtcMidnightIso(),
+          limit: 20,
+          remaining: quota.remaining,
+          resetAt: quota.resetAt,
         },
       });
     } catch (error) {
@@ -2548,26 +2527,15 @@ app.post(
       const sessionUserId = (req.session as any)?.userId as number | string | undefined;
       const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
 
-      const requesterIp = getClientIp(req);
-      const compareScope = sessionUserId !== undefined && sessionUserId !== null && sessionUsername
-        ? {
-          scope: 'user' as const,
-          id: String(sessionUserId),
-          limit: MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY,
-        }
-        : {
-          scope: 'ip' as const,
-          id: requesterIp,
-          limit: MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY,
-        };
+      const isLoggedIn = sessionUserId !== undefined && sessionUserId !== null && Boolean(sessionUsername);
+      if (!isLoggedIn) {
+        const requesterIp = getClientIp(req);
+        const compareDaily = await checkAndIncrementDailyCounterLimit(
+          getDailyCompareInsightsCountKey('ip', requesterIp),
+          MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY,
+        );
 
-      const compareDaily = await checkAndIncrementDailyCounterLimit(
-        getDailyCompareInsightsCountKey(compareScope.scope, compareScope.id),
-        compareScope.limit,
-      );
-
-      if (!compareDaily.allowed) {
-        if (compareScope.scope === 'ip') {
+        if (!compareDaily.allowed) {
           res.status(401).json({
             error: 'Daily AI comparison limit reached for logged-out users. Login for more requests.',
             code: 'LOGIN_REQUIRED_COMPARE_DAILY',
@@ -2578,15 +2546,6 @@ app.post(
           });
           return;
         }
-
-        res.status(429).json({
-          error: 'Daily AI comparison limit reached for this account.',
-          code: 'COMPARE_DAILY_LIMIT_EXCEEDED',
-          remaining: compareDaily.remaining,
-          limit: compareDaily.limit,
-          resetAt: getNextUtcMidnightIso(),
-        });
-        return;
       }
 
       // Quota gate
@@ -3052,6 +3011,7 @@ app.get('/api/me', (req: Request, res: Response) => {
 app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = (req.session as any)?.userId as number | string | undefined;
+    const githubUsername = (req.session as any)?.githubUsername as string | undefined;
     const requesterIp = getClientIp(req);
     const loggedIn = userId !== undefined && userId !== null;
 
@@ -3059,16 +3019,12 @@ app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> =
       ? { scope: 'user' as const, id: String(userId), limit: MAX_UNIQUE_REPOS_PER_USER_PER_DAY }
       : { scope: 'ip' as const, id: requesterIp, limit: MAX_UNIQUE_REPOS_PER_IP_PER_DAY };
 
-    const compareScope = loggedIn
-      ? { scope: 'user' as const, id: String(userId), limit: MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY }
-      : { scope: 'ip' as const, id: requesterIp, limit: MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY };
-
-    const [analyzeUsed, compareUsed, issueRecommendationsUsed] = await Promise.all([
+    const [analyzeUsed, anonCompareUsed, sharedAiStatus] = await Promise.all([
       redis.scard(getDailyUniqueRepoKey(analyzeScope.scope, analyzeScope.id)),
-      getDailyCounterValue(getDailyCompareInsightsCountKey(compareScope.scope, compareScope.id)),
-      loggedIn
-        ? getDailyCounterValue(getDailyIssueRecommendationsCountKey(String(userId)))
-        : Promise.resolve(0),
+      getDailyCounterValue(getDailyCompareInsightsCountKey('ip', requesterIp)),
+      loggedIn && githubUsername
+        ? getQuotaStatus(githubUsername)
+        : Promise.resolve(null),
     ]);
 
     const resetAt = getNextUtcMidnightIso();
@@ -3082,19 +3038,36 @@ app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> =
         remaining: Math.max(0, analyzeScope.limit - analyzeUsed),
         resetAt,
       },
-      compareDaily: {
-        scope: compareScope.scope,
-        limit: compareScope.limit,
-        used: compareUsed,
-        remaining: Math.max(0, compareScope.limit - compareUsed),
-        resetAt,
-      },
-      issueRecommendationsDaily: loggedIn
+      aiDaily: loggedIn && sharedAiStatus
         ? {
           scope: 'user' as const,
-          limit: MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
-          used: issueRecommendationsUsed,
-          remaining: Math.max(0, MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY - issueRecommendationsUsed),
+          limit: sharedAiStatus.userCap,
+          used: sharedAiStatus.userUsed,
+          remaining: Math.max(0, sharedAiStatus.userCap - sharedAiStatus.userUsed),
+          resetAt,
+        }
+        : null,
+      compareDaily: loggedIn && sharedAiStatus
+        ? {
+          scope: 'user' as const,
+          limit: sharedAiStatus.userCap,
+          used: sharedAiStatus.userUsed,
+          remaining: Math.max(0, sharedAiStatus.userCap - sharedAiStatus.userUsed),
+          resetAt,
+        }
+        : {
+          scope: 'ip' as const,
+          limit: MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY,
+          used: anonCompareUsed,
+          remaining: Math.max(0, MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY - anonCompareUsed),
+          resetAt,
+        },
+      issueRecommendationsDaily: loggedIn && sharedAiStatus
+        ? {
+          scope: 'user' as const,
+          limit: sharedAiStatus.userCap,
+          used: sharedAiStatus.userUsed,
+          remaining: Math.max(0, sharedAiStatus.userCap - sharedAiStatus.userUsed),
           resetAt,
         }
         : null,

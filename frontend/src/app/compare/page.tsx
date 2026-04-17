@@ -847,11 +847,33 @@ export default function RepoComparePage() {
                 <p style={{ marginTop: 6, fontSize: 12, color: 'var(--red)' }}>{errorMsg}</p>
               )}
               {dailyQuota && (
-                <p style={{ marginTop: 6, fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
-                  Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
-                  {' · '}
-                  Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
-                </p>
+                <>
+                  <p style={{ marginTop: 6, fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
+                    Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                    {' · '}
+                    {user?.loggedIn
+                      ? (
+                        <>
+                          AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                        </>
+                      )
+                      : (
+                        <>
+                          Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                        </>
+                      )}
+                  </p>
+                  {user?.loggedIn && (
+                    <p style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                      Combined AI Pool: 20/day across Profile Insights + Issue Recommendations + Compare Insights.
+                    </p>
+                  )}
+                  {user?.loggedIn === false && (
+                    <p style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                      Logged-out users get Compare AI only (5/day by IP). Sign in to unlock the combined 20/day AI pool.
+                    </p>
+                  )}
+                </>
               )}
             </div>
 
@@ -1070,7 +1092,7 @@ export default function RepoComparePage() {
           </div>
 
           {/* AI COMPARISON INSIGHTS */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
             <div className="ai-cmp-header">
               <div>
                 <div className="ai-cmp-label">AI-powered analysis</div>

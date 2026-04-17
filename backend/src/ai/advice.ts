@@ -11,12 +11,14 @@ import {
 const MAX_ADVICE_CHARS = 1000;
 const LLM_ONE_CALL_TTL_SECONDS = 60 * 60 * 24;
 const DEFAULT_GEMINI_MODELS = [
-    'gemini-flash-lite-latest',
-    'gemini-flash-latest',
-    'gemini-2.0-flash-lite',
-    'gemini-2.0-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-3-flash',
+    'gemini-3-flash-preview',
     'gemini-2.5-flash-lite',
     'gemini-2.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
 ];
 const STRICT_SYSTEM_PROMPT = [
     'You are a code health advisor. You will receive repository metrics as structured JSON.',

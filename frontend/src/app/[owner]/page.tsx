@@ -1138,12 +1138,32 @@ export default function UserProfilePage() {
                                 </div>
 
                                 {dailyQuota && (
-                                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--orange-light)', marginBottom: 10 }}>
-                                        Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
-                                        {' · '}
-                                        Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
-                                        {' · '}
-                                        Issue AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.issueRecommendationsDaily?.remaining ?? '—'}</strong>
+                                    <div style={{ marginBottom: 10 }}>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
+                                            Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                                            {' · '}
+                                            {user?.loggedIn
+                                                ? (
+                                                    <>
+                                                        AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                                                    </>
+                                                )
+                                                : (
+                                                    <>
+                                                        Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                                                    </>
+                                                )}
+                                        </div>
+                                        {user?.loggedIn && (
+                                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                Combined AI Pool: 20/day across Profile Insights + Issue Recommendations + Compare Insights.
+                                            </div>
+                                        )}
+                                        {user?.loggedIn === false && (
+                                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                Logged-out users get Compare AI only (5/day by IP). Sign in to unlock the combined 20/day AI pool.
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
