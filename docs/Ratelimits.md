@@ -27,7 +27,7 @@ This has 3 different kinds of limits:
 
 5. Daily unique repos cap (Analyze):
 - Logged-in: max 20 unique repos/day per user
-- Logged-out: max 10 unique repos/day per IP
+- Logged-out: max 5 unique repos/day per IP
 - If exceeded: 429
 - Source: index.ts, index.ts, index.ts, index.ts
 
@@ -54,16 +54,22 @@ This has 3 different kinds of limits:
 
 3. Compare Insights route (POST /api/compare/insights):
 - 5 requests/min per IP
-- Also requires login
+- Daily cap: logged-in 20/day, logged-out 5/day
+- Logged-out users can run up to 5 compare insights requests/day, then must login
 - Source: index.ts, index.ts
 
-4. Daily Gemini quota gate (shared across AI endpoints):
+4. Daily quota status endpoint:
+- GET /api/quota/daily
+- Returns loggedIn, analyzeDaily { limit, used, remaining, resetAt }, compareDaily { limit, used, remaining, resetAt }
+- Used by frontend to show "requests left today" counters
+
+5. Daily Gemini quota gate (shared across AI endpoints):
 - Global: 200/day across all AI calls
 - User bucket: 15/day
 - If exceeded: 429 QUOTA_EXCEEDED with limitHit user/global
 - Source: globalQuotaGate.ts, globalQuotaGate.ts, index.ts, index.ts, index.ts
 
-5. Gemini cooldown fallback:
+6. Gemini cooldown fallback:
 - If Gemini returns quota/rate-limit-like errors, set cooldown in Redis (15s)
 - During cooldown, code falls back to rule-based output
 - Source: quotaTelemetry.ts, quotaTelemetry.ts, userInsights.ts

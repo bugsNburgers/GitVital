@@ -54,6 +54,7 @@ export interface DailyQuotaResponse {
   loggedIn: boolean;
   analyzeDaily: DailyQuotaBucket;
   compareDaily: DailyQuotaBucket;
+  issueRecommendationsDaily: DailyQuotaBucket | null;
 }
 
 function isSessionUser(payload: unknown): payload is SessionUser {
@@ -73,10 +74,15 @@ function isDailyQuotaBucket(payload: unknown): payload is DailyQuotaBucket {
 
 function isDailyQuotaResponse(payload: unknown): payload is DailyQuotaResponse {
   if (!payload || typeof payload !== 'object') return false;
-  const value = payload as DailyQuotaResponse;
+  const value = payload as Partial<DailyQuotaResponse>;
   return typeof value.loggedIn === 'boolean'
     && isDailyQuotaBucket(value.analyzeDaily)
-    && isDailyQuotaBucket(value.compareDaily);
+    && isDailyQuotaBucket(value.compareDaily)
+    && (
+      value.issueRecommendationsDaily === undefined
+      || value.issueRecommendationsDaily === null
+      || isDailyQuotaBucket(value.issueRecommendationsDaily)
+    );
 }
 
 function delay(ms: number): Promise<void> {
@@ -134,8 +140,13 @@ export async function fetchDailyQuota(apiBase: string = API_BASE, retries: numbe
       if (!isDailyQuotaResponse(payload)) {
         throw new Error('Invalid /api/quota/daily response shape.');
       }
-
-      return payload;
+      const value = payload as Partial<DailyQuotaResponse>;
+      return {
+        loggedIn: Boolean(value.loggedIn),
+        analyzeDaily: value.analyzeDaily as DailyQuotaBucket,
+        compareDaily: value.compareDaily as DailyQuotaBucket,
+        issueRecommendationsDaily: value.issueRecommendationsDaily ?? null,
+      };
     } catch {
       if (attempt < retries) {
         await delay(250);

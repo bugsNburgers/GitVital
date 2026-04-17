@@ -64,7 +64,8 @@ const MAX_ANALYZE_REQUESTS_PER_WINDOW_ANON = 10;
 const MAX_UNIQUE_REPOS_PER_USER_PER_DAY = 20;
 const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 5;
 const MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY = 20;
-const MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY = 1;
+const MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY = 5;
+const MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY = 10;
 const MAX_GEMINI_ANALYSES_PER_USER_PER_DAY = 20;
 const MAX_GEMINI_ANALYSES_PER_IP_PER_DAY = 10;
 const RAPID_FIRE_WINDOW_SECONDS = 60;
@@ -471,6 +472,10 @@ function getDailyAnalysisCountKey(scope: 'user' | 'ip', id: string): string {
 
 function getDailyCompareInsightsCountKey(scope: 'user' | 'ip', id: string): string {
   return `abuse:compare-insights-count:${scope}:${id}:${currentDayBucket()}`;
+}
+
+function getDailyIssueRecommendationsCountKey(userId: string): string {
+  return `abuse:issue-recommendations-count:user:${userId}:${currentDayBucket()}`;
 }
 
 function getRapidFireKey(ip: string): string {
@@ -2329,6 +2334,20 @@ app.get(
       }
       const authedUsername = sessionUsername;
 
+      const recommendationsDailyQuota = await checkAndIncrementDailyCounterLimit(
+        getDailyIssueRecommendationsCountKey(String(sessionUserId)),
+        MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
+      );
+      if (!recommendationsDailyQuota.allowed) {
+        res.status(429).json({
+          error: 'Daily personalized issue recommendations limit reached. Come back tomorrow.',
+          code: 'ISSUE_RECOMMENDATIONS_DAILY_LIMIT_EXCEEDED',
+          remaining: recommendationsDailyQuota.remaining,
+          resetAt: getNextUtcMidnightIso(),
+        });
+        return;
+      }
+
       // Quota gate
       const quota = await checkAndIncrementGlobalDailyQuota(authedUsername);
       if (!quota.allowed) {
@@ -2386,7 +2405,17 @@ app.get(
 
       // 3. If no issues found, return empty result early.
       if (repoIssues.length === 0) {
-        res.json({ recommendations: [], source: 'rule-based', message: 'No open issues found for this repository.' });
+        res.json({
+          recommendations: [],
+          source: 'rule-based',
+          message: 'No open issues found for this repository.',
+          dailyQuota: {
+            limit: MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
+            used: recommendationsDailyQuota.used,
+            remaining: recommendationsDailyQuota.remaining,
+            resetAt: getNextUtcMidnightIso(),
+          },
+        });
         return;
       }
 
@@ -2485,7 +2514,15 @@ app.get(
         }
       }
 
-      res.json(result);
+      res.json({
+        ...result,
+        dailyQuota: {
+          limit: MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
+          used: recommendationsDailyQuota.used,
+          remaining: recommendationsDailyQuota.remaining,
+          resetAt: getNextUtcMidnightIso(),
+        },
+      });
     } catch (error) {
       console.error('[Recommendations] Error generating issue recommendations:', error);
       res.status(500).json({ error: 'Failed to generate issue recommendations' });
@@ -2532,7 +2569,7 @@ app.post(
       if (!compareDaily.allowed) {
         if (compareScope.scope === 'ip') {
           res.status(401).json({
-            error: 'You have used your free AI comparison for today. Login for more requests.',
+            error: 'Daily AI comparison limit reached for logged-out users. Login for more requests.',
             code: 'LOGIN_REQUIRED_COMPARE_DAILY',
             remaining: compareDaily.remaining,
             limit: compareDaily.limit,
@@ -3026,9 +3063,12 @@ app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> =
       ? { scope: 'user' as const, id: String(userId), limit: MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY }
       : { scope: 'ip' as const, id: requesterIp, limit: MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY };
 
-    const [analyzeUsed, compareUsed] = await Promise.all([
+    const [analyzeUsed, compareUsed, issueRecommendationsUsed] = await Promise.all([
       redis.scard(getDailyUniqueRepoKey(analyzeScope.scope, analyzeScope.id)),
       getDailyCounterValue(getDailyCompareInsightsCountKey(compareScope.scope, compareScope.id)),
+      loggedIn
+        ? getDailyCounterValue(getDailyIssueRecommendationsCountKey(String(userId)))
+        : Promise.resolve(0),
     ]);
 
     const resetAt = getNextUtcMidnightIso();
@@ -3049,6 +3089,15 @@ app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> =
         remaining: Math.max(0, compareScope.limit - compareUsed),
         resetAt,
       },
+      issueRecommendationsDaily: loggedIn
+        ? {
+          scope: 'user' as const,
+          limit: MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY,
+          used: issueRecommendationsUsed,
+          remaining: Math.max(0, MAX_ISSUE_RECOMMENDATIONS_PER_USER_PER_DAY - issueRecommendationsUsed),
+          resetAt,
+        }
+        : null,
     });
   } catch (error) {
     console.error('Error fetching daily quota status:', error);

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { API_BASE, AUTH_URL } from "@/config";
+import { API_BASE, AUTH_URL, fetchDailyQuota, type DailyQuotaResponse } from "@/config";
 import InfoTooltip from "@/components/InfoTooltip";
 
 type BadgeTone = "orange" | "secondary" | "emerald" | "orange-light";
@@ -224,7 +224,13 @@ export default function UserProfilePage() {
     const [aiError, setAiError] = useState<string | null>(null);
     const [aiErrorCode, setAiErrorCode] = useState<string | null>(null);
     const [aiRequested, setAiRequested] = useState(false);
+    const [dailyQuota, setDailyQuota] = useState<DailyQuotaResponse | null>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const refreshDailyQuota = useCallback(async () => {
+        const quota = await fetchDailyQuota(API_BASE, 1);
+        setDailyQuota(quota);
+    }, []);
 
     const score = Math.round(profile?.developerScore ?? 0);
     const scoreDashOffset = 113 * (1 - clamp(score) / 100);
@@ -335,6 +341,8 @@ export default function UserProfilePage() {
             .then((res) => res.json())
             .then((data) => setUser(data))
             .catch(() => setUser({ loggedIn: false }));
+
+        void refreshDailyQuota();
     }, []);
 
     useEffect(() => {
@@ -477,6 +485,7 @@ export default function UserProfilePage() {
         } catch (err) {
             setAiError(err instanceof Error ? err.message : "Failed to generate AI insights.");
         } finally {
+            void refreshDailyQuota();
             setAiLoading(false);
         }
     }
@@ -1127,6 +1136,16 @@ export default function UserProfilePage() {
                                         )}
                                     </button>
                                 </div>
+
+                                {dailyQuota && (
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--orange-light)', marginBottom: 10 }}>
+                                        Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                                        {' · '}
+                                        Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                                        {' · '}
+                                        Issue AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.issueRecommendationsDaily?.remaining ?? '—'}</strong>
+                                    </div>
+                                )}
 
                                 {!aiRequested && !aiInsights && (
                                     <div className="section-empty" style={{ fontStyle: "italic" }}>

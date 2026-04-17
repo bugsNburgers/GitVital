@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE, AUTH_URL, fetchSessionUser, type SessionUser } from "@/config";
+import { API_BASE, AUTH_URL, fetchDailyQuota, fetchSessionUser, type DailyQuotaResponse, type SessionUser } from "@/config";
 import InfoTooltip from "@/components/InfoTooltip";
 
 const API = API_BASE;
@@ -33,6 +33,8 @@ interface AnalyzeResponse {
   jobId?: string;
   metrics?: RepoMetrics;
   error?: string;
+  code?: string;
+  remaining?: number;
 }
 
 interface JobStatusResponse {
@@ -223,6 +225,14 @@ export default function RepoComparePage() {
   const [aiRequested, setAiRequested] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
+  const [dailyQuota, setDailyQuota] = useState<DailyQuotaResponse | null>(null);
+  const [analyzeLimitBlocked, setAnalyzeLimitBlocked] = useState(false);
+  const [analyzeLimitRemaining, setAnalyzeLimitRemaining] = useState<number | null>(null);
+
+  const refreshDailyQuota = useCallback(async () => {
+    const quota = await fetchDailyQuota(API, 1);
+    setDailyQuota(quota);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -236,11 +246,12 @@ export default function RepoComparePage() {
     };
 
     void loadSession();
+    void refreshDailyQuota();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshDailyQuota]);
 
   const pollJobUntilDone = useCallback(async (jobId: string): Promise<PolledJobResult> => {
     for (let attempt = 0; attempt < 120; attempt += 1) {
@@ -300,6 +311,8 @@ export default function RepoComparePage() {
     setLoading(true);
     setErrorMsg(null);
     setStatusMsg("Fetching comparison data...");
+    setAnalyzeLimitBlocked(false);
+    setAnalyzeLimitRemaining(null);
 
     try {
       const initial = await loadCompareSnapshot();
@@ -310,6 +323,8 @@ export default function RepoComparePage() {
 
         const queuedJobIds: string[] = [];
         const queueErrors: string[] = [];
+        let sawAnalyzeDailyLimit = false;
+        let blockedRemaining: number | null = null;
 
         await Promise.all(
           missing.map(async ({ owner, repo }) => {
@@ -329,6 +344,10 @@ export default function RepoComparePage() {
               }
 
               if (!analyzeRes.ok) {
+                if (payload.code === 'ANALYZE_DAILY_LIMIT_EXCEEDED') {
+                  sawAnalyzeDailyLimit = true;
+                  blockedRemaining = typeof payload.remaining === 'number' ? payload.remaining : blockedRemaining;
+                }
                 queueErrors.push(`${owner}/${repo}: ${payload.error ?? `HTTP ${analyzeRes.status}`}`);
                 return;
               }
@@ -353,6 +372,11 @@ export default function RepoComparePage() {
           setErrorMsg(queueErrors[0]);
         }
 
+        if (sawAnalyzeDailyLimit) {
+          setAnalyzeLimitBlocked(true);
+          setAnalyzeLimitRemaining(blockedRemaining);
+        }
+
         if (queuedJobIds.length > 0) {
           setStatusMsg(`Analyzing ${queuedJobIds.length} repo${queuedJobIds.length === 1 ? "" : "s"}...`);
           const pollResults = await Promise.all(queuedJobIds.map((jobId) => pollJobUntilDone(jobId)));
@@ -364,6 +388,7 @@ export default function RepoComparePage() {
 
         setStatusMsg("Refreshing comparison data...");
         await loadCompareSnapshot();
+        void refreshDailyQuota();
       }
 
       setStatusMsg("Comparison updated.");
@@ -372,7 +397,7 @@ export default function RepoComparePage() {
       setErrorMsg(`Could not connect to the GitVital API at ${API}. Check if the backend is running.`);
     }
     finally { setLoading(false); }
-  }, [pollJobUntilDone]);
+  }, [pollJobUntilDone, refreshDailyQuota]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -396,6 +421,7 @@ export default function RepoComparePage() {
   const comparisonLookup = new Map(
     comparison.map((entry) => [repoRefKey(entry.owner, entry.repo), entry]),
   );
+  const canUseCompareAi = user?.loggedIn === true || (user?.loggedIn === false && (dailyQuota?.compareDaily.remaining ?? 0) > 0);
 
   // Repos that have metrics in cache (enabled for AI)
   const reposWithMetrics = validRepos.filter((repoRef) => {
@@ -427,6 +453,7 @@ export default function RepoComparePage() {
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Failed to generate AI comparison.');
     } finally {
+      void refreshDailyQuota();
       setAiLoading(false);
     }
   }
@@ -819,7 +846,28 @@ export default function RepoComparePage() {
               {errorMsg && (
                 <p style={{ marginTop: 6, fontSize: 12, color: 'var(--red)' }}>{errorMsg}</p>
               )}
+              {dailyQuota && (
+                <p style={{ marginTop: 6, fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
+                  Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                  {' · '}
+                  Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                </p>
+              )}
             </div>
+
+            {analyzeLimitBlocked && user?.loggedIn === false && (
+              <div className="ai-login-wall" style={{ marginTop: 12 }}>
+                <div className="ai-login-wall-icon">🔒</div>
+                <div className="ai-login-wall-title">Daily Analyze Limit Reached</div>
+                <p className="ai-login-wall-desc">
+                  You have {analyzeLimitRemaining ?? dailyQuota?.analyzeDaily.remaining ?? 0} analyze requests left today. Login for 20/day and unlock personalized issue recommendations, profile insights, and compare insights.
+                </p>
+                <a href={AUTH_URL} className="ai-login-btn">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
+                  Sign In with GitHub
+                </a>
+              </div>
+            )}
 
             {/* INPUT CARDS */}
             <div className="input-grid">
@@ -1030,7 +1078,7 @@ export default function RepoComparePage() {
                   Contribution Intelligence
                 </div>
               </div>
-              {user?.loggedIn && (
+              {canUseCompareAi && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   {aiInsights && (
                     <span className={`ai-source-badge ${aiInsights.source === 'gemini' ? 'ai-source-gemini' : 'ai-source-rule'}`}>
@@ -1054,13 +1102,19 @@ export default function RepoComparePage() {
               )}
             </div>
 
-            {/* Login wall for unauthenticated users */}
-            {user?.loggedIn === false && (
+            {user?.loggedIn === false && (dailyQuota?.compareDaily.remaining ?? 0) > 0 && (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '6px 2px' }}>
+                You are logged out. You have <strong style={{ color: 'var(--text)' }}>{dailyQuota?.compareDaily.remaining ?? 0}</strong> AI compare requests left today. Login for 20/day.
+              </div>
+            )}
+
+            {/* Login wall for unauthenticated users after compare quota is exhausted */}
+            {user?.loggedIn === false && (dailyQuota?.compareDaily.remaining ?? 0) <= 0 && (
               <div className="ai-login-wall">
                 <div className="ai-login-wall-icon">🔒</div>
                 <div className="ai-login-wall-title">Sign in to unlock AI Comparison</div>
                 <p className="ai-login-wall-desc">
-                  Get Gemini-powered pros, cons, and verdicts for every repo — tailored to help you choose the right project to contribute to.
+                  Daily logged-out compare limit reached. Sign in for 20 AI comparisons/day plus personalized issue recommendations and profile insights.
                 </p>
                 <a href={AUTH_URL} className="ai-login-btn">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>

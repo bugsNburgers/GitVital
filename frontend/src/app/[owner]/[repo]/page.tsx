@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { API_BASE, AUTH_URL, fetchSessionUser, type SessionUser } from "@/config";
+import { API_BASE, AUTH_URL, fetchDailyQuota, fetchSessionUser, type DailyQuotaResponse, type SessionUser } from "@/config";
 import InfoTooltip from "@/components/InfoTooltip";
 
 // ── Types matching backend AllMetrics + metadata ──
@@ -81,6 +81,20 @@ interface IssueRecommendation {
   reason: string;
   difficultyMatch: 'easy' | 'medium' | 'hard';
   githubUrl: string;
+}
+
+interface AnalyzeApiResponse {
+  status?: "queued" | "processing" | "done" | "failed";
+  jobId?: string;
+  metrics?: RepoMetrics;
+  error?: string;
+  code?: string;
+  remaining?: number;
+}
+
+interface IssueRecommendationsApiResponse {
+  recommendations?: IssueRecommendation[];
+  source?: 'gemini' | 'rule-based';
 }
 
 type LoadState = "idle" | "checking" | "queuing" | "polling" | "done" | "error";
@@ -201,6 +215,9 @@ export default function RepoDashboardPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [analyzeErrorCode, setAnalyzeErrorCode] = useState<string | null>(null);
+  const [analyzeErrorRemaining, setAnalyzeErrorRemaining] = useState<number | null>(null);
+  const [dailyQuota, setDailyQuota] = useState<DailyQuotaResponse | null>(null);
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -210,6 +227,11 @@ export default function RepoDashboardPage() {
   const [recError, setRecError] = useState<string | null>(null);
   const [recErrorCode, setRecErrorCode] = useState<string | null>(null);
   const [recSource, setRecSource] = useState<'gemini' | 'rule-based' | null>(null);
+
+  const refreshDailyQuota = useCallback(async () => {
+    const quota = await fetchDailyQuota(API_BASE, 1);
+    setDailyQuota(quota);
+  }, []);
 
   // ── Fetch current user ──
   useEffect(() => {
@@ -224,6 +246,7 @@ export default function RepoDashboardPage() {
     };
 
     void loadSession();
+    void refreshDailyQuota();
 
     return () => {
       cancelled = true;
@@ -294,6 +317,8 @@ export default function RepoDashboardPage() {
 
     async function init() {
       setLoadState("checking");
+      setAnalyzeErrorCode(null);
+      setAnalyzeErrorRemaining(null);
       try {
         // 1. Try to get cached metrics
         const r = await fetch(`${API_BASE}/api/repo/${owner}/${repo}`);
@@ -312,14 +337,18 @@ export default function RepoDashboardPage() {
           body: JSON.stringify({ owner, repo }),
         });
 
+        const q = await qr.json().catch(() => ({})) as AnalyzeApiResponse;
+
         if (!qr.ok) {
           let errText = `Failed to start analysis (HTTP ${qr.status}).`;
-          try { const err = await qr.json(); errText = err.error || errText; } catch { }
+          errText = q.error || errText;
+          setAnalyzeErrorCode(q.code ?? null);
+          setAnalyzeErrorRemaining(typeof q.remaining === "number" ? q.remaining : null);
+          void refreshDailyQuota();
           if (!cancelled) { setErrorMsg(errText); setLoadState("error"); }
           return;
         }
-
-        const q = await qr.json();
+        void refreshDailyQuota();
 
         // If already cached (hit in analyze endpoint), load directly
         if (q.status === "done" && q.metrics) {
@@ -344,35 +373,51 @@ export default function RepoDashboardPage() {
       cancelled = true;
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
-  }, [owner, repo, startPolling]);
+  }, [owner, repo, refreshDailyQuota, startPolling]);
 
   // ── Re-analyze button ──
-  function reanalyze() {
+  async function reanalyze() {
     if (pollRef.current) clearInterval(pollRef.current);
     setMetrics(null);
     setErrorMsg(null);
+    setAnalyzeErrorCode(null);
+    setAnalyzeErrorRemaining(null);
     setJobProgress(0);
     setLoadState("queuing");
 
-    fetch(`${API_BASE}/api/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ owner, repo, force: true }),
-    })
-      .then((r) => r.json())
-      .then((q) => {
-        if (q.status === "done" && q.metrics) {
-          setMetrics(q.metrics);
-          setLoadState("done");
-        } else if (q.jobId) {
-          startPolling(q.jobId);
-        } else {
-          setErrorMsg(q.error || "Failed to create analysis job. Please try again.");
-          setLoadState("error");
-        }
-      })
-      .catch(() => { setErrorMsg("Failed to start analysis."); setLoadState("error"); });
+    try {
+      const response = await fetch(`${API_BASE}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ owner, repo, force: true }),
+      });
+
+      const payload = await response.json().catch(() => ({})) as AnalyzeApiResponse;
+      if (!response.ok) {
+        setAnalyzeErrorCode(payload.code ?? null);
+        setAnalyzeErrorRemaining(typeof payload.remaining === "number" ? payload.remaining : null);
+        setErrorMsg(payload.error || `Failed to start analysis (HTTP ${response.status}).`);
+        setLoadState("error");
+        void refreshDailyQuota();
+        return;
+      }
+
+      if (payload.status === "done" && payload.metrics) {
+        setMetrics(payload.metrics);
+        setLoadState("done");
+      } else if (payload.jobId) {
+        startPolling(payload.jobId);
+      } else {
+        setErrorMsg(payload.error || "Failed to create analysis job. Please try again.");
+        setLoadState("error");
+      }
+
+      void refreshDailyQuota();
+    } catch {
+      setErrorMsg("Failed to start analysis.");
+      setLoadState("error");
+    }
   }
 
   function copyBadge() {
@@ -401,12 +446,13 @@ export default function RepoDashboardPage() {
         setRecErrorCode(payload.code ?? null);
         throw new Error(payload.error ?? `HTTP ${res.status}`);
       }
-      const data = await res.json() as { recommendations: IssueRecommendation[]; source: 'gemini' | 'rule-based' };
+      const data = await res.json() as IssueRecommendationsApiResponse;
       setIssueRecommendations(data.recommendations ?? []);
-      setRecSource(data.source);
+      setRecSource(data.source ?? null);
     } catch (err) {
       setRecError(err instanceof Error ? err.message : 'Failed to load recommendations.');
     } finally {
+      void refreshDailyQuota();
       setRecLoading(false);
     }
   }
@@ -441,6 +487,7 @@ export default function RepoDashboardPage() {
 
   const isLoading = loadState !== "done" && loadState !== "error";
   const reanalyzing = loadState === "queuing" || loadState === "polling";
+  const blockedAnalyzeRemaining = analyzeErrorRemaining ?? dailyQuota?.analyzeDaily.remaining ?? 0;
 
   // Parse AI advice into summary + recommendations
   let aiSummary = metrics?.aiAdvice ?? null;
@@ -917,6 +964,16 @@ export default function RepoDashboardPage() {
 
         <main className="dash-main">
 
+          {dailyQuota && (
+            <div style={{ marginBottom: 12, fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
+              Analyze left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+              {' · '}
+              Compare AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+              {' · '}
+              Issue AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.issueRecommendationsDaily?.remaining ?? '—'}</strong>
+            </div>
+          )}
+
           {/* ── LOADING / ERROR STATE ── */}
           {isLoading && (
             <div className="status-banner card">
@@ -944,7 +1001,43 @@ export default function RepoDashboardPage() {
             </div>
           )}
 
-          {loadState === "error" && (
+          {loadState === "error" && analyzeErrorCode === "ANALYZE_DAILY_LIMIT_EXCEEDED" && user?.loggedIn === false && (
+            <div className="card card-pad">
+              <div className="rec-locked">
+                <div className="rec-locked-bg">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div className="rec-skel" style={{ height: 13, width: '70%' }} />
+                      <div className="rec-skel" style={{ height: 10, width: '40%' }} />
+                      <div className="rec-skel" style={{ height: 10, width: '90%' }} />
+                      <div className="rec-skel" style={{ height: 10, width: '60%' }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="rec-locked-blur">
+                  <span style={{ fontSize: 28 }}>🔒</span>
+                  <p className="rec-locked-text">
+                    You have {blockedAnalyzeRemaining} analyze requests left today. Login for 20/day and unlock personalized issue recommendations, profile insights, and compare insights.
+                  </p>
+                  <a
+                    href={AUTH_URL}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      background: 'linear-gradient(135deg, var(--orange), #D94E00)',
+                      color: '#fff', borderRadius: 10, padding: '10px 22px',
+                      fontWeight: 700, fontSize: 13, textDecoration: 'none',
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 3-.4c1.02.005 2.05.14 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.7.83.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z" /></svg>
+                    Sign In with GitHub
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {loadState === "error" && !(analyzeErrorCode === "ANALYZE_DAILY_LIMIT_EXCEEDED" && user?.loggedIn === false) && (
             <div className="status-banner card">
               <span style={{ fontSize: 32 }}>⚠️</span>
               <h2>Analysis Failed</h2>
@@ -1329,6 +1422,12 @@ export default function RepoDashboardPage() {
               ) : user?.loggedIn === true ? (
                 /* Logged in */
                 <>
+                  {dailyQuota?.issueRecommendationsDaily && (
+                    <div style={{ marginBottom: 12, fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
+                      Personalized issue requests left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.issueRecommendationsDaily.remaining}</strong>
+                    </div>
+                  )}
+
                   {/* Pre-fetch CTA */}
                   {!issueRecommendations && !recLoading && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1380,8 +1479,18 @@ export default function RepoDashboardPage() {
                     </div>
                   )}
 
+                  {recErrorCode === 'ISSUE_RECOMMENDATIONS_DAILY_LIMIT_EXCEEDED' && (
+                    <div style={{
+                      background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)',
+                      borderRadius: 12, padding: '14px 18px', fontSize: 13, color: 'rgba(234,179,8,0.9)',
+                      display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8
+                    }}>
+                      🌅 Daily personalized issue recommendation limit reached (10/day). Quota resets at midnight UTC.
+                    </div>
+                  )}
+
                   {/* Generic error (not quota) */}
-                  {recError && recErrorCode !== 'QUOTA_EXCEEDED' && (
+                  {recError && recErrorCode !== 'QUOTA_EXCEEDED' && recErrorCode !== 'ISSUE_RECOMMENDATIONS_DAILY_LIMIT_EXCEEDED' && (
                     <p style={{ fontSize: 13, color: 'var(--red)', marginBottom: 8 }}>{recError}</p>
                   )}
 
