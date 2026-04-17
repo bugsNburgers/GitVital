@@ -40,9 +40,51 @@ export type SessionUser = {
   userId?: number | string;
 };
 
+export type DailyQuotaScope = 'user' | 'ip';
+
+export interface DailyQuotaBucket {
+  scope: DailyQuotaScope;
+  limit: number;
+  used: number;
+  remaining: number;
+  resetAt: string;
+}
+
+export interface DailyQuotaResponse {
+  loggedIn: boolean;
+  analyzeDaily: DailyQuotaBucket;
+  aiDaily: DailyQuotaBucket | null;
+  compareDaily: DailyQuotaBucket;
+  issueRecommendationsDaily: DailyQuotaBucket | null;
+}
+
 function isSessionUser(payload: unknown): payload is SessionUser {
   if (!payload || typeof payload !== 'object') return false;
   return typeof (payload as { loggedIn?: unknown }).loggedIn === 'boolean';
+}
+
+function isDailyQuotaBucket(payload: unknown): payload is DailyQuotaBucket {
+  if (!payload || typeof payload !== 'object') return false;
+  const value = payload as DailyQuotaBucket;
+  return (value.scope === 'user' || value.scope === 'ip')
+    && typeof value.limit === 'number'
+    && typeof value.used === 'number'
+    && typeof value.remaining === 'number'
+    && typeof value.resetAt === 'string';
+}
+
+function isDailyQuotaResponse(payload: unknown): payload is DailyQuotaResponse {
+  if (!payload || typeof payload !== 'object') return false;
+  const value = payload as Partial<DailyQuotaResponse>;
+  return typeof value.loggedIn === 'boolean'
+    && isDailyQuotaBucket(value.analyzeDaily)
+    && (value.aiDaily === undefined || value.aiDaily === null || isDailyQuotaBucket(value.aiDaily))
+    && isDailyQuotaBucket(value.compareDaily)
+    && (
+      value.issueRecommendationsDaily === undefined
+      || value.issueRecommendationsDaily === null
+      || isDailyQuotaBucket(value.issueRecommendationsDaily)
+    );
 }
 
 function delay(ms: number): Promise<void> {
@@ -71,6 +113,43 @@ export async function fetchSessionUser(apiBase: string = API_BASE, retries: numb
       }
 
       return payload;
+    } catch {
+      if (attempt < retries) {
+        await delay(250);
+        continue;
+      }
+      return null;
+    }
+  }
+
+  return null;
+}
+
+export async function fetchDailyQuota(apiBase: string = API_BASE, retries: number = 1): Promise<DailyQuotaResponse | null> {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(`${apiBase}/api/quota/daily`, {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) {
+        throw new Error(`/api/quota/daily failed with HTTP ${response.status}`);
+      }
+
+      const payload: unknown = await response.json();
+      if (!isDailyQuotaResponse(payload)) {
+        throw new Error('Invalid /api/quota/daily response shape.');
+      }
+      const value = payload as Partial<DailyQuotaResponse>;
+      return {
+        loggedIn: Boolean(value.loggedIn),
+        analyzeDaily: value.analyzeDaily as DailyQuotaBucket,
+        aiDaily: value.aiDaily ?? null,
+        compareDaily: value.compareDaily as DailyQuotaBucket,
+        issueRecommendationsDaily: value.issueRecommendationsDaily ?? null,
+      };
     } catch {
       if (attempt < retries) {
         await delay(250);
