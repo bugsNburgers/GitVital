@@ -270,10 +270,37 @@ function getSafeFrontendRedirectOrigin(value: string | undefined | null): string
 app.use(helmet());
 
 // 3b. CORS — allow ONLY our frontend to talk to this API
-app.use(cors({
-  origin: config.corsOrigins,   // Allow multiple origins (localhost, gitvital.com, etc)
+// We use a callback so we can normalise the incoming origin (strip trailing slash,
+// lowercase) before checking membership. The plain-array form does exact matching,
+// which silently drops the header for tiny variations and is hard to debug.
+const allowedOriginSet = new Set(
+  config.corsOrigins.map((o) => o.toLowerCase().replace(/\/$/, ''))
+);
+
+const corsOptions: cors.CorsOptions = {
+  origin: (incoming, callback) => {
+    // Allow requests with no Origin header (same-origin, curl, server-to-server)
+    if (!incoming) {
+      callback(null, true);
+      return;
+    }
+    const normalised = incoming.toLowerCase().replace(/\/$/, '');
+    if (allowedOriginSet.has(normalised)) {
+      callback(null, incoming); // echo back the exact incoming origin
+    } else {
+      console.warn('[CORS] Rejected origin:', incoming);
+      callback(new Error(`CORS: origin '${incoming}' is not allowed`));
+    }
+  },
   credentials: true,            // Allow cookies to be sent with requests
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  optionsSuccessStatus: 204,    // Some legacy browsers (IE11) choke on 204
+};
+
+app.use(cors(corsOptions));
+// Explicitly handle OPTIONS preflight for all routes so browsers never 404 on preflight
+app.options('*', cors(corsOptions));
 
 // 3c. JSON body parser — tells Express to understand JSON in request bodies
 // When the frontend sends { "url": "facebook/react" }, Express needs this to read it
@@ -2833,9 +2860,10 @@ app.get('/auth/github', (req: Request, res: Response) => {
   const referer = queryReturnTo || req.get('Referer') || config.frontendUrl;
   (req.session as any).returnTo = getSafeFrontendRedirectOrigin(referer);
 
-  const protocol = req.get('x-forwarded-proto') || req.protocol;
-  const host = req.get('host');
-  const redirect_uri = `${protocol}://${host}/auth/github/callback`;
+  // Use the configured callback URL — never build it dynamically from the request host.
+  // On Render, req.get('host') can return the internal hostname which won't match the
+  // GitHub OAuth App's registered callback URL, causing a redirect_uri_mismatch error.
+  const redirect_uri = config.github.callbackUrl;
 
   const params = new URLSearchParams({
     client_id: config.github.clientId,
@@ -2883,6 +2911,8 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
         client_id: config.github.clientId,
         client_secret: config.github.clientSecret,
         code,
+        // Must match exactly what was sent in the /auth/github step
+        redirect_uri: config.github.callbackUrl,
       }),
     });
 
@@ -3006,6 +3036,44 @@ app.get('/api/me', (req: Request, res: Response) => {
   } else {
     res.json({ loggedIn: false });
   }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/health/auth — Diagnose auth + Redis health
+// ─────────────────────────────────────────────────────────────
+// Returns: Redis ping, OAuth config presence, session state, callback URL in use.
+// Safe to expose — never returns secrets, only confirms they are set.
+app.get('/api/health/auth', async (req: Request, res: Response): Promise<void> => {
+  let redisPing: 'ok' | 'error' = 'error';
+  let redisSessionCount: number | null = null;
+  try {
+    const ping = await redis.ping();
+    redisPing = ping === 'PONG' ? 'ok' : 'error';
+    // Count active session keys as a rough health signal
+    const sessionKeys = await redis.keys('sess:*');
+    redisSessionCount = sessionKeys.length;
+  } catch {
+    redisPing = 'error';
+  }
+
+  const sessionUserId = (req.session as any)?.userId;
+  const sessionUsername = (req.session as any)?.githubUsername;
+
+  res.json({
+    redis: {
+      status: redisPing,
+      activeSessions: redisSessionCount,
+    },
+    oauth: {
+      clientIdSet: Boolean(config.github.clientId),
+      clientSecretSet: Boolean(config.github.clientSecret),
+      callbackUrl: config.github.callbackUrl,   // shows what redirect_uri will be sent to GitHub
+    },
+    session: {
+      active: Boolean(sessionUserId && sessionUsername),
+      username: sessionUsername || null,
+    },
+  });
 });
 
 app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> => {
