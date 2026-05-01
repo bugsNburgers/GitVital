@@ -300,7 +300,7 @@ const corsOptions: cors.CorsOptions = {
 
 app.use(cors(corsOptions));
 // Explicitly handle OPTIONS preflight for all routes so browsers never 404 on preflight
-app.options('*', cors(corsOptions));
+app.options('/(.*)', cors(corsOptions));
 
 // 3c. JSON body parser — tells Express to understand JSON in request bodies
 // When the frontend sends { "url": "facebook/react" }, Express needs this to read it
