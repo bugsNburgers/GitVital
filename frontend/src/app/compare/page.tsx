@@ -502,8 +502,6 @@ export default function RepoComparePage() {
     { label: "ISSUE_AGE_AVG_DAYS", metricKey: "avgIssueAgeDays", get: getIssueAge, fmt: v => `${v.toFixed(0)}d`, lowerBetter: true },
     { label: "UNRESPONDED_ISSUES%", metricKey: "unrespondedIssuePct", get: getUnresponded, fmt: v => `${v}%`, lowerBetter: true },
     { label: "CHURN_SCORE", metricKey: "churnScore", get: getChurnScore, lowerBetter: true },
-    { label: "AVG_WEEKLY_CHURN", metricKey: "avgWeeklyChurn", get: getAvgChurn, lowerBetter: true },
-    { label: "DANGER_FLAGS", get: getDangerFlags, lowerBetter: true },
   ];
 
   // For best/worst coloring per row
@@ -755,12 +753,10 @@ export default function RepoComparePage() {
         .ai-verdict-label { color: var(--text-secondary); }
         .ai-verdict-text { font-size: 13px; color: var(--text); line-height: 1.6; font-style: italic; }
         .ai-overall-card {
-          background: var(--bg-card); border: 1px solid rgba(255,94,0,0.22); border-radius: 14px;
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
           padding: 24px;
-          background-image: linear-gradient(135deg, rgba(255,94,0,0.06) 0%, transparent 55%);
           position: relative; overflow: hidden;
         }
-        .ai-overall-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,94,0,0.45), transparent); }
         .ai-overall-title { font-size: 14px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; display: flex; align-items: center; gap: 7px; }
         .ai-overall-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.65; }
         .ai-source-badge { font-family: var(--mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 6px; border: 1px solid; }
@@ -848,17 +844,17 @@ export default function RepoComparePage() {
               {dailyQuota && (
                 <>
                   <p style={{ marginTop: 6, fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
-                    Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                    Analyzes left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
                     {' · '}
                     {user?.loggedIn
                       ? (
                         <>
-                          AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                          AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
                         </>
                       )
                       : (
                         <>
-                          Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                          Compare AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
                         </>
                       )}
                   </p>
@@ -1097,11 +1093,6 @@ export default function RepoComparePage() {
               </div>
               {canUseCompareAi && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {aiInsights && (
-                    <span className={`ai-source-badge ${aiInsights.source === 'gemini' ? 'ai-source-gemini' : 'ai-source-rule'}`}>
-                      {aiInsights.source === 'gemini' ? '✦ Gemini' : 'Rule-Based'}
-                    </span>
-                  )}
                   <button
                     id="ai-compare-btn"
                     className="ai-cmp-btn"

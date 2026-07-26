@@ -787,7 +787,11 @@ export default function UserProfilePage() {
         .ai-error-msg { font-size: 13px; color: var(--red, #ef4444); padding: 12px 0; }
 
         .site-footer {
-          margin-top: 60px; padding: 30px 24px; border-top: 1px solid var(--border);
+          margin-top: 60px; padding: 30px 0; border-top: 1px solid var(--border);
+          width: 100%;
+        }
+        .site-footer-inner {
+          width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 0 var(--page-padding);
           display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;
         }
         .footer-left { display: flex; align-items: center; gap: 12px; }
@@ -946,12 +950,10 @@ export default function UserProfilePage() {
                                 <div className="profile-info">
                                     <div className="profile-name">
                                         <h1>{profile.displayName}</h1>
-                                        <span className="profile-tag">{profile.percentile}</span>
                                     </div>
                                     <p className="profile-title">{profile.bio || "GitHub developer profile with live contribution analytics."}</p>
 
                                     <div className="profile-meta">
-                                        <div className="meta-item"><span className="material-symbols-outlined">code</span> {profile.topLanguage || "Polyglot"}</div>
                                         {profile.location && (
                                             <div className="meta-item"><span className="material-symbols-outlined">location_on</span> {profile.location}</div>
                                         )}
@@ -1089,28 +1091,6 @@ export default function UserProfilePage() {
                                 </div>
                             </div>
 
-                            <div className="profile-section">
-                                <div className="section-header">
-                                    <h3 className="section-title"><span className="material-symbols-outlined">military_tech</span> Achievement Badges</h3>
-                                </div>
-
-                                {profile.badges.length === 0 ? (
-                                    <div className="section-empty">No badge data yet. Run profile analysis to generate achievements.</div>
-                                ) : (
-                                    <div className="achievements-grid">
-                                        {profile.badges.map((badge) => (
-                                            <div key={`${badge.title}-${badge.level}`} className={`badge-card ${toneClass(badge.tone)}`}>
-                                                <div className="badge-icon-wrapper">
-                                                    <span className="material-symbols-outlined">{badge.icon}</span>
-                                                </div>
-                                                <h4 className="badge-title">{badge.title}</h4>
-                                                <p className="badge-desc">{badge.desc}</p>
-                                                <span className="badge-level">{badge.level}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
 
                             {/* AI Profile Insights Section */}
                             <div className="profile-section">
@@ -1139,17 +1119,17 @@ export default function UserProfilePage() {
                                 {dailyQuota && (
                                     <div style={{ marginBottom: 10 }}>
                                         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
-                                            Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                                            Analyzes left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
                                             {' · '}
                                             {user?.loggedIn
                                                 ? (
                                                     <>
-                                                        AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                                                        AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
                                                     </>
                                                 )
                                                 : (
                                                     <>
-                                                        Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                                                        Compare AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
                                                     </>
                                                 )}
                                         </div>
@@ -1319,12 +1299,14 @@ export default function UserProfilePage() {
                     )}
                 </main>
 
-                <div className="site-footer">
-                    <div className="footer-left">
-                        <div className="footer-icon"><span className="material-symbols-outlined">pulse_alert</span></div>
-                        <span className="footer-text">© 2026 GitVital. Build with integrity.</span>
+                <footer className="site-footer">
+                    <div className="site-footer-inner">
+                        <div className="footer-left">
+                            <div className="footer-icon"><span className="material-symbols-outlined">pulse_alert</span></div>
+                            <span className="footer-text">© 2026 GitVital.</span>
+                        </div>
                     </div>
-                </div>
+                </footer>
             </div>
         </>
     );

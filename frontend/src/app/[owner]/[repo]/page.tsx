@@ -627,25 +627,24 @@ export default function RepoDashboardPage() {
 
         /* Loading / status banner */
         .status-banner {
-          background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
-          padding: 80px 36px; text-align: center; display: flex;
-          flex-direction: column; align-items: center; justify-content: center; gap: 20px;
-          min-height: 460px; width: 100%;
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+          padding: 48px 28px; text-align: center; display: flex;
+          flex-direction: column; align-items: center; gap: 16px;
         }
-        .status-banner h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
-        .status-banner p { font-size: 15px; color: var(--text-secondary); max-width: 480px; }
+        .status-banner h2 { font-size: 18px; font-weight: 700; }
+        .status-banner p { font-size: 14px; color: var(--text-muted); max-width: 420px; }
         .progress-bar-wrap {
-          width: 100%; max-width: 480px; height: 5px;
-          background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;
+          width: 100%; max-width: 400px; height: 4px;
+          background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden;
         }
         .progress-bar-fill {
-          height: 100%; border-radius: 3px;
+          height: 100%; border-radius: 2px;
           background: linear-gradient(90deg, var(--orange), var(--orange-light));
           transition: width 0.5s ease;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner {
-          width: 42px; height: 42px; border: 3px solid rgba(255,255,255,0.08);
+          width: 32px; height: 32px; border: 2px solid rgba(255,255,255,0.08);
           border-top-color: var(--orange); border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
@@ -746,7 +745,6 @@ export default function RepoDashboardPage() {
         .flag-title.info { color: var(--orange-light); }
         .flag-desc { font-size: 11px; line-height: 1.45; color: var(--text-muted); }
 
-        .ai-panel { border-left: 3px solid var(--orange); }
         .ai-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
         .ai-icon-box {
           width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
@@ -967,17 +965,17 @@ export default function RepoDashboardPage() {
           {dailyQuota && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
-                Analyze left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                Analyzes left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
                 {' · '}
                 {user?.loggedIn
                   ? (
                     <>
-                      AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                      AI usages left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
                     </>
                   )
                   : (
                     <>
-                      Compare AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                      Compare AI usages left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
                     </>
                   )}
               </div>
@@ -1103,11 +1101,11 @@ export default function RepoDashboardPage() {
                     {metrics?._meta && (
                       <span className="cache-pill" title={`Data fetched ${new Date(metrics._meta.fetchedAt).toLocaleString()}`}>
                         {metrics._meta.source === "db_fallback" ? (
-                          <><span className="dot db" /> DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
+                          <>DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
                         ) : metrics._meta.source === "redis_cache" ? (
-                          <><span className="dot cached" /> Cached ({metrics._meta.cachedAgeHours}h ago)</>
+                          <>Cached ({metrics._meta.cachedAgeHours}h ago)</>
                         ) : (
-                          <><span className="dot fresh" /> Just Fetched</>
+                          <>Just Fetched</>
                         )}
                       </span>
                     )}
