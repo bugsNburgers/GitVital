@@ -30,22 +30,10 @@ export default function GitvitalLanding() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/leaderboard`)
-      .then(res => res.json())
-      .then((data) => {
-        const totalDevelopers = Number(data?.stats?.totalDevelopers);
-        const totalRepos = Number(data?.stats?.totalRepos);
-
-        if (Number.isFinite(totalDevelopers) && Number.isFinite(totalRepos)) {
-          setLandingStats({
-            totalDevelopers: Math.max(0, Math.floor(totalDevelopers)),
-            totalRepos: Math.max(0, Math.floor(totalRepos)),
-          });
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to fetch landing stats:', err);
-      });
+    setLandingStats({
+      totalDevelopers: 120,
+      totalRepos: 450,
+    });
   }, []);
 
   const formatCompactStat = (value: number): string => {
@@ -1937,14 +1925,14 @@ export default function GitvitalLanding() {
               <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">Shreyas G Shetty · @shreyasgshetty</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Health metrics hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17</div></div>
 
               <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">Srujan · @SrujanJamthnalli</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">Shreyas G Shetty · @shreyasgshetty</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Health metrics hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17</div></div>
             </div>
           </div>

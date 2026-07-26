@@ -129,7 +129,7 @@ async function recomputeDeveloperScoresAndBadges(): Promise<void> {
     try {
         const { recomputedUsers, manualReviewAlerts } = await recomputeAllDeveloperScores(startedAt);
         console.log(
-            `[CRON 03:00] Score recompute finished. users=${recomputedUsers}, reviewAlerts=${manualReviewAlerts}. Leaderboard materialized view refreshed.`,
+            `[CRON 03:00] Score recompute finished. users=${recomputedUsers}, reviewAlerts=${manualReviewAlerts}.`,
         );
     } catch (err) {
         console.error('[CRON 03:00] Developer score recomputation failed:', err);
@@ -145,7 +145,7 @@ const recomputeTask = cron.schedule('0 3 * * *', () => {
 });
 
 console.log('⏱️ Scheduled referesh cron started');
-console.log('   Score recompute + leaderboard refresh: daily at 03:00 server time');
+console.log('   Score recompute: daily at 03:00 server time');
 
 async function gracefulShutdown(signal: string): Promise<void> {
     console.log(`\n⚠️ Cron service received ${signal}. Shutting down gracefully...`);

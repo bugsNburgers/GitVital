@@ -806,7 +806,6 @@ export default function RepoComparePage() {
             <ul className="nav-links">
               <li><a href="/?focus=analyze">Analyze</a></li>
               <li><a href="/compare" className="active">Compare</a></li>
-              <li><a href="/leaderboard">Leaderboard</a></li>
               <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
             </ul>
             <div className="cmp-nav-actions">

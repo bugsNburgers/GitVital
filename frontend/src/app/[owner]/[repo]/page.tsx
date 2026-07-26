@@ -924,7 +924,6 @@ export default function RepoDashboardPage() {
               <div style={{ display: "flex", alignItems: "center", gap: "16px", marginRight: "12px" }}>
                 <a href="/?focus=analyze" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Analyze</a>
                 <a href="/compare" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Compare</a>
-                <a href="/leaderboard" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Leaderboard</a>
                 <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Docs</a>
               </div>
               {/* Stars / Forks from real data */}

@@ -104,23 +104,7 @@ function SkeletonProfile() {
   );
 }
 
-// ── Leaderboard skeleton ─────────────────────────────────────────────────────
-function SkeletonLeaderboard() {
-  return (
-    <div style={{ padding: "84px 24px 60px", maxWidth: 1200, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* Hero */}
-      <div className="skeleton skeleton-block" style={{ height: 80 }} />
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
-        {[1, 2, 3].map(i => (
-          <div key={i} className="skeleton skeleton-block" style={{ height: 80 }} />
-        ))}
-      </div>
-      {/* Table */}
-      <div className="skeleton skeleton-block" style={{ height: 360 }} />
-    </div>
-  );
-}
+
 
 // ── Compare skeleton ─────────────────────────────────────────────────────────
 function SkeletonCompare() {
@@ -151,7 +135,6 @@ function SkeletonCompare() {
 // ── Route → skeleton mapping ─────────────────────────────────────────────────
 function SkeletonBody({ to }: { to: string }) {
   if (to === "/" || to === "") return <SkeletonLanding />;
-  if (to.startsWith("/leaderboard")) return <SkeletonLeaderboard />;
   if (to.startsWith("/compare")) return <SkeletonCompare />;
   // If the path has exactly 1 segment → profile page
   const segments = to.replace(/^\//, "").split("/").filter(Boolean);
@@ -320,13 +303,7 @@ function buildSkeletonHTML(to: string): string {
     </div>`;
   }
 
-  if (base === "leaderboard") {
-    return `<div style="padding:84px 24px 60px;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:24px;">
-      ${sk("100%", 80)}
-      ${grid(3, [sk("100%", 80), sk("100%", 80), sk("100%", 80)], 16)}
-      ${sk("100%", 360)}
-    </div>`;
-  }
+
 
   if (base === "compare") {
     return `<div style="padding:40px 24px 120px;max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">

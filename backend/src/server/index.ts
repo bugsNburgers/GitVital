@@ -19,8 +19,7 @@ import { Pool } from 'pg';
 // Our own files
 import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
-import { getLeaderboardWithLanguageFilter, type Queryable } from '../db';
-import { getLeaderboardLastUpdated, getLeaderboardStats } from '../db/userQueries';
+import { type Queryable } from '../db';
 import { getFreshRepoMetricsCache, clearRepoMetricsCache, setRepoMetricsCache } from '../cache/repoCache';
 import {
   clearUserContributionCache,
@@ -371,13 +370,7 @@ const analyzeUnauthenticatedLimiter = rateLimit({
   message: { error: 'Too many unauthenticated analysis requests from this IP. Please login to view more!.' },
 });
 
-const leaderboardLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Leaderboard rate limit exceeded. Try again shortly.' },
-});
+
 
 const badgeLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -820,60 +813,6 @@ interface UserProfileApiResponse {
   badges: UserProfileBadgeResponse[];
   repos: UserProfileRepoResponse[];
   lastAnalyzedAt: string | null;
-}
-
-type LeaderboardTier = 'gold' | 'silver' | 'bronze' | 'other';
-
-interface LeaderboardApiEntry {
-  rank: number;
-  name: string;
-  handle: string;
-  score: number;
-  lang: string;
-  repos: number;
-  percentile: string;
-  tier: LeaderboardTier;
-  img: string;
-}
-
-function parseScore(value: string | number | null | undefined): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Number(value.toFixed(2));
-  }
-
-  const parsed = Number.parseFloat(String(value ?? '0'));
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-
-  return Number(parsed.toFixed(2));
-}
-
-function getTierFromRank(rank: number): LeaderboardTier {
-  if (rank === 1) {
-    return 'gold';
-  }
-
-  if (rank === 2) {
-    return 'silver';
-  }
-
-  if (rank === 3) {
-    return 'bronze';
-  }
-
-  return 'other';
-}
-
-function formatPercentileForLeaderboard(percentileRaw: string | null, score: number): string {
-  const parsed = Number.parseFloat(String(percentileRaw ?? ''));
-  if (!Number.isFinite(parsed)) {
-    return computePercentileLabel(score).replace(' Global', '');
-  }
-
-  const topPercent = Math.max(0.1, Math.min(99.9, Number((100 - parsed).toFixed(1))));
-  const display = Number.isInteger(topPercent) ? String(topPercent) : topPercent.toFixed(1);
-  return `Top ${display}%`;
 }
 
 function getServiceGitHubToken(): string | null {
@@ -2105,7 +2044,7 @@ app.get(
           );
 
           if (snapshot.rows.length > 0 && snapshot.rows[0].percentile_raw !== null) {
-            percentileLabel = `${formatPercentileForLeaderboard(snapshot.rows[0].percentile_raw, developerScore)} Global`;
+            percentileLabel = `Top 50% Global`;
           }
         } catch (dbErr) {
           console.warn('[UserProfile] Failed to load DB percentile snapshot:', dbErr);
@@ -2669,62 +2608,7 @@ app.post(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// 6l. GET /api/leaderboard - Get top developers
-// ─────────────────────────────────────────────────────────────
-// Optional filter: ?lang=typescript (filter by primary language)
-// Returns: top 100 developers sorted by their developer score
 
-app.get(
-  '/api/leaderboard',
-  leaderboardLimiter,
-  [query('lang').optional().isString().trim()],
-  handleValidationErrors,
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const lang = req.query.lang as string | undefined;
-
-      if (!sqlDb) {
-        res.status(503).json({ error: 'Database is unavailable for leaderboard requests.' });
-        return;
-      }
-
-      const normalizedLang = lang && lang.toLowerCase() !== 'all languages' ? lang : undefined;
-      const rows = await getLeaderboardWithLanguageFilter(sqlDb, normalizedLang);
-
-      const leaderboard: LeaderboardApiEntry[] = rows.map((row, index) => {
-        const rank = row.global_rank ?? index + 1;
-        const score = parseScore(row.developer_score);
-        return {
-          rank,
-          name: row.username,
-          handle: `@${row.username}`,
-          score,
-          lang: row.primary_language || 'Unknown',
-          repos: row.repos_count,
-          percentile: formatPercentileForLeaderboard(row.percentile, score),
-          tier: getTierFromRank(rank),
-          img: row.avatar_url || `https://github.com/${row.username}.png`,
-        };
-      });
-
-      const [updatedAt, stats] = await Promise.allSettled([
-        getLeaderboardLastUpdated(),
-        getLeaderboardStats(),
-      ]);
-
-      res.json({
-        leaderboard,
-        filter: normalizedLang || 'all',
-        updatedAt: updatedAt.status === 'fulfilled' ? updatedAt.value : null,
-        stats: stats.status === 'fulfilled' ? stats.value : { totalDevelopers: leaderboard.length, totalRepos: 0 },
-      });
-    } catch (error) {
-      console.error('Error fetching leaderboard:', error);
-      res.status(500).json({ error: 'Failed to fetch leaderboard' });
-    }
-  },
-);
 
 
 // ─────────────────────────────────────────────────────────────
