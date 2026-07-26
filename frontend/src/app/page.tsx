@@ -457,10 +457,9 @@ export default function GitvitalLanding() {
     font-size: 13.5px;
     font-weight: 450;
     padding: 5px 11px;
-    border-radius: 6px;
-    transition: color 0.15s, background 0.15s;
+    transition: color 0.15s;
   }
-  .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .nav-links a:hover { color: var(--text); background: none; }
   .nav-right { display: flex; align-items: center; gap: 8px; justify-self: end; }
   .btn-ghost {
     font-family: var(--font);
@@ -677,35 +676,6 @@ export default function GitvitalLanding() {
     animation: heroCursorBlink 1s step-end infinite;
   }
   @keyframes heroCursorBlink { 50% { opacity: 0; } }
-    padding: 13px 16px;
-    font-family: var(--mono);
-    font-size: 13px;
-    color: var(--text);
-    min-width: 0;
-  }
-  .hero-input-wrap input::placeholder { color: var(--text-muted); }
-  .hero-input-wrap button {
-    font-family: var(--font);
-    font-size: 13px;
-    font-weight: 600;
-    color: #fff;
-    background: var(--violet);
-    border: none;
-    padding: 10px 18px;
-    margin: 4px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.15s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .hero-input-wrap button:hover { background: #D94E00; }
-  .hero-limit-note {
-    font-size: 11.5px;
-    color: var(--text-muted);
-    font-family: var(--mono);
-    margin-bottom: 52px;
-  }
 
   /* ─── HERO MOCKUP CARD ─── */
   .hero-card {
