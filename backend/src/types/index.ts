@@ -1,4 +1,4 @@
-// src/types/index.ts — the single source of truth for all data shapes
+// src/types/index.ts - the single source of truth for all data shapes
 
 export interface CommitNode {
   committedDate: string;

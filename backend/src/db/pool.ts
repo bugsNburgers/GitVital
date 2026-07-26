@@ -1,4 +1,4 @@
-// src/db/pool.ts — Shared PostgreSQL connection pool (singleton)
+// src/db/pool.ts - Shared PostgreSQL connection pool (singleton)
 // Used by both the API server AND the worker process.
 // Gracefully returns null when DATABASE_URL is not set.
 
@@ -7,7 +7,7 @@ import { Pool } from 'pg';
 function createPool(): Pool | null {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) {
-    console.warn('[DB] DATABASE_URL is not set — DB persistence disabled.');
+    console.warn('[DB] DATABASE_URL is not set - DB persistence disabled.');
     return null;
   }
   const sslRequired = url.includes('sslmode=require');

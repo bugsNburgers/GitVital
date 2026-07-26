@@ -1,4 +1,4 @@
-// src/metrics/healthScore.ts — PURE FUNCTION
+// src/metrics/healthScore.ts - PURE FUNCTION
 // Input:  { activityMetrics, contributorMetrics (BusFactorResult), prMetrics, issueMetrics, churnMetrics }
 // Output: number (0-100, 1 decimal place)
 // No database calls. No API calls. No side effects.
@@ -159,7 +159,7 @@ function computeChurnScore(
  *
  * Special null overrides (Prompt 6.1):
  *   - PR null  → fixed score of 50 (neutral, do NOT penalize)
- *   - Issue null → fixed score of 75 (slightly positive — clean tracker)
+ *   - Issue null → fixed score of 75 (slightly positive - clean tracker)
  *   - All other nulls → redistribute weight proportionally
  *
  * Final score: clamp to [0, 100], round to 1 decimal place.

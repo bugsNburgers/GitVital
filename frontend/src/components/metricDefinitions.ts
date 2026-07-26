@@ -71,7 +71,7 @@ export const METRIC_INFO: Record<string, MetricDefinition> = {
     name: 'Open Issues',
     description: 'Current number of open issues in the repository.',
     calculation:
-      'Fetched from GitHub. High count isn\'t always bad — large active projects naturally have more.',
+      'Fetched from GitHub. High count isn\'t always bad - large active projects naturally have more.',
   },
 
   avgIssueAgeDays: {

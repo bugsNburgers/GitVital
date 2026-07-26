@@ -18,6 +18,38 @@ export default function GitvitalLanding() {
     avgMs: 0,
   });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [heroOutVisible, setHeroOutVisible] = useState(false);
+  const [animatedScore, setAnimatedScore] = useState(0);
+  const [animatedBus, setAnimatedBus] = useState(0);
+  const [animatedPr, setAnimatedPr] = useState(0);
+  const [animatedIssues, setAnimatedIssues] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setHeroOutVisible(true);
+      const duration = 1200;
+      const start = performance.now();
+
+      const animate = (now: number) => {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3);
+
+        setAnimatedScore(Math.round(82 * ease));
+        setAnimatedBus(Math.round(7 * ease));
+        setAnimatedPr(Number((1.8 * ease).toFixed(1)));
+        setAnimatedIssues(Math.round(142 * ease));
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+
+      requestAnimationFrame(animate);
+    }, 2000);
+
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/me`, { credentials: 'include' })
@@ -30,22 +62,10 @@ export default function GitvitalLanding() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/leaderboard`)
-      .then(res => res.json())
-      .then((data) => {
-        const totalDevelopers = Number(data?.stats?.totalDevelopers);
-        const totalRepos = Number(data?.stats?.totalRepos);
-
-        if (Number.isFinite(totalDevelopers) && Number.isFinite(totalRepos)) {
-          setLandingStats({
-            totalDevelopers: Math.max(0, Math.floor(totalDevelopers)),
-            totalRepos: Math.max(0, Math.floor(totalRepos)),
-          });
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to fetch landing stats:', err);
-      });
+    setLandingStats({
+      totalDevelopers: 120,
+      totalRepos: 450,
+    });
   }, []);
 
   const formatCompactStat = (value: number): string => {
@@ -236,26 +256,23 @@ export default function GitvitalLanding() {
     }
   };
 
+  const focusAnalyzeInput = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const input = document.getElementById('heroInput') as HTMLInputElement | null;
+    if (input) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input.focus();
+    }
+  };
+
   const handleKeydown = (e: React.KeyboardEvent<HTMLInputElement>, inputId: string) => {
     if (e.key === 'Enter') analyzeRepo(inputId);
   };
 
-  const focusAnalyzeInput = () => {
-    const input = document.getElementById('heroInput') as HTMLInputElement | null;
-    if (!input) return;
-    input.focus();
-    input.select();
-  };
 
-  useEffect(() => {
-    if (searchParams.get('focus') !== 'analyze') return;
-    const input = document.getElementById('heroInput') as HTMLInputElement | null;
-    if (!input) return;
-    setTimeout(() => {
-      input.focus();
-      input.select();
-    }, 80);
-  }, [searchParams]);
 
   return (
     <>
@@ -282,9 +299,10 @@ export default function GitvitalLanding() {
     --yellow: #eab308;
     --yellow-dim: rgba(234,179,8,0.12);
     --violet: #FF5E00;
+    --orange: #FF5E00;
     --orange-light: #FFA066;
     --orange-dim: rgba(255,94,0,0.15);
-    --font: 'Geist', system-ui, sans-serif;
+    --font: 'Geomini', system-ui, sans-serif;
     --mono: 'Geist Mono', monospace;
   }
 
@@ -383,18 +401,18 @@ export default function GitvitalLanding() {
     position: fixed;
     top: 0; left: 0; right: 0;
     z-index: 100;
-    height: 58px;
+    height: 64px;
     display: flex;
     align-items: center;
-    padding: 0 24px;
-    background: rgba(8,9,9,0.75);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    padding: 0 32px;
+    background: rgba(8,9,9,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border);
   }
   .nav-inner {
     width: 100%;
-    max-width: 1120px;
+    max-width: 1440px;
     margin: 0 auto;
     display: grid;
     grid-template-columns: 1fr auto 1fr;
@@ -498,146 +516,167 @@ export default function GitvitalLanding() {
     position: relative;
     overflow: hidden;
   }
-  .hero-glow {
-    position: absolute;
-    top: -20%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 900px;
-    height: 600px;
-    background: radial-gradient(ellipse at center, rgba(251,54,64,0.15) 0%, transparent 70%);
-    pointer-events: none;
-    transition: background 0.8s ease;
-  }
-  .hero.healthy .hero-glow {
-    background: radial-gradient(ellipse at center, rgba(34,197,94,0.15) 0%, transparent 70%);
-  }
-  .hero-glow-2 {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 700px;
-    height: 300px;
-    background: radial-gradient(ellipse at center, rgba(251,54,64,0.06) 0%, transparent 70%);
-    pointer-events: none;
-    transition: background 0.8s ease;
-  }
-  .hero.healthy .hero-glow-2 {
-    background: radial-gradient(ellipse at center, rgba(34,197,94,0.06) 0%, transparent 70%);
-  }
+  .hero-glow, .hero-glow-2 { display: none !important; }
   .hero-inner {
     position: relative;
     z-index: 1;
-    text-align: center;
-    max-width: 780px;
+    text-align: left;
+    max-width: 1160px;
     width: 100%;
-  }
-  .pill-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11.5px;
-    font-weight: 500;
-    color: #FFB380;
-    background: rgba(255,94,0,0.1);
-    border: 1px solid rgba(255,94,0,0.25);
-    border-radius: 20px;
-    padding: 4px 12px;
-    margin-bottom: 28px;
-    letter-spacing: 0.01em;
-  }
-  .pill-badge span { width:5px; height:5px; border-radius:50%; background: var(--orange-light); display:inline-block; }
-  .hero h1 {
-    font-size: clamp(40px, 6.5vw, 76px);
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    line-height: 1.0;
-    color: var(--text);
-    margin-bottom: 22px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.12em;
-  }
-  .hero-title-line {
-    display: block;
-  }
-  .hero-title-status {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    line-height: 1;
-  }
-  .hero h1 .accent {
-    background: linear-gradient(135deg, #FFB380 0%, #FFC7A6 50%, #FFDACC 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .status-scroller {
+    margin: 0 auto;
     display: grid;
-    height: 1.15em;
-    min-width: 8ch;
-    overflow: hidden;
-    text-align: center;
-  }
-  .status-scroller-inner {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25em;
-    transform: translateY(0);
-  }
-  .status-scroller-inner.animating {
-    animation: scrollDownAnim 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-  }
-  @keyframes scrollDownAnim {
-    0% { transform: translateY(calc(-1.15em - 0.25em)); }
-    100% { transform: translateY(0); }
-  }
-  .word {
-    height: 1.15em;
-    display: flex;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 48px;
     align-items: center;
-    justify-content: center;
-    width: 100%;
-    line-height: 1;
-    padding-bottom: 0.1em;
   }
-  .word.dying {
-    color: #fb3640;
+
+  @media (max-width: 960px) {
+    .hero-inner {
+      grid-template-columns: 1fr;
+      gap: 36px;
+    }
   }
-  .word.healthy {
-    color: var(--green);
+
+  .hero-v2-left { min-width: 0; }
+  .hero-v2-right { min-width: 0; }
+
+  .hero-v2-block { margin-bottom: 22px; }
+  .hero-v2-line { display: flex; gap: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 13.5px; }
+  .hero-v2-prompt { color: var(--text-muted); flex-shrink: 0; }
+  .hero-v2-cmd { color: var(--text); }
+  .hero-v2-out-dim { color: var(--text-muted); }
+  .hero-v2-out-amber { color: var(--orange-light); }
+  .hero-v2-out-green { color: var(--green); }
+  .hero-v2-out-red { color: var(--red); }
+  .hero-v2-out-faint { color: var(--text-muted); font-size: 12px; }
+
+  .hero-v2-h1 {
+    font-family: var(--font);
+    font-weight: 600;
+    font-size: clamp(22px, 3.4vw, 32px);
+    color: var(--text);
+    line-height: 1.45;
+    margin: 22px 0 18px;
+    letter-spacing: -0.01em;
   }
-  .hero-sub {
-    font-size: clamp(14px, 1.3vw, 17px);
-    line-height: 1.65;
+  .hero-v2-h1 .strike {
+    position: relative;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-block;
+  }
+  .hero-v2-h1 .strike::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 52%;
+    height: 2px;
+    background: var(--red);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    width: 0%;
+    animation: strikeLineDraw 0.85s cubic-bezier(0.65, 0, 0.35, 1) 0.3s forwards;
+  }
+  @keyframes strikeLineDraw {
+    from { width: 0%; }
+    to   { width: 100%; }
+  }
+  .hero-v2-h1 .arrow { color: var(--text-muted); }
+  .hero-v2-h1 .swap { color: var(--orange) !important; }
+
+  .hero-v2-sub {
+    font-family: "Jost", sans-serif !important;
+    font-size: clamp(14.5px, 1.3vw, 17.5px);
+    line-height: 1.7;
     color: var(--text-secondary);
-    max-width: 520px;
-    margin: 0 auto 36px;
-    font-weight: 400;
+    max-width: 540px;
+    margin-bottom: 26px;
   }
-  .hero-input-wrap {
+  .hero-v2-sub b { color: var(--text); font-weight: 600; }
+
+  .hero-v2-shell {
     display: flex;
     align-items: center;
-    max-width: 540px;
-    margin: 0 auto 12px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    gap: 10px;
+    max-width: 520px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 13px 0;
+    margin-bottom: 10px;
   }
-  .hero-input-wrap:focus-within {
-    border-color: rgba(255,94,0,0.5);
-    box-shadow: 0 0 0 3px rgba(255,94,0,0.1);
-  }
-  .hero-input-wrap input {
+  .hero-v2-shell .p { color: var(--orange) !important; flex-shrink: 0; font-family: var(--mono); font-size: 14px; font-weight: 600; }
+  .hero-v2-shell input {
     flex: 1;
     background: none;
-    border: none;
+    border: 0;
     outline: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    caret-color: var(--orange);
+  }
+  .hero-v2-shell input::placeholder { color: var(--text-muted); }
+  .hero-v2-shell button {
+    background: none;
+    border: 0;
+    color: var(--orange) !important;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+  .hero-v2-shell button:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .hero-v2-shell button::before { content: "↵ "; color: var(--text-muted); }
+
+  .hero-v2-hint { color: var(--text-muted); font-size: 12px; font-family: var(--mono); margin-bottom: 0; }
+
+  .hero-v2-out {
+    border-left: 2px solid var(--border);
+    padding-left: 18px;
+    text-align: left;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+  }
+  .hero-v2-out.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .hero-v2-out .path { color: var(--text-secondary); margin-bottom: 14px; font-family: var(--mono); font-size: 13.5px; }
+  .hero-v2-out .path b { color: var(--text); }
+
+  .hero-v2-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 50px;
+    gap: 12px;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+    font-family: var(--mono);
+  }
+  .hero-v2-row .k { color: var(--text-muted); }
+  .hero-v2-row .bar { height: 4px; background: rgba(255,255,255,0.06); position: relative; border-radius: 2px; overflow: hidden; }
+  .hero-v2-row .bar i { position: absolute; inset: 0; border-radius: 2px; }
+  .hero-v2-row .v { text-align: right; color: var(--text-secondary); font-weight: 600; }
+
+  .hero-v2-score-line { margin: 16px 0 16px; font-size: 14px; font-family: var(--mono); }
+  .hero-v2-score-line .big { color: var(--text); font-weight: 700; font-size: 17px; }
+
+  .hero-v2-flag-line { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--border); font-family: var(--mono); font-size: 12.5px; }
+  .hero-v2-flag-line .tag { color: var(--red); font-weight: 600; }
+  .hero-v2-flag-line .detail { color: var(--text-secondary); }
+
+  .hero-v2-cursor {
+    display: inline-block;
+    width: 7px;
+    height: 15px;
+    background: var(--orange);
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: heroCursorBlink 1s step-end infinite;
+  }
+  @keyframes heroCursorBlink { 50% { opacity: 0; } }
     padding: 13px 16px;
     font-family: var(--mono);
     font-size: 13px;
@@ -763,19 +802,13 @@ export default function GitvitalLanding() {
   section { padding: 96px 24px; }
   .section-inner { max-width: 1120px; margin: 0 auto; }
   .section-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    display: inline-block;
     font-size: 11px;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 4px 12px;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
   }
   .section-h2 {
     font-size: clamp(28px, 3.5vw, 42px);
@@ -1512,9 +1545,8 @@ export default function GitvitalLanding() {
             <img src="/gitvital_logo_fixed.svg" alt="GitVital" className="logo-mark" />
           </a>
           <ul className="nav-links">
-            <li><a href="/?focus=analyze" onClick={() => setTimeout(focusAnalyzeInput, 40)}>Analyze</a></li>
+            <li><a href="#heroInput" onClick={focusAnalyzeInput}>Analyze</a></li>
             <li><a href="/compare">Compare</a></li>
-            <li><a href="/leaderboard">Leaderboard</a></li>
             <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
           </ul>
           <div className="nav-right">
@@ -1547,9 +1579,8 @@ export default function GitvitalLanding() {
 
       {/* Mobile drawer - nav links only, no login */}
       <div className={`mobile-drawer${menuOpen ? ' open' : ''}`}>
-        <a href="/?focus=analyze" onClick={() => { setMenuOpen(false); setTimeout(focusAnalyzeInput, 40); }}>Analyze</a>
+        <a href="#heroInput" onClick={(e) => { setMenuOpen(false); focusAnalyzeInput(e); }}>Analyze</a>
         <a href="/compare" onClick={() => setMenuOpen(false)}>Compare</a>
-        <a href="/leaderboard" onClick={() => setMenuOpen(false)}>Leaderboard</a>
         <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
         {user?.loggedIn ? (
           <a href={`/${user.githubUsername}`} onClick={() => setMenuOpen(false)} style={{ color: 'var(--orange)' }}>View Profile</a>
@@ -1559,116 +1590,72 @@ export default function GitvitalLanding() {
       </div>
 
 
-      <section className={`hero ${isHealthy ? 'healthy' : ''}`}>
-        <div className="hero-glow"></div>
-        <div className="hero-glow-2"></div>
+      <section className="hero">
         <div className="hero-inner">
-          <h1>
-            <span className="hero-title-line">Is your GitHub repo</span>
-            <span className="hero-title-status">
-              <span className="status-scroller">
-                <span className={`status-scroller-inner ${animKey > 0 ? 'animating' : ''}`} key={animKey}>
-                  <span className={`word ${isHealthy ? 'healthy' : 'dying'}`}>
-                    {isHealthy ? 'Healthy?' : 'Dying?'}
-                  </span>
-                  <span className={`word ${isHealthy ? 'dying' : 'healthy'}`}>
-                    {isHealthy ? 'Dying?' : 'Healthy?'}
-                  </span>
-                </span>
-              </span>
-            </span>
-          </h1>
-          <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics Bus factor, PR speed, Issue backlog, Activity trend, Contributor spread & Code churn -- in under 60 seconds.</p>
+          <div className="hero-v2-left">
 
-          <div className="hero-input-wrap">
-            <input type="text" placeholder="github.com/facebook/react" id="heroInput" onKeyDown={(e) => handleKeydown(e, 'heroInput')} />
-            <button onClick={() => analyzeRepo('heroInput')}>Analyze →</button>
+            <h1 className="hero-v2-h1">
+              <span className="strike">github.com/facebook/react</span>
+              <span className="arrow"> → </span><br />
+              <span className="swap">gitvital.com/facebook/react</span>
+            </h1>
+
+            <p className="hero-v2-sub">
+              Swap <b>github.com</b> for <b>gitvital.com</b> in any public repo URL. Get a health score, bus factor, PR turnaround, and risk flags written in plain English - not another dashboard to learn.
+            </p>
+
+            <div className="hero-v2-shell">
+              <span className="p">gitvital.com/</span>
+              <span className="hero-v2-cursor"></span>
+              <input
+                type="text"
+                placeholder="owner/repo or full github url"
+                spellCheck={false}
+                id="heroInput"
+                onKeyDown={(e) => handleKeydown(e, 'heroInput')}
+              />
+              <button onClick={() => analyzeRepo('heroInput')}>analyze</button>
+            </div>
+            <div className="hero-v2-hint">scans last 1,000 commits · 500 PRs · 500 issues - public repos only</div>
           </div>
-          <p className="hero-limit-note">Analyzes last 1,000 commits · 500 PRs · 500 issues · Public repos only</p>
 
+          <div className="hero-v2-right">
+            <div className={`hero-v2-out ${heroOutVisible ? 'visible' : ''}`}>
+              <div className="path"><b>facebook/react</b> <span className="hero-v2-out-faint">- example output</span></div>
 
-          <div className="hero-card fade-in" id="heroCard">
-            <div className="card-topbar">
-              <div className="card-dots">
-                <span className="dot-r"></span>
-                <span className="dot-y"></span>
-                <span className="dot-g"></span>
+              <div className="hero-v2-score-line">health score <span className="big hero-v2-out-green">{animatedScore}</span> <span className="hero-v2-out-dim">/ 100 - actively maintained</span></div>
+
+              <div className="hero-v2-row">
+                <span className="k">bus_factor</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '78%' : '0%', background: 'var(--green)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.1s' }}></i></div>
+                <span className="v">{animatedBus}</span>
               </div>
-              <div className="card-title">gitvital — repo analysis</div>
-              <div style={{ width: '52px' }}></div>
-            </div>
-            <div className="card-body">
-              <div className="repo-header">
-                <div>
-                  <div className="repo-name">facebook/react</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', fontFamily: 'var(--mono)' }}>Analyzed 1,000 commits · last 12 months</div>
-                </div>
-                <div>
-                  <div className="score-badge">88</div>
-                  <div className="score-label">/ 100 health</div>
-                </div>
+              <div className="hero-v2-row">
+                <span className="k">pr_speed</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '64%' : '0%', background: 'var(--green)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.2s' }}></i></div>
+                <span className="v">{animatedPr}d</span>
               </div>
-              <div className="score-bar-wrap">
-                <div className="score-bar-track"><div className="score-bar-fill"></div></div>
+              <div className="hero-v2-row">
+                <span className="k">code_churn</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '41%' : '0%', background: 'var(--orange)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.3s' }}></i></div>
+                <span className="v">med</span>
               </div>
-              <div className="metrics-row">
-                <div className="metric-pill green">
-                  <div className="mp-val">12</div>
-                  <div className="mp-label">Bus Factor</div>
-                </div>
-                <div className="metric-pill green">
-                  <div className="mp-val">1.2d</div>
-                  <div className="mp-label">PR Speed</div>
-                </div>
-                <div className="metric-pill green">
-                  <div className="mp-val">+5%</div>
-                  <div className="mp-label">Velocity</div>
-                </div>
-                <div className="metric-pill yellow">
-                  <div className="mp-val">642</div>
-                  <div className="mp-label">Open Issues</div>
-                </div>
+              <div className="hero-v2-row">
+                <span className="k">issue_backlog</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '82%' : '0%', background: 'var(--red)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.4s' }}></i></div>
+                <span className="v">{animatedIssues}</span>
               </div>
-            </div>
-            <div className="flags-row">
-              <span className="flag success">✅ Healthy Team</span>
-              <span className="flag success">⚡ Fast Reviews</span>
-              <span className="flag warn">⚠️ Large Backlog</span>
-              <span className="flag success">📈 Growing Activity</span>
+
+              <div className="hero-v2-flag-line">
+                <span className="tag">⚠ risk flag</span> <span className="detail">- ISSUE BACKLOG GROWING: {animatedIssues} open, +18 this week, triage hasn't kept pace</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
 
-      <div className="logos-section">
-        <div className="logos-label">Built with</div>
-        <div className="marquee-wrap">
-          <div className="marquee-track" id="marqueeTrack">
-            <div className="logo-item">⬡ Next.js</div>
-            <div className="logo-item">◈ React</div>
-            <div className="logo-item">▲ TypeScript</div>
-            <div className="logo-item">⊕ Node.js</div>
-            <div className="logo-item">◉ Prisma</div>
-            <div className="logo-item">◆ PostgreSQL</div>
-            <div className="logo-item">● Redis</div>
-            <div className="logo-item">○ BullMQ</div>
-            <div className="logo-item">◇ GraphQL</div>
-            <div className="logo-item">▣ Vercel</div>
 
-            <div className="logo-item">⬡ Next.js</div>
-            <div className="logo-item">◈ React</div>
-            <div className="logo-item">▲ TypeScript</div>
-            <div className="logo-item">⊕ Node.js</div>
-            <div className="logo-item">◉ Prisma</div>
-            <div className="logo-item">◆ PostgreSQL</div>
-            <div className="logo-item">● Redis</div>
-            <div className="logo-item">○ BullMQ</div>
-            <div className="logo-item">◇ GraphQL</div>
-            <div className="logo-item">▣ Vercel</div>
-          </div>
-        </div>
-      </div>
 
 
       <section className="features-section" id="features">
@@ -1677,13 +1664,6 @@ export default function GitvitalLanding() {
             <div>
               <h2 className="section-h2">Every signal that tells you<br />if a repo is worth your time</h2>
               <p className="section-sub">Stop manually checking last commit dates and star counts. GitVital runs a full diagnostic on any public repo.</p>
-              <div className="better-than">
-                <span className="bt-label">Better than:</span>
-                <span className="bt-item">⭐ Star counts</span>
-                <span className="bt-item">📅 Last commit date</span>
-                <span className="bt-item">👁️ Scanning READMEs</span>
-                <span className="bt-item">🤞 Hoping for the best</span>
-              </div>
             </div>
             <div className="tabs-nav">
               <button className="tab-btn active" data-tab="analyze" onClick={(e) => switchTab('analyze', e.currentTarget)}>Analyze</button>
@@ -1701,12 +1681,12 @@ export default function GitvitalLanding() {
               <h3>Run a full health check on any public repo</h3>
               <p>Paste any GitHub URL. GitVital queues a background analysis job, fetches up to 1,000 commits and 500 PRs via GitHub GraphQL, and computes 6 core metrics in under a minute.</p>
               <ul className="tab-bullets">
-                <li>Bus factor — contributor concentration risk</li>
-                <li>PR turnaround — median and p90 merge time</li>
-                <li>Commit velocity — weekly decay or growth trend</li>
-                <li>Issue backlog — age, response rate, open count</li>
+                <li>Bus factor: contributor concentration risk</li>
+                <li>PR turnaround: median and p90 merge time</li>
+                <li>Commit velocity: weekly decay or growth trend</li>
+                <li>Issue backlog: age, response rate, open count</li>
               </ul>
-              <a href="/facebook/react" className="learn-more">View all metrics →</a>
+              <a href="/facebook/react" className="learn-more">View all metrics ›</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -1769,14 +1749,14 @@ export default function GitvitalLanding() {
             <div className="tab-content">
               <div className="tab-label">Health Score</div>
               <h3>A single number that tells the whole story</h3>
-              <p>Five weighted sub-scores combine into one 0–100 health rating. Each weight is documented and reasoned — not arbitrary. Activity is king at 30%, contributor diversity follows at 25%.</p>
+              <p>Five weighted sub-scores combine into one 0–100 health rating. Each weight is documented and reasoned, not arbitrary. Activity is king at 30%, contributor diversity follows at 25%.</p>
               <ul className="tab-bullets">
-                <li>Activity (30%) — most reliable signal of a living project</li>
-                <li>Contributor diversity (25%) — directly affects sustainability</li>
-                <li>PR responsiveness (20%) — shows team engagement</li>
+                <li>Activity (30%): most reliable signal of a living project</li>
+                <li>Contributor diversity (25%): directly affects sustainability</li>
+                <li>PR responsiveness (20%): shows team engagement</li>
                 <li>Issue backlog (15%) + Code churn (10%)</li>
               </ul>
-              <a href="/facebook/react" className="learn-more">See the formula →</a>
+              <a href="/facebook/react" className="learn-more">See the formula ›</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -1818,13 +1798,13 @@ export default function GitvitalLanding() {
             <div className="tab-content">
               <div className="tab-label">Repo Comparison</div>
               <h3>Side-by-side. Pick the healthier dependency</h3>
-              <p>Input two repos. GitVital queues both analysis jobs simultaneously and renders a comparison table the moment both complete — winner highlighted per metric.</p>
+              <p>Input two repos. GitVital queues both analysis jobs simultaneously and renders a comparison table the moment both complete, with the winner highlighted per metric.</p>
               <ul className="tab-bullets">
                 <li>Evaluate competing libraries before adding a dependency</li>
                 <li>Compare your fork vs the upstream repo</li>
                 <li>Interview demo: pull up react vs vue live</li>
               </ul>
-              <a href="/compare" className="learn-more">Try a comparison →</a>
+              <a href="/compare" className="learn-more">Try a comparison ›</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
@@ -1864,13 +1844,13 @@ export default function GitvitalLanding() {
             <div className="tab-content">
               <div className="tab-label">Health Timeline</div>
               <h3>Watch a repo's health change over time</h3>
-              <p>GitVital splits your already-fetched data into quarterly windows and computes a partial health score per period — showing you if a project is gaining momentum or slowly dying.</p>
+              <p>GitVital splits your already-fetched data into quarterly windows and computes a partial health score per period, showing you if a project is gaining momentum or slowly dying.</p>
               <ul className="tab-bullets">
                 <li>4-quarter trend computed from existing fetch data (zero extra API calls)</li>
                 <li>Catch declining projects before you depend on them</li>
                 <li>Spot the exact quarter a maintainer went quiet</li>
               </ul>
-              <a href="/facebook/react" className="learn-more">See timeline →</a>
+              <a href="/facebook/react" className="learn-more">See timeline ›</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1903,16 +1883,7 @@ export default function GitvitalLanding() {
                   {['Q1 2024', 'Q2', 'Q3', 'Q4 ↓'].map((q, i) => <span key={q} style={{ fontSize: '9.5px', color: i === 3 ? 'var(--red)' : 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{q}</span>)}
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                  <span style={{ fontSize: '14px' }}>⚠️</span>
-                  <div><div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--red)' }}>Declining Health</div><div style={{ fontSize: '10px', color: 'rgba(239,68,68,0.7)' }}>19pt drop over 4 quarters</div></div>
-                </div>
-                <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '8px', padding: '10px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                  <span style={{ fontSize: '14px' }}>📉</span>
-                  <div><div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--yellow)' }}>Maintainer Quiet</div><div style={{ fontSize: '10px', color: 'rgba(234,179,8,0.7)' }}>Commit velocity falling Q3+</div></div>
-                </div>
-              </div>
+
             </div>
           </div>
 
@@ -1921,16 +1892,16 @@ export default function GitvitalLanding() {
             <div className="tab-content">
               <div className="tab-label">AI-Powered Advice</div>
               <h3>Not just data. A personal coaching session</h3>
-              <p>GitVital feeds your computed metrics into Gemini and generates personalized, actionable advice — not generic tips. It reads your actual numbers and tells you exactly what to improve.</p>
+              <p>GitVital feeds your computed metrics into Gemini and generates personalized, actionable advice (not generic tips). It reads your actual numbers and tells you exactly what to improve.</p>
               <ul className="tab-bullets">
                 <li>Prompt-engineered for developer context, not marketing copy</li>
-                <li>Stored alongside metrics — re-reads with every refresh</li>
+                <li>Stored alongside metrics, re-reads with every refresh</li>
                 <li>Turns a dashboard into a feedback loop</li>
               </ul>
-              <a href="/facebook/react" className="learn-more">See AI advice →</a>
+              <a href="/facebook/react" className="learn-more">See AI advice ›</a>
             </div>
             <div className="tab-visual" style={{ flexDirection: 'column', gap: '12px', padding: '20px' }}>
-              <div style={{ background: 'rgba(255,94,0,0.06)', border: '1px solid rgba(255,94,0,0.25)', borderLeft: '3px solid #FF5E00', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ background: 'rgba(255,94,0,0.06)', border: '1px solid rgba(255,94,0,0.25)', borderLeft: '1px solid rgba(255,94,0,0.25)', borderRadius: '10px', padding: '14px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
                   <div className="ai-icon" style={{ width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
@@ -1942,7 +1913,7 @@ export default function GitvitalLanding() {
                   <div style={{ marginLeft: 'auto', fontSize: '20px', fontWeight: 800, color: 'var(--yellow)' }}>73<span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>/100</span></div>
                 </div>
                 <p style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
-                  Based on recent commit patterns, <span style={{ color: '#FFB380', fontWeight: 600 }}>your-org/your-repo</span> is struggling with <span style={{ color: 'var(--red)', fontWeight: 600 }}>PR review bottlenecks</span>. We noticed a <span style={{ color: 'var(--yellow)', fontWeight: 600 }}>14-day average merge delay</span> — the single highest drag on your health score.
+                  Based on recent commit patterns, <span style={{ color: '#FFB380', fontWeight: 600 }}>your-org/your-repo</span> is struggling with <span style={{ color: 'var(--red)', fontWeight: 600 }}>PR review bottlenecks</span>. We noticed a <span style={{ color: 'var(--yellow)', fontWeight: 600 }}>14-day average merge delay</span>, the single highest drag on your health score.
                 </p>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -1969,115 +1940,29 @@ export default function GitvitalLanding() {
       </section>
 
 
-      <section style={{ paddingTop: '0' }} id="leaderboard">
-        <div className="section-inner">
-          <div className="fade-in" style={{ marginBottom: '32px' }}>
-            <div className="section-label">Everything in one place</div>
-            <h2 className="section-h2">Everything you need to evaluate<br />a repo or a developer</h2>
+
+
+
+      <div className="stats-section">
+        <div className="stats-grid">
+          <div className="stat-item fade-in">
+            <div className="stat-num">{formatCompactStat(animatedStats.totalDevelopers)}</div>
+            <div className="stat-label">Developers</div>
           </div>
-          <div className="bento-kicker">Signals, trust checks, and developer context</div>
-          <div className="bento-grid">
-
-
-            <div className="bento-card col-2">
-              <div className="bc-label">Embeddable Badge</div>
-              <div className="bc-title">Embed a live health badge in any README</div>
-              <div className="bc-desc">A URL that returns an SVG badge — color-coded green, yellow, or red based on current health score. Auto-updates with every analysis.</div>
-              <div className="badge-embed">
-                <span className="badge-left">GitVital</span>
-                <span className="badge-right">Health: 88 ✅</span>
-              </div>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-muted)', marginTop: '10px' }}>![GitVital](https://gitvital.com/badge/facebook/react)</div>
-            </div>
-
-
-            <div className="bento-card">
-              <div className="bc-label">Risk Flags</div>
-              <div className="bc-title">Plain English warnings</div>
-              <div className="bc-desc">Pure if/else logic that reads smart.</div>
-              <div className="risk-flags-list">
-                <span className="flag danger">⚠️ Contributor Concentration Risk</span>
-                <span className="flag warn">⚠️ PR Response Slow</span>
-                <span className="flag success">✅ Fast PR Reviews</span>
-                <span className="flag success">📈 Growing Activity</span>
-              </div>
-            </div>
-
-
-            <div className="bento-card">
-              <div className="bc-label">Leaderboard</div>
-              <div className="bc-title">Your global rank</div>
-              <div className="bc-desc">Percentile ranking via PostgreSQL window functions.</div>
-              <div className="rank-display">
-                <div className="rank-number">#142</div>
-                <div className="rank-meta">globally<br /><strong>Top 7%</strong> of all developers</div>
-              </div>
-            </div>
-
-
-            <div className="bento-card">
-              <div className="bc-label">GitHub OAuth</div>
-              <div className="bc-title">{user?.loggedIn ? "Profile Active" : "Login to unlock more"}</div>
-              <div className="bc-desc">{user?.loggedIn ? `Logged in as @${user.githubUsername}. You can now view your personalized developer score and repository analysis.` : "Authenticate to analyze your own repos, track your developer score, and get personalized AI advice."}</div>
-              {user?.loggedIn ? (
-                <a href={`/${user.githubUsername}`} className="btn-ghost oauth-cta">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
-                  View Profile
-                </a>
-              ) : (
-                <a href={AUTH_URL} className="btn-ghost oauth-cta">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" /></svg>
-                  Login with GitHub
-                </a>
-              )}
-            </div>
-
-
-            <div className="bento-card col-2">
-              <div className="bc-label">Developer Health Score</div>
-              <div className="bc-title">Your repos, aggregated into one developer score</div>
-              <div className="bc-desc">Aggregate metrics across all your repos. Earn badges. Get ranked globally. Spotify Wrapped, but for your GitHub.</div>
-              <div className="dev-profile-card">
-                <div className="dev-score-row">
-                  <div className="dev-score-big green">74</div>
-                  <div>
-                    <div className="dev-identity-name">{user?.loggedIn ? `@${user.githubUsername}` : "@yourusername"}</div>
-                    <div className="dev-identity-meta">{user?.loggedIn ? "Better than 90% of developers" : "Better than 90% of developers"}</div>
-                  </div>
-                </div>
-                <div className="dev-badges">
-                  <span className="dev-badge earned">🏃 The Speedster</span>
-                  <span className="dev-badge earned">🔒 The Closer</span>
-                  <span className="dev-badge earned">⭐ OSS Contributor</span>
-                  <span className="dev-badge">🌱 Consistent Committer</span>
-                  <span className="dev-badge">🧹 Issue Resolver</span>
-                </div>
-              </div>
-            </div>
-
-
-            <div className="bento-card">
-              <div className="bc-label">Transparent Limits</div>
-              <div className="bc-title">No hidden constraints</div>
-              <div className="bc-desc">Always shown. Never hidden.</div>
-              <div className="limits-card">
-                <div className="limit-row"><span className="limit-key">max commits</span><span className="limit-val">1,000</span></div>
-                <div className="limit-row"><span className="limit-key">max pull reqs</span><span className="limit-val">500</span></div>
-                <div className="limit-row"><span className="limit-key">max issues</span><span className="limit-val">500</span></div>
-                <div className="limit-row"><span className="limit-key">time window</span><span className="limit-val">12 months</span></div>
-                <div className="limit-row"><span className="limit-key">visibility</span><span className="limit-val">public only</span></div>
-              </div>
-            </div>
-
+          <div className="stat-item fade-in fade-in-delay-1">
+            <div className="stat-num">{formatCompactStat(animatedStats.totalRepos)}</div>
+            <div className="stat-label">Repos Analyzed</div>
+          </div>
+          <div className="stat-item fade-in fade-in-delay-2">
+            <div className="stat-num">{animatedStats.avgMs}ms</div>
+            <div className="stat-label">Avg Analysis Time</div>
           </div>
         </div>
-      </section>
-
+      </div>
 
       <section className="testimonials-section">
         <div className="section-inner">
           <div className="testimonials-header fade-in">
-            <div className="section-label">Loved by developers</div>
             <h2 className="section-h2">Developers who care about code quality</h2>
             <p className="section-sub">Join developers who've stopped guessing and started knowing.</p>
           </div>
@@ -2123,14 +2008,14 @@ export default function GitvitalLanding() {
               <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">Shreyas G Shetty · @shreyasgshetty</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Health metrics hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17</div></div>
 
               <div className="t-mini"><p className="t-mini-quote">"Finally stopped manually checking 'last commit date' on every library. GitVital does it properly."</p><div className="t-mini-author">Srujan · @SrujanJamthnalli</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The PR turnaround metric alone saved me from depending on a dead library. Gold."</p><div className="t-mini-author">Suraj Kumar N · @Suraj-567</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Used GitVital in my architecture review. My team loved the side-by-side comparison output."</p><div className="t-mini-author">Ullas M · @ull0sm</div></div>
               <div className="t-mini"><p className="t-mini-quote">"The embeddable badge on my README started getting questions from contributors. Real users from day 1."</p><div className="t-mini-author">Shreyas G Shetty · @shreyasgshetty</div></div>
-              <div className="t-mini"><p className="t-mini-quote">"Leaderboard hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
+              <div className="t-mini"><p className="t-mini-quote">"Health metrics hit different. Motivated me to actually start closing old issues and reviewing PRs faster."</p><div className="t-mini-author">Skanda · @skandaks24</div></div>
               <div className="t-mini"><p className="t-mini-quote">"Showed this in my campus placement interview. Got asked to walk through the architecture for 20 minutes."</p><div className="t-mini-author">Aania · @aania17</div></div>
             </div>
           </div>
@@ -2138,37 +2023,7 @@ export default function GitvitalLanding() {
       </section>
 
 
-      <div className="stats-section">
-        <div className="stats-grid">
-          <div className="stat-item fade-in">
-            <div className="stat-num">{formatCompactStat(animatedStats.totalDevelopers)}</div>
-            <div className="stat-label">Developers</div>
-          </div>
-          <div className="stat-item fade-in fade-in-delay-1">
-            <div className="stat-num">{formatCompactStat(animatedStats.totalRepos)}</div>
-            <div className="stat-label">Repos Analyzed</div>
-          </div>
-          <div className="stat-item fade-in fade-in-delay-2">
-            <div className="stat-num">{animatedStats.avgMs}ms</div>
-            <div className="stat-label">Avg Analysis Time</div>
-          </div>
-        </div>
-      </div>
 
-
-      <section className="cta-section">
-        <div className="cta-glow"></div>
-        <div className="cta-inner fade-in">
-          <div className="section-label">Get started free</div>
-          <h2>Stop guessing.<br />Start knowing.</h2>
-          <p>Paste any GitHub URL. Get a full health report in under 60 seconds. Free forever for public repos.</p>
-          <div className="hero-input-wrap" style={{ maxWidth: '480px', margin: '0 auto 12px' }}>
-            <input type="text" placeholder="github.com/your-org/your-repo" id="ctaInput" onKeyDown={(e) => handleKeydown(e, 'ctaInput')} />
-            <button onClick={() => analyzeRepo('ctaInput')}>Analyze Now →</button>
-          </div>
-          <p className="cta-note">No signup required for public repos · Free forever</p>
-        </div>
-      </section>
 
 
       <footer>
@@ -2185,7 +2040,6 @@ export default function GitvitalLanding() {
               <ul>
                 <li><a href="/?focus=analyze">Analyze</a></li>
                 <li><a href="/compare">Repo Compare</a></li>
-                <li><a href="/leaderboard">Leaderboard</a></li>
               </ul>
             </div>
             <div className="footer-col">

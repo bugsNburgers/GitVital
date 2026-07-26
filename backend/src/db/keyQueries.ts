@@ -38,16 +38,6 @@ export interface InFlightJobRow {
     id: string;
 }
 
-export interface LeaderboardRow {
-    username: string;
-    avatar_url: string | null;
-    developer_score: string;
-    global_rank: number | null;
-    percentile: string | null;
-    primary_language: string | null;
-    repos_count: number;
-}
-
 export const GET_LATEST_REPO_METRICS_SQL = `
 SELECT * FROM repo_metrics
 WHERE repo_id = $1
@@ -59,67 +49,6 @@ export const GET_IN_FLIGHT_JOB_SQL = `
 SELECT id FROM analysis_jobs
 WHERE repo_id = $1 AND status IN ('queued', 'processing')
 LIMIT 1;
-`;
-
-export const GET_LEADERBOARD_WITH_LANGUAGE_FILTER_SQL = `
-WITH repo_totals AS (
-    SELECT LOWER(r.owner) AS username, COUNT(*)::int AS repos_count
-    FROM repos r
-    GROUP BY LOWER(r.owner)
-),
-repo_language_counts AS (
-    SELECT
-        LOWER(r.owner) AS username,
-        COALESCE(NULLIF(r.language, ''), 'Unknown') AS language,
-        COUNT(*)::int AS language_count
-    FROM repos r
-    GROUP BY LOWER(r.owner), COALESCE(NULLIF(r.language, ''), 'Unknown')
-),
-primary_languages AS (
-    SELECT username, language
-    FROM (
-        SELECT
-            rlc.username,
-            rlc.language,
-            ROW_NUMBER() OVER (
-                PARTITION BY rlc.username
-                ORDER BY rlc.language_count DESC, rlc.language ASC
-            ) AS row_num
-        FROM repo_language_counts rlc
-    ) ranked_languages
-    WHERE ranked_languages.row_num = 1
-)
-SELECT
-    lr.username,
-    lr.avatar_url,
-    lr.developer_score::text AS developer_score,
-    lr.global_rank,
-    lr.percentile::text AS percentile,
-    pl.language AS primary_language,
-    COALESCE(rt.repos_count, 0) AS repos_count
-FROM (
-    SELECT
-        u.username,
-        u.avatar_url,
-        u.developer_score,
-        RANK() OVER (ORDER BY u.developer_score DESC) AS global_rank,
-        (PERCENT_RANK() OVER (ORDER BY u.developer_score ASC) * 100) AS percentile
-    FROM users u
-    WHERE u.developer_score > 0
-) lr
-LEFT JOIN repo_totals rt ON rt.username = LOWER(lr.username)
-LEFT JOIN primary_languages pl ON pl.username = LOWER(lr.username)
-WHERE ($1::text IS NULL OR EXISTS (
-    SELECT 1
-    FROM repos r
-    WHERE LOWER(r.owner) = LOWER(lr.username) AND LOWER(COALESCE(r.language, '')) = LOWER($1)
-))
-ORDER BY lr.developer_score DESC
-LIMIT 100;
-`;
-
-export const REFRESH_LEADERBOARD_MATERIALIZED_VIEW_SQL = `
-REFRESH MATERIALIZED VIEW CONCURRENTLY leaderboard_rankings;
 `;
 
 export async function getLatestMetricsForRepo(
@@ -136,17 +65,4 @@ export async function getInFlightAnalysisJob(
 ): Promise<InFlightJobRow | null> {
     const result = await db.query<InFlightJobRow>(GET_IN_FLIGHT_JOB_SQL, [repoId]);
     return result.rows[0] ?? null;
-}
-
-export async function getLeaderboardWithLanguageFilter(
-    db: Queryable,
-    language?: string | null,
-): Promise<LeaderboardRow[]> {
-    const normalizedLanguage = language && language.trim().length > 0 ? language.trim() : null;
-    const result = await db.query<LeaderboardRow>(GET_LEADERBOARD_WITH_LANGUAGE_FILTER_SQL, [normalizedLanguage]);
-    return result.rows;
-}
-
-export async function refreshLeaderboardMaterializedView(db: Queryable): Promise<void> {
-    await db.query(REFRESH_LEADERBOARD_MATERIALIZED_VIEW_SQL);
 }

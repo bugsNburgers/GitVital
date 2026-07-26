@@ -1,4 +1,4 @@
-// src/db/userQueries.ts — SQL helpers for developer score computation & leaderboard
+// src/db/userQueries.ts - SQL helpers for developer score computation
 
 import { dbQuery } from './pool';
 import type { LeaderboardRepoEvidence, LeaderboardUserScoreInput } from '../leaderboard/protection';
@@ -6,7 +6,6 @@ import {
   computeDeveloperScoreFromVerifiedRepoMetrics,
   shouldFlagScoreChangeForManualReview,
 } from '../leaderboard/protection';
-import { refreshLeaderboardMaterializedView } from './keyQueries';
 
 // ── Raw row shapes ──
 interface UserScoreRow {
@@ -77,7 +76,7 @@ async function updateUserDeveloperScore(userId: string, score: number): Promise<
   );
 }
 
-// ── Full recompute: all users → update scores → refresh materialized view ──
+// ── Full recompute: all users → update scores ──
 export async function recomputeAllDeveloperScores(now: Date): Promise<{
   recomputedUsers: number;
   manualReviewAlerts: number;
@@ -119,42 +118,5 @@ export async function recomputeAllDeveloperScores(now: Date): Promise<{
     recomputedUsers += 1;
   }
 
-  // Refresh ranks + percentiles via materialized view
-  const db = {
-    async query<T>(sql: string, params?: readonly unknown[]) {
-      const rows = await dbQuery<T>(sql, params ? [...params] : []);
-      return { rows: rows ?? [], rowCount: rows?.length ?? 0 };
-    },
-  };
-  await refreshLeaderboardMaterializedView(db);
-
   return { recomputedUsers, manualReviewAlerts };
-}
-
-// ── Get leaderboard last-updated timestamp ──
-export async function getLeaderboardLastUpdated(): Promise<string | null> {
-  const rows = await dbQuery<{ max_updated: string }>(
-    `SELECT MAX(updated_at)::text AS max_updated FROM users WHERE developer_score > 0`,
-  );
-  return rows?.[0]?.max_updated ?? null;
-}
-
-// ── Get live leaderboard stats (for frontend stat cards) ──
-export async function getLeaderboardStats(): Promise<{
-  totalDevelopers: number;
-  totalRepos: number;
-}> {
-  const [devRows, repoRows, ownerRows] = await Promise.all([
-    dbQuery<{ count: string }>(`SELECT COUNT(*)::text AS count FROM users WHERE developer_score > 0`),
-    dbQuery<{ count: string }>(`SELECT COUNT(*)::text AS count FROM repos`),
-    dbQuery<{ count: string }>(`SELECT COUNT(DISTINCT LOWER(owner))::text AS count FROM repos`),
-  ]);
-
-  const scoredDevelopers = Number(devRows?.[0]?.count ?? 0);
-  const repoOwners = Number(ownerRows?.[0]?.count ?? 0);
-
-  return {
-    totalDevelopers: scoredDevelopers > 0 ? scoredDevelopers : repoOwners,
-    totalRepos: Number(repoRows?.[0]?.count ?? 0),
-  };
 }
