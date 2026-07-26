@@ -104,14 +104,14 @@ async function queueRepoRefreshJobs(): Promise<void> {
 
         queuedCount += 1;
 
-        // Stagger — wait 2 seconds before adding the next job ──
+        // Stagger - wait 2 seconds before adding the next job ──
         // This prevents a thundering herd where 50 jobs slam GitHub API + Redis at once.
         if (queuedCount < eligibleRepos.slice(0, refreshCapForRun).length) {
             await sleep(STAGGER_DELAY_MS);
         }
     }
 
-    // ── Prompt 7.1: Queue cleanup — remove completed jobs older than 7 days ──
+    // ── Prompt 7.1: Queue cleanup - remove completed jobs older than 7 days ──
     // Keeps Redis memory lean; BullMQ stores job data indefinitely unless cleaned.
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const cleaned = await analysisQueue.clean(sevenDaysMs, 1000, 'completed');

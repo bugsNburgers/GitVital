@@ -360,7 +360,7 @@ export default function LeaderboardPage() {
         @media (max-width: 900px) { .lb-stats { grid-template-columns: 1fr; } .lb-nav-links { display: none; } .td-repos { display: none; } }
         @media (max-width: 600px) { .lb-nav-search { display: none; } .lang-badge { display: none; } .lb-hero { flex-direction: column; align-items: flex-start; } }
 
-        /* LARGE SCREENS — 1440px (15-16") */
+        /* LARGE SCREENS - 1440px (15-16") */
         @media (min-width: 1440px) {
           :root { --page-max-width: 1360px; --page-padding: 36px; }
           .lb-hero-title { font-size: 52px; }
@@ -373,7 +373,7 @@ export default function LeaderboardPage() {
           .td-score { font-size: 17px; }
         }
 
-        /* LARGE SCREENS — 1600px (16.6") */
+        /* LARGE SCREENS - 1600px (16.6") */
         @media (min-width: 1600px) {
           :root { --page-max-width: 1500px; --page-padding: 48px; }
           .lb-hero-title { font-size: 56px; }
@@ -386,7 +386,7 @@ export default function LeaderboardPage() {
           .td-score { font-size: 18px; }
         }
 
-        /* EXTRA LARGE SCREENS — 1920px */
+        /* EXTRA LARGE SCREENS - 1920px */
         @media (min-width: 1920px) {
           :root { --page-max-width: 1760px; --page-padding: 64px; }
           .lb-hero-title { font-size: 64px; }
@@ -484,12 +484,12 @@ export default function LeaderboardPage() {
                 {[
                   {
                     icon: "groups",
-                    val: loading ? null : stats ? compactNum(stats.totalDevelopers) : "—",
+                    val: loading ? null : stats ? compactNum(stats.totalDevelopers) : "-",
                     lbl: "Ranked Developers",
                   },
                   {
                     icon: "code_blocks",
-                    val: loading ? null : stats ? compactNum(stats.totalRepos) : "—",
+                    val: loading ? null : stats ? compactNum(stats.totalRepos) : "-",
                     lbl: "Repos Analyzed",
                   },
                   {
@@ -511,12 +511,12 @@ export default function LeaderboardPage() {
                 ))}
               </div>
 
-              {/* JOIN CTA — only when logged in but not in leaderboard yet */}
+              {/* JOIN CTA - only when logged in but not in leaderboard yet */}
               {user?.loggedIn && !loading && leaders.length > 0 && !userInLeaderboard && (
                 <div className="lb-join-cta">
                   <div className="lb-join-cta-text">
                     <span className="material-symbols-outlined">emoji_events</span>
-                    You&apos;re not on the leaderboard yet — analyze your repos to get your developer score.
+                    You&apos;re not on the leaderboard yet - analyze your repos to get your developer score.
                   </div>
                   <a href={`/${user.githubUsername}`} className="lb-join-btn">Go to my profile →</a>
                 </div>
@@ -571,7 +571,7 @@ export default function LeaderboardPage() {
                               <h3>{leaders.length === 0 ? "Leaderboard is building" : "No results"}</h3>
                               <p>
                                 {leaders.length === 0
-                                  ? "Scores are computed nightly. Analyze your repos and check back tomorrow — or be the first!"
+                                  ? "Scores are computed nightly. Analyze your repos and check back tomorrow - or be the first!"
                                   : "No developers match your search or filter."}
                               </p>
                               {leaders.length === 0 && user?.loggedIn && (

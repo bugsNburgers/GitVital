@@ -1,4 +1,4 @@
-// src/metrics/timeline.ts — PURE FUNCTION
+// src/metrics/timeline.ts - PURE FUNCTION
 // Input: commits[] and prs[]
 // Output: TimelineEntry[]
 // No database calls. No API calls. No side effects.

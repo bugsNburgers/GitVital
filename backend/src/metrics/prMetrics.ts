@@ -1,4 +1,4 @@
-// src/metrics/prMetrics.ts — PURE FUNCTION
+// src/metrics/prMetrics.ts - PURE FUNCTION
 // Input:  prs[] (each has createdAt, mergedAt)
 // Output: PRMetricsResult | null
 // No database calls. No API calls. No side effects.
@@ -29,7 +29,7 @@ export function computePRMetrics(prs: PRNode[]): PRMetricsResult | null {
   const MS_PER_HOUR = 3600000;
   const MAX_MERGE_HOURS = 180 * 24; // 180 days in hours (stale outlier threshold)
 
-  // Step 1: Filter — only merged PRs within last 12 months
+  // Step 1: Filter - only merged PRs within last 12 months
   const mergedRecent = prs.filter((pr) => {
     if (!pr.mergedAt) return false;
     const mergedDate = new Date(pr.mergedAt);

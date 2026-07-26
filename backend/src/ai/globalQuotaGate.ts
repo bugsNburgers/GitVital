@@ -1,4 +1,4 @@
-// src/ai/globalQuotaGate.ts — Shared daily Gemini call quota across ALL AI endpoints
+// src/ai/globalQuotaGate.ts - Shared daily Gemini call quota across ALL AI endpoints
 
 import { redis } from '../config/redis';
 
@@ -104,8 +104,8 @@ export async function checkAndIncrementGlobalDailyQuota(
     return { allowed: true, remaining, resetAt, limitHit: null };
 
   } catch (err) {
-    // Redis failure — fail open (allow the request) to avoid blocking users
-    console.error('[QuotaGate] Redis error — failing open:', err);
+    // Redis failure - fail open (allow the request) to avoid blocking users
+    console.error('[QuotaGate] Redis error - failing open:', err);
     return { allowed: true, remaining: USER_DAILY_CAP, resetAt, limitHit: null };
   }
 }

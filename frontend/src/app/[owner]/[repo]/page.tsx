@@ -306,7 +306,7 @@ export default function RepoDashboardPage() {
           setLoadState("error");
         }
       } catch {
-        // network blip — keep polling
+        // network blip - keep polling
       }
     }, JOB_POLL_INTERVAL_MS);
   }, [owner, repo]);
@@ -328,7 +328,7 @@ export default function RepoDashboardPage() {
           return;
         }
 
-        // 2. No cache — queue analysis
+        // 2. No cache - queue analysis
         if (!cancelled) setLoadState("queuing");
         const qr = await fetch(`${API_BASE}/api/analyze`, {
           method: "POST",
@@ -801,7 +801,7 @@ export default function RepoDashboardPage() {
           .dash-breadcrumb { display: none; }
         }
 
-        /* LARGE SCREENS — 1440px (15-16") */
+        /* LARGE SCREENS - 1440px (15-16") */
         @media (min-width: 1440px) {
           :root { --page-max-width: 1340px; --page-padding: 36px; }
           .score-big { font-size: 48px; }
@@ -815,7 +815,7 @@ export default function RepoDashboardPage() {
           .rec-grid { grid-template-columns: 1fr 1fr; }
         }
 
-        /* LARGE SCREENS — 1600px (16.6") */
+        /* LARGE SCREENS - 1600px (16.6") */
         @media (min-width: 1600px) {
           :root { --page-max-width: 1500px; --page-padding: 48px; }
           .score-big { font-size: 52px; }
@@ -834,7 +834,7 @@ export default function RepoDashboardPage() {
           .dash-main { gap: 20px; }
         }
 
-        /* EXTRA LARGE SCREENS — 1920px */
+        /* EXTRA LARGE SCREENS - 1920px */
         @media (min-width: 1920px) {
           :root { --page-max-width: 1760px; --page-padding: 64px; }
           .score-big { font-size: 58px; }
@@ -930,9 +930,9 @@ export default function RepoDashboardPage() {
               {/* Stars / Forks from real data */}
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginRight: "8px" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-                {meta ? fmt(meta.stars) : "—"}
+                {meta ? fmt(meta.stars) : "-"}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>
-                {meta ? fmt(meta.forks) : "—"}
+                {meta ? fmt(meta.forks) : "-"}
               </div>
               {user?.loggedIn && user.githubUsername ? (
                 <a href={`/${user.githubUsername}`} className="btn-ghost" rel="noopener noreferrer">
@@ -1125,7 +1125,7 @@ export default function RepoDashboardPage() {
                         Bus Factor
                         <InfoTooltip metricKey="busFactor" />
                       </div>
-                      <div className="hstat-val">{busf?.busFactor ?? "—"}</div>
+                      <div className="hstat-val">{busf?.busFactor ?? "-"}</div>
                       <div className={`hstat-sub ${busf && busf.busFactor >= 3 ? "" : "orange"}`}>
                         {busf ? (busf.busFactor >= 3 ? "Stable" : "At Risk") : "N/A"}
                       </div>
@@ -1136,7 +1136,7 @@ export default function RepoDashboardPage() {
                         <InfoTooltip metricKey="velocityChange" />
                       </div>
                       <div className="hstat-val">
-                        {activity ? (activity.velocityChange >= 0 ? "+" : "") + Math.round(activity.velocityChange) + "%" : "—"}
+                        {activity ? (activity.velocityChange >= 0 ? "+" : "") + Math.round(activity.velocityChange) + "%" : "-"}
                       </div>
                       <div className={`hstat-sub ${activity && activity.velocityChange < 0 ? "orange" : ""}`}>
                         {activity ? velocityLabel(activity.velocityChange) : "N/A"}
@@ -1178,7 +1178,7 @@ export default function RepoDashboardPage() {
                       className={h >= 60 ? "hi" : h >= 35 ? "md" : ""} />
                   ))}
                 </div>
-                <div className="metric-card-val">{busf ? busf.busFactor : "—"}</div>
+                <div className="metric-card-val">{busf ? busf.busFactor : "-"}</div>
                 <div className="metric-card-sub">
                   {busf ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -1243,7 +1243,7 @@ export default function RepoDashboardPage() {
                         strokeLinecap="round" />
                     </svg>
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "var(--text)" }}>
-                      {issue ? `${issueClosedPct}%` : "—"}
+                      {issue ? `${issueClosedPct}%` : "-"}
                     </div>
                   </div>
                 </div>
@@ -1293,7 +1293,7 @@ export default function RepoDashboardPage() {
                     )}
                   </svg>
                 </div>
-                <div className="metric-card-val">{churn ? churnLabel(churn.churnScore) : "—"}</div>
+                <div className="metric-card-val">{churn ? churnLabel(churn.churnScore) : "-"}</div>
                 <div className="metric-card-sub" style={{ color: churn && churn.churnScore < 30 ? "var(--green)" : "var(--text-muted)" }}>
                   {churn ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -1318,21 +1318,21 @@ export default function RepoDashboardPage() {
                     Open Issues
                     <InfoTooltip metricKey="openIssueCount" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? issue.openIssueCount : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? issue.openIssueCount : "-"}</div>
                 </div>
                 <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
                     Avg Issue Age
                     <InfoTooltip metricKey="avgIssueAgeDays" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.avgIssueAgeDays.toFixed(1)}d` : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.avgIssueAgeDays.toFixed(1)}d` : "-"}</div>
                 </div>
                 <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
                     Unresponded %
                     <InfoTooltip metricKey="unrespondedIssuePct" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.unrespondedIssuePct.toFixed(1)}%` : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.unrespondedIssuePct.toFixed(1)}%` : "-"}</div>
                 </div>
               </div>
             </div>
@@ -1403,7 +1403,7 @@ export default function RepoDashboardPage() {
                 <span className="rec-section-title">Contribution Recommendations</span>
               </div>
 
-              {/* Not logged in — blurred locked card */}
+              {/* Not logged in - blurred locked card */}
               {user?.loggedIn === false ? (
                 <div className="rec-locked">
                   {/* Blurred ghost cards behind the overlay */}
@@ -1509,7 +1509,7 @@ export default function RepoDashboardPage() {
                     <>
                       {recSource === 'rule-based' && (
                         <p className="rec-note">
-                          Recommendations based on issue labels (Gemini unavailable — sign in for AI-powered suggestions)
+                          Recommendations based on issue labels (Gemini unavailable - sign in for AI-powered suggestions)
                         </p>
                       )}
                       {issueRecommendations.length === 0 ? (

@@ -1,4 +1,4 @@
-// src/db/userQueries.ts — SQL helpers for developer score computation & leaderboard
+// src/db/userQueries.ts - SQL helpers for developer score computation & leaderboard
 
 import { dbQuery } from './pool';
 import type { LeaderboardRepoEvidence, LeaderboardUserScoreInput } from '../leaderboard/protection';

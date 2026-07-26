@@ -809,7 +809,7 @@ export default function UserProfilePage() {
           .page-main { padding-top: 80px; }
         }
 
-        /* LARGE SCREENS — 1440px (15-16") */
+        /* LARGE SCREENS - 1440px (15-16") */
         @media (min-width: 1440px) {
           :root { --page-max-width: 1360px; --page-padding: 36px; }
           .profile-name h1 { font-size: 36px; }
@@ -822,7 +822,7 @@ export default function UserProfilePage() {
           .issue-stat-value, .pr-stat-value { font-size: 32px; }
         }
 
-        /* LARGE SCREENS — 1600px (16.6") */
+        /* LARGE SCREENS - 1600px (16.6") */
         @media (min-width: 1600px) {
           :root { --page-max-width: 1500px; --page-padding: 48px; }
           .profile-name h1 { font-size: 40px; }
@@ -836,7 +836,7 @@ export default function UserProfilePage() {
           .issue-stat-value, .pr-stat-value { font-size: 34px; }
         }
 
-        /* EXTRA LARGE SCREENS — 1920px */
+        /* EXTRA LARGE SCREENS - 1920px */
         @media (min-width: 1920px) {
           :root { --page-max-width: 1760px; --page-padding: 64px; }
           .profile-name h1 { font-size: 44px; }

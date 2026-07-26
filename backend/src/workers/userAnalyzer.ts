@@ -47,13 +47,13 @@ async function setUserJobDebug(jobId: string, debug: UserJobDebugInfo): Promise<
     }
 }
 
-// Safe wrapper — BullMQ's updateProgress calls Redis internally.
+// Safe wrapper - BullMQ's updateProgress calls Redis internally.
 // If Redis is flaky mid-job, progress tracking should fail silently.
 async function safeUpdateProgress(job: Job<UserJobData>, progress: number): Promise<void> {
     try {
         await job.updateProgress(progress);
     } catch {
-        // Redis unavailable — progress tracking lost, analysis continues
+        // Redis unavailable - progress tracking lost, analysis continues
     }
 }
 
@@ -140,7 +140,7 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         // or partial failures are caught here to return 0 metrics instead of crashing.
         let mergedPRs: UserMergedPRNode[] = [];
         try {
-            const FETCH_TIMEOUT_MS = 45_000; // 45s — GitHub pagination can be slow
+            const FETCH_TIMEOUT_MS = 45_000; // 45s - GitHub pagination can be slow
             const timeoutPromise = new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('GitHub PR fetch timed out after 45s')), FETCH_TIMEOUT_MS)
             );
@@ -149,7 +149,7 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
                 timeoutPromise,
             ]);
         } catch (fetchError) {
-            console.warn(`   ${logPrefix} — PR fetch failed or timed out, returning zero metrics:`, fetchError);
+            console.warn(`   ${logPrefix} - PR fetch failed or timed out, returning zero metrics:`, fetchError);
             const warning = fetchError instanceof Error ? `${fetchError.name}: ${fetchError.message}` : String(fetchError);
             await setUserJobDebug(job.id!, {
                 username,
@@ -159,7 +159,7 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
                 warning,
                 recordedAt: new Date().toISOString(),
             });
-            // Continue with empty array — all metrics will be 0
+            // Continue with empty array - all metrics will be 0
         }
         await safeUpdateProgress(job, 55);
 
@@ -303,7 +303,7 @@ if (shouldStartUserWorker) {
         {
             connection: getBullRedisConnection(),
             concurrency: 2,
-            lockDuration: 120_000,    // 2 min lock — fetch can take time
+            lockDuration: 120_000,    // 2 min lock - fetch can take time
             stalledInterval: 60_000,  // Check stalled every 1 min
             maxStalledCount: 1,       // Only restart stalled once
             limiter: {

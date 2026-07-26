@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 /*
-  Vertical ECG scrollbar — reference image rotated 90°
+  Vertical ECG scrollbar - reference image rotated 90°
   ─────────────────────────────────────────────────────
   ViewBox: 0 0 60 800   center-line = x 30
   In the reference image:
@@ -59,7 +59,7 @@ const ECG = [
 ].join(" ");
 
 export default function ScrollPulse() {
-  const svgRef  = useRef<SVGSVGElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const pathRef = useRef<SVGPathElement>(null);
 
   useEffect(() => {
@@ -80,11 +80,11 @@ export default function ScrollPulse() {
     }
 
     const path = pathRef.current;
-    const svg  = svgRef.current;
+    const svg = svgRef.current;
     if (!path || !svg) return;
 
     const len = path.getTotalLength();
-    path.style.strokeDasharray  = `${len}`;
+    path.style.strokeDasharray = `${len}`;
     path.style.strokeDashoffset = `${len}`;
 
     let raf = 0;
@@ -115,7 +115,7 @@ export default function ScrollPulse() {
 
     render();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", sched,    { passive: true });
+    window.addEventListener("resize", sched, { passive: true });
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", sched);
@@ -146,33 +146,33 @@ export default function ScrollPulse() {
         style={{ height: "100%", width: "52px", overflow: "visible" }}
       >
         <defs>
-          {/* Orange gradient — matches project --violet / --orange-light */}
+          {/* Orange gradient - matches project --violet / --orange-light */}
           <linearGradient id="ecgGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#FFD1B0" />
-            <stop offset="35%"  stopColor="#FF5E00" />
-            <stop offset="70%"  stopColor="#FF7A2A" />
+            <stop offset="0%" stopColor="#FFD1B0" />
+            <stop offset="35%" stopColor="#FF5E00" />
+            <stop offset="70%" stopColor="#FF7A2A" />
             <stop offset="100%" stopColor="#FFA066" />
           </linearGradient>
 
-          {/* Orange neon glow — 3 layers */}
+          {/* Orange neon glow - 3 layers */}
           <filter id="ecgGlow" x="-150%" y="-5%" width="350%" height="110%">
-            <feGaussianBlur id="ecg-b1" in="SourceGraphic" stdDeviation="3"  result="b1"/>
-            <feGaussianBlur              in="SourceGraphic" stdDeviation="8"  result="b2"/>
-            <feGaussianBlur              in="SourceGraphic" stdDeviation="18" result="b3"/>
+            <feGaussianBlur id="ecg-b1" in="SourceGraphic" stdDeviation="3" result="b1" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="b2" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="18" result="b3" />
             {/* tight crisp halo */}
             <feColorMatrix in="b1" type="matrix"
-              values="1 0 0 0 1  .36 0 0 0 .36  0 0 0 0 0  0 0 0 1.7 0" result="g1"/>
+              values="1 0 0 0 1  .36 0 0 0 .36  0 0 0 0 0  0 0 0 1.7 0" result="g1" />
             {/* warm orange mid bloom */}
             <feColorMatrix in="b2" type="matrix"
-              values="1 0 0 0 .9  .24 0 0 0 .24  0 0 0 0 0  0 0 0 .9 0" result="g2"/>
+              values="1 0 0 0 .9  .24 0 0 0 .24  0 0 0 0 0  0 0 0 .9 0" result="g2" />
             {/* broad ambient */}
             <feColorMatrix in="b3" type="matrix"
-              values="1 0 0 0 .7  .12 0 0 0 .12  0 0 0 0 0  0 0 0 .40 0" result="g3"/>
+              values="1 0 0 0 .7  .12 0 0 0 .12  0 0 0 0 0  0 0 0 .40 0" result="g3" />
             <feMerge>
-              <feMergeNode in="g3"/>
-              <feMergeNode in="g2"/>
-              <feMergeNode in="g1"/>
-              <feMergeNode in="SourceGraphic"/>
+              <feMergeNode in="g3" />
+              <feMergeNode in="g2" />
+              <feMergeNode in="g1" />
+              <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
         </defs>

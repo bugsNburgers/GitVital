@@ -1,5 +1,5 @@
-// src/server/index.ts — The main Express API server
-// This is the "entry point" — the file you run to start the backend.
+// src/server/index.ts - The main Express API server
+// This is the "entry point" - the file you run to start the backend.
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 1: IMPORTS
@@ -48,7 +48,7 @@ import '../workers/userAnalyzer';
 // SECTION 2: CREATE THE EXPRESS APP
 // ═══════════════════════════════════════════════════════════════
 // express() creates a new application instance.
-// Think of it as building an empty restaurant — no tables, no menu yet.
+// Think of it as building an empty restaurant - no tables, no menu yet.
 
 const app = express();
 
@@ -265,11 +265,11 @@ function getSafeFrontendRedirectOrigin(value: string | undefined | null): string
 // Middleware runs on EVERY request, in the order we define it here.
 // Think: every customer at the restaurant passes through the same door.
 
-// 3a. Helmet — sets security headers automatically
+// 3a. Helmet - sets security headers automatically
 // Protects against: XSS attacks, clickjacking, MIME sniffing, etc.
 app.use(helmet());
 
-// 3b. CORS — allow ONLY our frontend to talk to this API
+// 3b. CORS - allow ONLY our frontend to talk to this API
 // We use a callback so we can normalise the incoming origin (strip trailing slash,
 // lowercase) before checking membership. The plain-array form does exact matching,
 // which silently drops the header for tiny variations and is hard to debug.
@@ -300,7 +300,7 @@ const corsOptions: cors.CorsOptions = {
 
 app.use(cors(corsOptions));
 
-// 3c. JSON body parser — tells Express to understand JSON in request bodies
+// 3c. JSON body parser - tells Express to understand JSON in request bodies
 // When the frontend sends { "url": "facebook/react" }, Express needs this to read it
 app.use(express.json());
 
@@ -420,7 +420,7 @@ app.use(defaultLimiter);
 // SECTION 4: BULLMQ QUEUE SETUP
 // ═══════════════════════════════════════════════════════════════
 // Create a BullMQ queue named "repo-analysis".
-// This is the "order ticket rail" — we add jobs here, workers pick them up.
+// This is the "order ticket rail" - we add jobs here, workers pick them up.
 
 const bullConnection = getBullRedisConnection();
 
@@ -433,7 +433,7 @@ const userAnalysisQueue = new Queue<UserJobData>('user-analysis', {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 5: HELPER — Validation Error Handler
+// SECTION 5: HELPER - Validation Error Handler
 // ═══════════════════════════════════════════════════════════════
 // This helper checks if express-validator found any problems with the input.
 // If there are errors, it sends a 400 Bad Request response immediately.
@@ -1267,10 +1267,10 @@ function buildUserBadges(
 // ═══════════════════════════════════════════════════════════════
 // SECTION 6: ROUTES
 // ═══════════════════════════════════════════════════════════════
-// Each route is a "menu item" — a specific URL that the frontend can call.
+// Each route is a "menu item" - a specific URL that the frontend can call.
 
 // ─────────────────────────────────────────────────────────────
-// 6a. POST /api/analyze — Start analyzing a GitHub repository
+// 6a. POST /api/analyze - Start analyzing a GitHub repository
 // ─────────────────────────────────────────────────────────────
 // The frontend sends: { "owner": "facebook", "repo": "react" }
 // This route validates the input, checks for duplicate jobs, and queues the work.
@@ -1453,7 +1453,7 @@ app.post(
             res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
             return;
           }
-          // Terminal state (failed/completed but not yet removed) — remove it so
+          // Terminal state (failed/completed but not yet removed) - remove it so
           // BullMQ can create a fresh job with the same deterministic ID.
           try { await existingJob.remove(); } catch { /* ignore */ }
         }
@@ -1586,7 +1586,7 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6b. GET /api/status/:jobId — Check the status of an analysis job
+// 6b. GET /api/status/:jobId - Check the status of an analysis job
 // ─────────────────────────────────────────────────────────────
 // The frontend polls this every 3 seconds after submitting a job.
 // Returns: { status: "queued" | "processing" | "done" | "failed", progress?, error? }
@@ -1640,7 +1640,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6c. GET /api/repo/:owner/:repo — Get latest metrics for a repository
+// 6c. GET /api/repo/:owner/:repo - Get latest metrics for a repository
 // ─────────────────────────────────────────────────────────────
 // Returns the full dashboard data: health score, bus factor, PR metrics,
 // risk flags, AI advice, etc.
@@ -1693,7 +1693,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6d. GET /api/compare — Compare multiple repositories side by side
+// 6d. GET /api/compare - Compare multiple repositories side by side
 // ─────────────────────────────────────────────────────────────
 // Query: ?repos=owner1/repo1,owner2/repo2
 // Returns: array of metrics for each repo
@@ -1759,7 +1759,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6e. POST /api/user/analyze — Queue a user-level contribution analysis
+// 6e. POST /api/user/analyze - Queue a user-level contribution analysis
 // ─────────────────────────────────────────────────────────────
 
 app.post(
@@ -1847,7 +1847,7 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6f. GET /api/user/status/:jobId — Check user-analysis job status
+// 6f. GET /api/user/status/:jobId - Check user-analysis job status
 // ─────────────────────────────────────────────────────────────
 
 app.get(
@@ -1898,7 +1898,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6f-debug. GET /api/user/debug/:jobId — Temporary diagnostics for user-analysis jobs
+// 6f-debug. GET /api/user/debug/:jobId - Temporary diagnostics for user-analysis jobs
 // ─────────────────────────────────────────────────────────────
 
 app.get(
@@ -1960,7 +1960,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6g. GET /api/user/:username — Get a developer's profile/score
+// 6g. GET /api/user/:username - Get a developer's profile/score
 // ─────────────────────────────────────────────────────────────
 // Returns: developer score, badges, percentile ranking
 
@@ -2189,7 +2189,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6h. POST /api/user/:username/ai-insights — Gemini profile analysis
+// 6h. POST /api/user/:username/ai-insights - Gemini profile analysis
 // ─────────────────────────────────────────────────────────────
 // Returns AI-generated summary, strengths, areas for growth,
 // contribution style, and recommended focus areas. Cached 24h.
@@ -2203,7 +2203,7 @@ app.post(
     try {
       const username = req.params.username as string;
 
-      // Quota gate — global + per-user daily cap
+      // Quota gate - global + per-user daily cap
       const loggedInUser = (req as Request & { user?: { githubUsername?: string } }).user?.githubUsername || username;
       const quota = await checkAndIncrementGlobalDailyQuota(loggedInUser);
       if (!quota.allowed) {
@@ -2268,7 +2268,7 @@ app.post(
         externalPRCount: contribution?.externalPRCount ?? 0,
         externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
         contributionAcceptanceRate: contribution?.contributionAcceptanceRate ?? 0,
-        issuesOpened: 0, // Not fetched again here — use cached value if available
+        issuesOpened: 0, // Not fetched again here - use cached value if available
         issuesClosed: 0,
         repoHealthScores,
         repoNames,
@@ -2323,9 +2323,9 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6j. GET /api/repo/:owner/:repo/recommendations — AI issue recommendations
+// 6j. GET /api/repo/:owner/:repo/recommendations - AI issue recommendations
 // ─────────────────────────────────────────────────────────────
-// Query: ?username=octocat  (optional — omit for label-only fallback)
+// Query: ?username=octocat  (optional - omit for label-only fallback)
 // Fetches open issues from GitHub REST API, then calls Gemini to match
 // them to the developer's skill profile.
 
@@ -2345,7 +2345,7 @@ app.get(
       const username = (req.query.username as string | undefined)?.trim() || '';
       const forceRefresh = req.query.refresh === 'true';
 
-      // Auth guard — must be logged in to get personalized recommendations
+      // Auth guard - must be logged in to get personalized recommendations
       const sessionUserId = (req.session as any)?.userId as number | string | undefined;
       const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
       if (!sessionUserId || !sessionUsername) {
@@ -2366,7 +2366,7 @@ app.get(
         return;
       }
 
-      // 1. Check repo metrics cache — repo must have been analyzed first.
+      // 1. Check repo metrics cache - repo must have been analyzed first.
       const lookup = await getRepoMetricsFromCacheOrDb<{
         issueMetrics?: { labelBreakdown?: { label: string; count: number; githubFilterUrl: string }[] } | null;
       }>(owner, repo);
@@ -2466,7 +2466,7 @@ app.get(
           }
         } catch (profileErr) {
           console.warn('[Recommendations] Failed to fetch user profile for recommendations:', profileErr);
-          // Continue with anonymous profile — will use rule-based fallback
+          // Continue with anonymous profile - will use rule-based fallback
         }
       }
 
@@ -2536,7 +2536,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6k. POST /api/compare/insights — AI-powered repo comparison
+// 6k. POST /api/compare/insights - AI-powered repo comparison
 // ─────────────────────────────────────────────────────────────
 // Body: { repos: string[] }  (2–4 "owner/repo" strings)
 // Looks up each repo from Redis cache, passes metrics to Gemini.
@@ -2670,7 +2670,7 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6l. GET /api/leaderboard — Get top developers
+// 6l. GET /api/leaderboard - Get top developers
 // ─────────────────────────────────────────────────────────────
 // Optional filter: ?lang=typescript (filter by primary language)
 // Returns: top 100 developers sorted by their developer score
@@ -2728,7 +2728,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6h. GET /badge/:owner/:repo — Generate an embeddable SVG badge
+// 6h. GET /badge/:owner/:repo - Generate an embeddable SVG badge
 // ─────────────────────────────────────────────────────────────
 // Returns an SVG image that can be embedded in a README.md:
 // ![GitVital Score](https://gitvital.com/badge/facebook/react)
@@ -2794,7 +2794,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6i. GET /badge/user/:username — Generate a developer SVG badge
+// 6i. GET /badge/user/:username - Generate a developer SVG badge
 // ─────────────────────────────────────────────────────────────
 
 app.get(
@@ -2843,7 +2843,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6j. GET /auth/github — Start GitHub OAuth login flow
+// 6j. GET /auth/github - Start GitHub OAuth login flow
 // ─────────────────────────────────────────────────────────────
 // Redirects the user to GitHub's authorization page
 
@@ -2858,7 +2858,7 @@ app.get('/auth/github', (req: Request, res: Response) => {
   const referer = queryReturnTo || req.get('Referer') || config.frontendUrl;
   (req.session as any).returnTo = getSafeFrontendRedirectOrigin(referer);
 
-  // Use the configured callback URL — never build it dynamically from the request host.
+  // Use the configured callback URL - never build it dynamically from the request host.
   // On Render, req.get('host') can return the internal hostname which won't match the
   // GitHub OAuth App's registered callback URL, causing a redirect_uri_mismatch error.
   const redirect_uri = config.github.callbackUrl;
@@ -2879,7 +2879,7 @@ app.get('/auth/github', (req: Request, res: Response) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// 6k. GET /auth/github/callback — Handle GitHub OAuth callback
+// 6k. GET /auth/github/callback - Handle GitHub OAuth callback
 // ─────────────────────────────────────────────────────────────
 // After the user approves on GitHub, GitHub redirects here with a ?code=
 // We exchange that code for an access_token, create a session, and redirect.
@@ -3018,7 +3018,7 @@ app.post('/auth/logout', async (req: Request, res: Response): Promise<void> => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 6l. GET /api/me — Get current user session
+// 6l. GET /api/me - Get current user session
 // ─────────────────────────────────────────────────────────────
 app.get('/api/me', (req: Request, res: Response) => {
   // Prevent aggressive browser/Next.js caching of the session state
@@ -3037,10 +3037,10 @@ app.get('/api/me', (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// GET /api/health/auth — Diagnose auth + Redis health
+// GET /api/health/auth - Diagnose auth + Redis health
 // ─────────────────────────────────────────────────────────────
 // Returns: Redis ping, OAuth config presence, session state, callback URL in use.
-// Safe to expose — never returns secrets, only confirms they are set.
+// Safe to expose - never returns secrets, only confirms they are set.
 app.get('/api/health/auth', async (req: Request, res: Response): Promise<void> => {
   let redisPing: 'ok' | 'error' = 'error';
   let redisSessionCount: number | null = null;
@@ -3182,7 +3182,7 @@ app.get('/health', async (_req: Request, res: Response) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// ADMIN: GET /api/admin/test-ai — Direct Gemini API diagnostic
+// ADMIN: GET /api/admin/test-ai - Direct Gemini API diagnostic
 // Hit this endpoint to see exactly why Gemini may be failing.
 // ─────────────────────────────────────────────────────────────
 app.get('/api/admin/test-ai', async (req: Request, res: Response): Promise<void> => {
@@ -3247,7 +3247,7 @@ const server = app.listen(config.port, () => {
   console.log(`   Environment: ${config.nodeEnv}`);
 });
 
-// Graceful shutdown — when the server is stopped (Ctrl+C, deployment restart),
+// Graceful shutdown - when the server is stopped (Ctrl+C, deployment restart),
 // we cleanly close all connections instead of abruptly dropping them.
 // This prevents data corruption and lost jobs.
 

@@ -1,4 +1,4 @@
-// src/types/api.ts — Readonly response types mirroring backend AllMetrics
+// src/types/api.ts - Readonly response types mirroring backend AllMetrics
 
 export interface ReadonlyCommitNode {
   readonly committedDate: string;
