@@ -1508,7 +1508,6 @@ export default function GitvitalLanding() {
           <ul className="nav-links">
             <li><a href="/?focus=analyze" onClick={() => setTimeout(focusAnalyzeInput, 40)}>Analyze</a></li>
             <li><a href="/compare">Compare</a></li>
-            <li><a href="/leaderboard">Leaderboard</a></li>
             <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
           </ul>
           <div className="nav-right">
@@ -1543,7 +1542,6 @@ export default function GitvitalLanding() {
       <div className={`mobile-drawer${menuOpen ? ' open' : ''}`}>
         <a href="/?focus=analyze" onClick={() => { setMenuOpen(false); setTimeout(focusAnalyzeInput, 40); }}>Analyze</a>
         <a href="/compare" onClick={() => setMenuOpen(false)}>Compare</a>
-        <a href="/leaderboard" onClick={() => setMenuOpen(false)}>Leaderboard</a>
         <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
         {user?.loggedIn ? (
           <a href={`/${user.githubUsername}`} onClick={() => setMenuOpen(false)} style={{ color: 'var(--orange)' }}>View Profile</a>
@@ -1971,7 +1969,6 @@ export default function GitvitalLanding() {
               <ul>
                 <li><a href="/?focus=analyze">Analyze</a></li>
                 <li><a href="/compare">Repo Compare</a></li>
-                <li><a href="/leaderboard">Leaderboard</a></li>
               </ul>
             </div>
             <div className="footer-col">

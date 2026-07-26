@@ -839,7 +839,7 @@ export default function RepoComparePage() {
             {/* HEADING */}
             <div className="cmp-heading">
               <h1>Compare <span>Repositories</span></h1>
-              <p>Full metric breakdown across {validRepos.length} repos - health, activity, bus factor, PR speed, issue health, churn.</p>
+              <p>Full metric breakdown across repos - health, activity, bus factor, PR speed, issue health, churn.</p>
               {statusMsg && (
                 <p style={{ marginTop: 10, fontSize: 12, color: 'var(--orange-light)' }}>{statusMsg}</p>
               )}
@@ -957,7 +957,6 @@ export default function RepoComparePage() {
             {/* RADAR PENTAGON */}
             <div className="radar-card">
               <div className="radar-bg" />
-              <div className="radar-scanner" />
               <div className="radar-header">
                 <div className="radar-title">Multidimensional Health Analysis</div>
               </div>
@@ -1027,7 +1026,6 @@ export default function RepoComparePage() {
               <div className="radar-legend">
                 {validRepos.slice(0, 4).map((r, i) => (
                   <div key={i} className="radar-legend-item">
-                    <div className="radar-legend-dot" style={{ background: COLORS[i], boxShadow: `0 0 6px ${COLORS[i]}` }} />
                     {(r.split("/")[1] ?? r).toUpperCase()}.sys
                   </div>
                 ))}
@@ -1038,7 +1036,6 @@ export default function RepoComparePage() {
             <div className="table-card">
               <div className="table-card-header">
                 <h3>Full Metric Breakdown</h3>
-                <span>15 METRICS // {validRepos.length} REPOS</span>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table>
