@@ -6,8 +6,8 @@
   --color-background-light: #f6f8f8;
   --color-background-dark: #101e22;
   --color-secondary: #7209b7;
-  --font-display: var(--font-inter);
-  --font-sans: var(--font-inter);
+  --font-display: 'Geomini', sans-serif;
+  --font-sans: 'Geomini', sans-serif;
   --radius-DEFAULT: 0.5rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
@@ -124,8 +124,16 @@
 }
 
 /* Font setup */
+*, *::before, *::after {
+  font-family: 'Geomini', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+code, pre, .mono, [class*="mono"] {
+  font-family: 'Geist Mono', monospace !important;
+}
+
 body {
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Geomini', var(--font-inter), ui-sans-serif, system-ui, sans-serif !important;
   background-color: #101e22;
   color: #f1f5f9;
 }

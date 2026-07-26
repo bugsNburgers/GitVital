@@ -18,6 +18,38 @@ export default function GitvitalLanding() {
     avgMs: 0,
   });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [heroOutVisible, setHeroOutVisible] = useState(false);
+  const [animatedScore, setAnimatedScore] = useState(0);
+  const [animatedBus, setAnimatedBus] = useState(0);
+  const [animatedPr, setAnimatedPr] = useState(0);
+  const [animatedIssues, setAnimatedIssues] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setHeroOutVisible(true);
+      const duration = 1200;
+      const start = performance.now();
+
+      const animate = (now: number) => {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3);
+
+        setAnimatedScore(Math.round(82 * ease));
+        setAnimatedBus(Math.round(7 * ease));
+        setAnimatedPr(Number((1.8 * ease).toFixed(1)));
+        setAnimatedIssues(Math.round(142 * ease));
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+
+      requestAnimationFrame(animate);
+    }, 2000);
+
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/me`, { credentials: 'include' })
@@ -224,26 +256,23 @@ export default function GitvitalLanding() {
     }
   };
 
+  const focusAnalyzeInput = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const input = document.getElementById('heroInput') as HTMLInputElement | null;
+    if (input) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input.focus();
+    }
+  };
+
   const handleKeydown = (e: React.KeyboardEvent<HTMLInputElement>, inputId: string) => {
     if (e.key === 'Enter') analyzeRepo(inputId);
   };
 
-  const focusAnalyzeInput = () => {
-    const input = document.getElementById('heroInput') as HTMLInputElement | null;
-    if (!input) return;
-    input.focus();
-    input.select();
-  };
 
-  useEffect(() => {
-    if (searchParams.get('focus') !== 'analyze') return;
-    const input = document.getElementById('heroInput') as HTMLInputElement | null;
-    if (!input) return;
-    setTimeout(() => {
-      input.focus();
-      input.select();
-    }, 80);
-  }, [searchParams]);
 
   return (
     <>
@@ -270,9 +299,10 @@ export default function GitvitalLanding() {
     --yellow: #eab308;
     --yellow-dim: rgba(234,179,8,0.12);
     --violet: #FF5E00;
+    --orange: #FF5E00;
     --orange-light: #FFA066;
     --orange-dim: rgba(255,94,0,0.15);
-    --font: 'Geist', system-ui, sans-serif;
+    --font: 'Geomini', system-ui, sans-serif;
     --mono: 'Geist Mono', monospace;
   }
 
@@ -371,18 +401,18 @@ export default function GitvitalLanding() {
     position: fixed;
     top: 0; left: 0; right: 0;
     z-index: 100;
-    height: 58px;
+    height: 64px;
     display: flex;
     align-items: center;
-    padding: 0 24px;
-    background: rgba(8,9,9,0.75);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    padding: 0 32px;
+    background: rgba(8,9,9,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border);
   }
   .nav-inner {
     width: 100%;
-    max-width: 1120px;
+    max-width: 1440px;
     margin: 0 auto;
     display: grid;
     grid-template-columns: 1fr auto 1fr;
@@ -486,146 +516,167 @@ export default function GitvitalLanding() {
     position: relative;
     overflow: hidden;
   }
-  .hero-glow {
-    position: absolute;
-    top: -20%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 900px;
-    height: 600px;
-    background: radial-gradient(ellipse at center, rgba(251,54,64,0.15) 0%, transparent 70%);
-    pointer-events: none;
-    transition: background 0.8s ease;
-  }
-  .hero.healthy .hero-glow {
-    background: radial-gradient(ellipse at center, rgba(34,197,94,0.15) 0%, transparent 70%);
-  }
-  .hero-glow-2 {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 700px;
-    height: 300px;
-    background: radial-gradient(ellipse at center, rgba(251,54,64,0.06) 0%, transparent 70%);
-    pointer-events: none;
-    transition: background 0.8s ease;
-  }
-  .hero.healthy .hero-glow-2 {
-    background: radial-gradient(ellipse at center, rgba(34,197,94,0.06) 0%, transparent 70%);
-  }
+  .hero-glow, .hero-glow-2 { display: none !important; }
   .hero-inner {
     position: relative;
     z-index: 1;
-    text-align: center;
-    max-width: 780px;
+    text-align: left;
+    max-width: 1160px;
     width: 100%;
-  }
-  .pill-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11.5px;
-    font-weight: 500;
-    color: #FFB380;
-    background: rgba(255,94,0,0.1);
-    border: 1px solid rgba(255,94,0,0.25);
-    border-radius: 20px;
-    padding: 4px 12px;
-    margin-bottom: 28px;
-    letter-spacing: 0.01em;
-  }
-  .pill-badge span { width:5px; height:5px; border-radius:50%; background: var(--orange-light); display:inline-block; }
-  .hero h1 {
-    font-size: clamp(40px, 6.5vw, 76px);
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    line-height: 1.0;
-    color: var(--text);
-    margin-bottom: 22px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.12em;
-  }
-  .hero-title-line {
-    display: block;
-  }
-  .hero-title-status {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    line-height: 1;
-  }
-  .hero h1 .accent {
-    background: linear-gradient(135deg, #FFB380 0%, #FFC7A6 50%, #FFDACC 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .status-scroller {
+    margin: 0 auto;
     display: grid;
-    height: 1.15em;
-    min-width: 8ch;
-    overflow: hidden;
-    text-align: center;
-  }
-  .status-scroller-inner {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25em;
-    transform: translateY(0);
-  }
-  .status-scroller-inner.animating {
-    animation: scrollDownAnim 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-  }
-  @keyframes scrollDownAnim {
-    0% { transform: translateY(calc(-1.15em - 0.25em)); }
-    100% { transform: translateY(0); }
-  }
-  .word {
-    height: 1.15em;
-    display: flex;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 48px;
     align-items: center;
-    justify-content: center;
-    width: 100%;
-    line-height: 1;
-    padding-bottom: 0.1em;
   }
-  .word.dying {
-    color: #fb3640;
+
+  @media (max-width: 960px) {
+    .hero-inner {
+      grid-template-columns: 1fr;
+      gap: 36px;
+    }
   }
-  .word.healthy {
-    color: var(--green);
+
+  .hero-v2-left { min-width: 0; }
+  .hero-v2-right { min-width: 0; }
+
+  .hero-v2-block { margin-bottom: 22px; }
+  .hero-v2-line { display: flex; gap: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 13.5px; }
+  .hero-v2-prompt { color: var(--text-muted); flex-shrink: 0; }
+  .hero-v2-cmd { color: var(--text); }
+  .hero-v2-out-dim { color: var(--text-muted); }
+  .hero-v2-out-amber { color: var(--orange-light); }
+  .hero-v2-out-green { color: var(--green); }
+  .hero-v2-out-red { color: var(--red); }
+  .hero-v2-out-faint { color: var(--text-muted); font-size: 12px; }
+
+  .hero-v2-h1 {
+    font-family: var(--font);
+    font-weight: 600;
+    font-size: clamp(22px, 3.4vw, 32px);
+    color: var(--text);
+    line-height: 1.45;
+    margin: 22px 0 18px;
+    letter-spacing: -0.01em;
   }
-  .hero-sub {
-    font-size: clamp(14px, 1.3vw, 17px);
-    line-height: 1.65;
+  .hero-v2-h1 .strike {
+    position: relative;
+    color: var(--text-muted);
+    text-decoration: none;
+    display: inline-block;
+  }
+  .hero-v2-h1 .strike::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 52%;
+    height: 2px;
+    background: var(--red);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    width: 0%;
+    animation: strikeLineDraw 0.85s cubic-bezier(0.65, 0, 0.35, 1) 0.3s forwards;
+  }
+  @keyframes strikeLineDraw {
+    from { width: 0%; }
+    to   { width: 100%; }
+  }
+  .hero-v2-h1 .arrow { color: var(--text-muted); }
+  .hero-v2-h1 .swap { color: var(--orange) !important; }
+
+  .hero-v2-sub {
+    font-family: "Jost", sans-serif !important;
+    font-size: clamp(14.5px, 1.3vw, 17.5px);
+    line-height: 1.7;
     color: var(--text-secondary);
-    max-width: 520px;
-    margin: 0 auto 36px;
-    font-weight: 400;
+    max-width: 540px;
+    margin-bottom: 26px;
   }
-  .hero-input-wrap {
+  .hero-v2-sub b { color: var(--text); font-weight: 600; }
+
+  .hero-v2-shell {
     display: flex;
     align-items: center;
-    max-width: 540px;
-    margin: 0 auto 12px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    gap: 10px;
+    max-width: 520px;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 13px 0;
+    margin-bottom: 10px;
   }
-  .hero-input-wrap:focus-within {
-    border-color: rgba(255,94,0,0.5);
-    box-shadow: 0 0 0 3px rgba(255,94,0,0.1);
-  }
-  .hero-input-wrap input {
+  .hero-v2-shell .p { color: var(--orange) !important; flex-shrink: 0; font-family: var(--mono); font-size: 14px; font-weight: 600; }
+  .hero-v2-shell input {
     flex: 1;
     background: none;
-    border: none;
+    border: 0;
     outline: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    caret-color: var(--orange);
+  }
+  .hero-v2-shell input::placeholder { color: var(--text-muted); }
+  .hero-v2-shell button {
+    background: none;
+    border: 0;
+    color: var(--orange) !important;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+  .hero-v2-shell button:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .hero-v2-shell button::before { content: "↵ "; color: var(--text-muted); }
+
+  .hero-v2-hint { color: var(--text-muted); font-size: 12px; font-family: var(--mono); margin-bottom: 0; }
+
+  .hero-v2-out {
+    border-left: 2px solid var(--border);
+    padding-left: 18px;
+    text-align: left;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+  }
+  .hero-v2-out.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .hero-v2-out .path { color: var(--text-secondary); margin-bottom: 14px; font-family: var(--mono); font-size: 13.5px; }
+  .hero-v2-out .path b { color: var(--text); }
+
+  .hero-v2-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 50px;
+    gap: 12px;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+    font-family: var(--mono);
+  }
+  .hero-v2-row .k { color: var(--text-muted); }
+  .hero-v2-row .bar { height: 4px; background: rgba(255,255,255,0.06); position: relative; border-radius: 2px; overflow: hidden; }
+  .hero-v2-row .bar i { position: absolute; inset: 0; border-radius: 2px; }
+  .hero-v2-row .v { text-align: right; color: var(--text-secondary); font-weight: 600; }
+
+  .hero-v2-score-line { margin: 16px 0 16px; font-size: 14px; font-family: var(--mono); }
+  .hero-v2-score-line .big { color: var(--text); font-weight: 700; font-size: 17px; }
+
+  .hero-v2-flag-line { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--border); font-family: var(--mono); font-size: 12.5px; }
+  .hero-v2-flag-line .tag { color: var(--red); font-weight: 600; }
+  .hero-v2-flag-line .detail { color: var(--text-secondary); }
+
+  .hero-v2-cursor {
+    display: inline-block;
+    width: 7px;
+    height: 15px;
+    background: var(--orange);
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: heroCursorBlink 1s step-end infinite;
+  }
+  @keyframes heroCursorBlink { 50% { opacity: 0; } }
     padding: 13px 16px;
     font-family: var(--mono);
     font-size: 13px;
@@ -1494,7 +1545,7 @@ export default function GitvitalLanding() {
             <img src="/gitvital_logo_fixed.svg" alt="GitVital" className="logo-mark" />
           </a>
           <ul className="nav-links">
-            <li><a href="/?focus=analyze" onClick={() => setTimeout(focusAnalyzeInput, 40)}>Analyze</a></li>
+            <li><a href="#heroInput" onClick={focusAnalyzeInput}>Analyze</a></li>
             <li><a href="/compare">Compare</a></li>
             <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
           </ul>
@@ -1528,7 +1579,7 @@ export default function GitvitalLanding() {
 
       {/* Mobile drawer - nav links only, no login */}
       <div className={`mobile-drawer${menuOpen ? ' open' : ''}`}>
-        <a href="/?focus=analyze" onClick={() => { setMenuOpen(false); setTimeout(focusAnalyzeInput, 40); }}>Analyze</a>
+        <a href="#heroInput" onClick={(e) => { setMenuOpen(false); focusAnalyzeInput(e); }}>Analyze</a>
         <a href="/compare" onClick={() => setMenuOpen(false)}>Compare</a>
         <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>Docs</a>
         {user?.loggedIn ? (
@@ -1539,35 +1590,67 @@ export default function GitvitalLanding() {
       </div>
 
 
-      <section className={`hero ${isHealthy ? 'healthy' : ''}`}>
-        <div className="hero-glow"></div>
-        <div className="hero-glow-2"></div>
+      <section className="hero">
         <div className="hero-inner">
-          <h1>
-            <span className="hero-title-line">Is your GitHub repo</span>
-            <span className="hero-title-status">
-              <span className="status-scroller">
-                <span className={`status-scroller-inner ${animKey > 0 ? 'animating' : ''}`} key={animKey}>
-                  <span className={`word ${isHealthy ? 'healthy' : 'dying'}`}>
-                    {isHealthy ? 'Healthy?' : 'Dying?'}
-                  </span>
-                  <span className={`word ${isHealthy ? 'dying' : 'healthy'}`}>
-                    {isHealthy ? 'Dying?' : 'Healthy?'}
-                  </span>
-                </span>
-              </span>
-            </span>
-          </h1>
-          <p className="hero-sub">GitVital scores any public GitHub repository across 6 health metrics: Bus factor, PR speed, Issue backlog, Activity trend, Contributor spread & Code churn in under 60 seconds.</p>
+          <div className="hero-v2-left">
 
-          <div className="hero-input-wrap">
-            <input type="text" placeholder="github.com/facebook/react" id="heroInput" onKeyDown={(e) => handleKeydown(e, 'heroInput')} />
-            <button onClick={() => analyzeRepo('heroInput')}>Analyze ›</button>
+            <h1 className="hero-v2-h1">
+              <span className="strike">github.com/facebook/react</span>
+              <span className="arrow"> → </span><br />
+              <span className="swap">gitvital.com/facebook/react</span>
+            </h1>
+
+            <p className="hero-v2-sub">
+              Swap <b>github.com</b> for <b>gitvital.com</b> in any public repo URL. Get a health score, bus factor, PR turnaround, and risk flags written in plain English - not another dashboard to learn.
+            </p>
+
+            <div className="hero-v2-shell">
+              <span className="p">gitvital.com/</span>
+              <span className="hero-v2-cursor"></span>
+              <input
+                type="text"
+                placeholder="owner/repo or full github url"
+                spellCheck={false}
+                id="heroInput"
+                onKeyDown={(e) => handleKeydown(e, 'heroInput')}
+              />
+              <button onClick={() => analyzeRepo('heroInput')}>analyze</button>
+            </div>
+            <div className="hero-v2-hint">scans last 1,000 commits · 500 PRs · 500 issues - public repos only</div>
           </div>
-          <p className="hero-limit-note">Analyzes last 1,000 commits · 500 PRs · 500 issues · Public repos only</p>
 
+          <div className="hero-v2-right">
+            <div className={`hero-v2-out ${heroOutVisible ? 'visible' : ''}`}>
+              <div className="path"><b>facebook/react</b> <span className="hero-v2-out-faint">- example output</span></div>
 
+              <div className="hero-v2-score-line">health score <span className="big hero-v2-out-green">{animatedScore}</span> <span className="hero-v2-out-dim">/ 100 - actively maintained</span></div>
 
+              <div className="hero-v2-row">
+                <span className="k">bus_factor</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '78%' : '0%', background: 'var(--green)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.1s' }}></i></div>
+                <span className="v">{animatedBus}</span>
+              </div>
+              <div className="hero-v2-row">
+                <span className="k">pr_speed</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '64%' : '0%', background: 'var(--green)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.2s' }}></i></div>
+                <span className="v">{animatedPr}d</span>
+              </div>
+              <div className="hero-v2-row">
+                <span className="k">code_churn</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '41%' : '0%', background: 'var(--orange)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.3s' }}></i></div>
+                <span className="v">med</span>
+              </div>
+              <div className="hero-v2-row">
+                <span className="k">issue_backlog</span>
+                <div className="bar"><i style={{ width: heroOutVisible ? '82%' : '0%', background: 'var(--red)', transition: 'width 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.4s' }}></i></div>
+                <span className="v">{animatedIssues}</span>
+              </div>
+
+              <div className="hero-v2-flag-line">
+                <span className="tag">⚠ risk flag</span> <span className="detail">- ISSUE BACKLOG GROWING: {animatedIssues} open, +18 this week, triage hasn't kept pace</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

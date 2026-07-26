@@ -535,7 +535,7 @@ export default function RepoComparePage() {
           --yellow: #eab308; --yellow-dim: rgba(234,179,8,0.12);
           --red: #ef4444; --red-dim: rgba(239,68,68,0.12);
           --orange: #FF5E00; --orange-light: #FFA066; --orange-dim: rgba(255,94,0,0.12);
-          --font: 'Inter', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
+          --font: 'Geomini', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
           --page-max-width: 1120px;
           --page-padding: 24px;
         }
@@ -543,12 +543,12 @@ export default function RepoComparePage() {
 
         /* NAV */
         .cmp-nav {
-          position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 58px;
-          display: flex; align-items: center; padding: 0 24px;
-          background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
+          position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 64px;
+          display: flex; align-items: center; padding: 0 32px;
+          background: rgba(8,9,9,0.85); backdrop-filter: blur(16px);
           border-bottom: 1px solid var(--border);
         }
-        .cmp-nav-inner { width: 100%; max-width: var(--page-max-width); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .cmp-nav-inner { width: 100%; max-width: 1440px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
         .cmp-logo { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
         .cmp-logo img { height: 36px; }
         .nav-links { display: flex; align-items: center; gap: 2px; list-style: none; }
@@ -579,8 +579,8 @@ export default function RepoComparePage() {
         .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* PAGE */
-        .cmp-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
-        .cmp-main { max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 120px; }
+        .cmp-page { background: var(--bg); min-height: 100vh; padding-top: 64px; display: flex; flex-direction: column; }
+        .cmp-main { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 120px; }
         .section-gap { display: flex; flex-direction: column; gap: 16px; }
 
         /* HEADING */

@@ -545,7 +545,7 @@ export default function RepoDashboardPage() {
           --orange: #FF5E00;
           --orange-light: #FFA066;
           --orange-dim: rgba(255,94,0,0.12);
-          --font: 'Inter', system-ui, sans-serif;
+          --font: 'Geomini', system-ui, sans-serif;
           --mono: 'Geist Mono', monospace;
           --page-max-width: 1120px;
           --page-padding: 24px;
@@ -555,14 +555,14 @@ export default function RepoDashboardPage() {
 
         .dash-nav {
           position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-          height: 58px; display: flex; align-items: center; padding: 0 24px;
-          background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          height: 64px; display: flex; align-items: center; padding: 0 32px;
+          background: rgba(8,9,9,0.85); backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
           border-bottom: 1px solid var(--border);
         }
         .dash-nav-inner {
-          width: 100%; max-width: var(--page-max-width); margin: 0 auto;
-          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+          width: 100%; max-width: 1440px; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between; gap: 20px;
         }
         .dash-logo {
           display: flex; align-items: center; gap: 8px;
@@ -610,8 +610,8 @@ export default function RepoDashboardPage() {
         }
         .btn-icon:hover { color: var(--text-secondary); border-color: var(--border-hover); }
 
-        .dash-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
-        .dash-main { max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 80px; display: flex; flex-direction: column; gap: 16px; }
+        .dash-page { background: var(--bg); min-height: 100vh; padding-top: 64px; display: flex; flex-direction: column; }
+        .dash-main { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 80px; display: flex; flex-direction: column; gap: 16px; }
 
         .card {
           background: var(--bg-card); border: 1px solid var(--border);
@@ -627,24 +627,25 @@ export default function RepoDashboardPage() {
 
         /* Loading / status banner */
         .status-banner {
-          background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
-          padding: 48px 28px; text-align: center; display: flex;
-          flex-direction: column; align-items: center; gap: 16px;
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+          padding: 80px 36px; text-align: center; display: flex;
+          flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+          min-height: 460px; width: 100%;
         }
-        .status-banner h2 { font-size: 18px; font-weight: 700; }
-        .status-banner p { font-size: 14px; color: var(--text-muted); max-width: 420px; }
+        .status-banner h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+        .status-banner p { font-size: 15px; color: var(--text-secondary); max-width: 480px; }
         .progress-bar-wrap {
-          width: 100%; max-width: 400px; height: 4px;
-          background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden;
+          width: 100%; max-width: 480px; height: 5px;
+          background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;
         }
         .progress-bar-fill {
-          height: 100%; border-radius: 2px;
+          height: 100%; border-radius: 3px;
           background: linear-gradient(90deg, var(--orange), var(--orange-light));
           transition: width 0.5s ease;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner {
-          width: 32px; height: 32px; border: 2px solid rgba(255,255,255,0.08);
+          width: 42px; height: 42px; border: 3px solid rgba(255,255,255,0.08);
           border-top-color: var(--orange); border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
@@ -1735,7 +1736,7 @@ export default function RepoDashboardPage() {
         </main>
 
         <footer style={{ borderTop: "1px solid var(--border)", padding: "24px", maxWidth: 1120, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "flex-start", fontSize: "12.5px", color: "var(--text-muted)", flexWrap: "wrap", gap: 12 }}>
-          <span>© 2026 Git Vital Analytics</span>
+          <span>© 2026 GitVital</span>
         </footer>
       </div>
     </>
