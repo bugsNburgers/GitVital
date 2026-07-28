@@ -18,7 +18,7 @@
   "type": "commonjs",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@prisma/client": "^6.19.2",
+    "@prisma/client": "^7.7.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
@@ -37,8 +37,8 @@
     "ioredis": "^5.10.0",
     "node-cron": "^4.2.1",
     "pg": "^8.20.0",
-    "prisma": "^6.19.2",
+    "prisma": "^7.7.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.2"
   }
 }
