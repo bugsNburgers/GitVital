@@ -6,14 +6,13 @@
     "types": ["node"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "baseUrl": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
-      "@metrics/*": ["metrics/*"],
-      "@github/*": ["github/*"]
+      "@metrics/*": ["./src/metrics/*"],
+      "@github/*": ["./src/github/*"]
     }
   },
   "include": ["src/**/*"],
