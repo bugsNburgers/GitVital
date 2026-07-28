@@ -5,8 +5,26 @@ import { UserJobData, UserMergedPRNode, UserContributionMetrics } from '../types
 import { GitHubClient, AuthExpiredError, RateLimitError } from '../github/client';
 import { fetchUserMergedPRs as fetchUserMergedPRsFromGitHub } from '../github/fetchUserMergedPRs';
 import { setUserContributionCache, UserContributionMetricsCacheValue } from '../cache/userCache';
+import { decryptAccessToken } from '../security/tokenCrypto';
+import { dbQuery } from '../db/pool';
 
 const MAX_USER_PRS = 500;
+
+type UserTokenSource = 'user_oauth' | 'service_token';
+
+interface UserJobDebugInfo {
+    username: string;
+    tokenSource: UserTokenSource;
+    userIdUsed: string | null;
+    phase: 'started' | 'fetch_warning' | 'completed' | 'failed';
+    mergedPRCount?: number;
+    externalMergedPRCount?: number;
+    contributionAcceptanceRate?: number;
+    warning?: string;
+    errorName?: string;
+    errorMessage?: string;
+    recordedAt: string;
+}
 
 async function setUserJobState(jobId: string, status: 'processing' | 'done' | 'failed', error?: string): Promise<void> {
     try {
@@ -21,22 +39,45 @@ async function setUserJobState(jobId: string, status: 'processing' | 'done' | 'f
     }
 }
 
-// Safe wrapper — BullMQ's updateProgress calls Redis internally.
+async function setUserJobDebug(jobId: string, debug: UserJobDebugInfo): Promise<void> {
+    try {
+        await redis.set(`userjobdebug:${jobId}`, JSON.stringify(debug), 'EX', 3600);
+    } catch (redisError) {
+        console.warn(`[UserWorker] Failed to persist debug state for ${jobId}.`, redisError);
+    }
+}
+
+// Safe wrapper - BullMQ's updateProgress calls Redis internally.
 // If Redis is flaky mid-job, progress tracking should fail silently.
 async function safeUpdateProgress(job: Job<UserJobData>, progress: number): Promise<void> {
     try {
         await job.updateProgress(progress);
     } catch {
-        // Redis unavailable — progress tracking lost, analysis continues
+        // Redis unavailable - progress tracking lost, analysis continues
     }
 }
 
-function getServiceToken(): string {
-    const token = process.env.GITHUB_TOKEN || process.env.GITHUB_ACCESS_TOKEN || '';
-    if (!token) {
+async function resolveAccessToken(userId?: string): Promise<{ token: string; source: UserTokenSource }> {
+    if (userId) {
+        try {
+            const encrypted = await redis.get(`oauth:github:token:user:${userId}`);
+            if (encrypted) {
+                try {
+                    return { token: decryptAccessToken(encrypted, config.encryptionKey), source: 'user_oauth' };
+                } catch {
+                    console.warn('[UserWorker] Failed to decrypt user token, falling back to service token.');
+                }
+            }
+        } catch (redisError) {
+            console.warn('[UserWorker] Redis unavailable while resolving user token, falling back to service token.', redisError);
+        }
+    }
+
+    const serviceToken = process.env.GITHUB_TOKEN || process.env.GITHUB_ACCESS_TOKEN || '';
+    if (!serviceToken) {
         throw new UnrecoverableError('Missing GitHub service token for user analysis worker');
     }
-    return token;
+    return { token: serviceToken, source: 'service_token' };
 }
 
 function computeUserContributionMetrics(username: string, mergedPRs: UserMergedPRNode[]): UserContributionMetrics {
@@ -72,15 +113,25 @@ function computeUserContributionMetrics(username: string, mergedPRs: UserMergedP
 }
 
 async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
-    const { username } = job.data;
+    const { username, userId } = job.data;
     const logPrefix = `[UserJob ${job.id}] ${username}`;
+    let tokenSourceForDebug: UserTokenSource = 'service_token';
 
     try {
         await setUserJobState(job.id!, 'processing');
         await safeUpdateProgress(job, 5);
 
         // Create GitHub client with service token
-        const token = getServiceToken();
+        const { token, source: tokenSource } = await resolveAccessToken(userId);
+        tokenSourceForDebug = tokenSource;
+        await setUserJobDebug(job.id!, {
+            username,
+            tokenSource,
+            userIdUsed: userId ?? null,
+            phase: 'started',
+            recordedAt: new Date().toISOString(),
+        });
+
         const client = new GitHubClient(token);
 
         // Fetch user's merged PRs using the shared module
@@ -89,7 +140,7 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         // or partial failures are caught here to return 0 metrics instead of crashing.
         let mergedPRs: UserMergedPRNode[] = [];
         try {
-            const FETCH_TIMEOUT_MS = 45_000; // 45s — GitHub pagination can be slow
+            const FETCH_TIMEOUT_MS = 45_000; // 45s - GitHub pagination can be slow
             const timeoutPromise = new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('GitHub PR fetch timed out after 45s')), FETCH_TIMEOUT_MS)
             );
@@ -98,8 +149,17 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
                 timeoutPromise,
             ]);
         } catch (fetchError) {
-            console.warn(`   ${logPrefix} — PR fetch failed or timed out, returning zero metrics:`, fetchError);
-            // Continue with empty array — all metrics will be 0
+            console.warn(`   ${logPrefix} - PR fetch failed or timed out, returning zero metrics:`, fetchError);
+            const warning = fetchError instanceof Error ? `${fetchError.name}: ${fetchError.message}` : String(fetchError);
+            await setUserJobDebug(job.id!, {
+                username,
+                tokenSource,
+                userIdUsed: userId ?? null,
+                phase: 'fetch_warning',
+                warning,
+                recordedAt: new Date().toISOString(),
+            });
+            // Continue with empty array - all metrics will be 0
         }
         await safeUpdateProgress(job, 55);
 
@@ -120,14 +180,92 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
         };
         await setUserContributionCache(username, cachePayload, config.cacheTtlSeconds);
 
+        // Persist contribution metrics into NeonDB for durable history.
+        try {
+            await dbQuery(
+                `UPDATE users
+                 SET external_pr_count = $1,
+                     external_merged_pr_count = $2,
+                     contribution_acceptance_rate = $3,
+                     updated_at = NOW()
+                 WHERE LOWER(username) = LOWER($4)`,
+                [
+                    metrics.externalPRCount,
+                    metrics.externalMergedPRCount,
+                    metrics.contributionAcceptanceRate,
+                    username,
+                ],
+            );
+
+            await dbQuery(
+                `INSERT INTO user_contribution_history (
+                   user_id,
+                   username,
+                   external_pr_count,
+                   external_merged_pr_count,
+                   contribution_acceptance_rate,
+                   analyzed_at,
+                   source,
+                   payload
+                 )
+                 SELECT
+                   u.id,
+                   $1,
+                   $2,
+                   $3,
+                   $4,
+                   NOW(),
+                   'user-analysis-worker',
+                   $5::jsonb
+                 FROM users u
+                 WHERE LOWER(u.username) = LOWER($1)
+                 LIMIT 1`,
+                [
+                    username,
+                    metrics.externalPRCount,
+                    metrics.externalMergedPRCount,
+                    metrics.contributionAcceptanceRate,
+                    JSON.stringify({
+                        mergedPRCount: mergedPRs.length,
+                        tokenSource,
+                        userId: userId ?? null,
+                    }),
+                ],
+            );
+        } catch (dbError) {
+            console.warn(`[UserWorker] Failed to persist contribution metrics for ${username} (non-fatal).`, dbError);
+        }
+
         await safeUpdateProgress(job, 95);
 
         // Step 7: Mark complete.
         await setUserJobState(job.id!, 'done');
+        await setUserJobDebug(job.id!, {
+            username,
+            tokenSource,
+            userIdUsed: userId ?? null,
+            phase: 'completed',
+            mergedPRCount: mergedPRs.length,
+            externalMergedPRCount: metrics.externalMergedPRCount,
+            contributionAcceptanceRate: metrics.contributionAcceptanceRate,
+            recordedAt: new Date().toISOString(),
+        });
         await safeUpdateProgress(job, 100);
 
         console.log(`✅ ${logPrefix} complete: externalPRs=${metrics.externalPRCount}, acceptance=${metrics.contributionAcceptanceRate}%`);
     } catch (error) {
+        const errorName = error instanceof Error ? error.name : 'UnknownError';
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await setUserJobDebug(job.id!, {
+            username,
+            tokenSource: tokenSourceForDebug,
+            userIdUsed: userId ?? null,
+            phase: 'failed',
+            errorName,
+            errorMessage,
+            recordedAt: new Date().toISOString(),
+        });
+
         if (error instanceof UnrecoverableError) {
             await setUserJobState(job.id!, 'failed', error.message);
             throw error;
@@ -151,7 +289,11 @@ async function processUserAnalysisJob(job: Job<UserJobData>): Promise<void> {
     }
 }
 
-const shouldStartUserWorker = require.main === module || process.env.EMBED_WORKERS_IN_API === 'true';
+// Start user worker by default in API process unless explicitly disabled.
+// This prevents user-analysis jobs from getting stuck in queued state when
+// EMBED_WORKERS_IN_API is not set in production.
+const embedWorkersInApi = (process.env.EMBED_WORKERS_IN_API ?? 'true').toLowerCase() === 'true';
+const shouldStartUserWorker = require.main === module || embedWorkersInApi;
 let userWorker: Worker<UserJobData> | null = null;
 
 if (shouldStartUserWorker) {
@@ -161,7 +303,7 @@ if (shouldStartUserWorker) {
         {
             connection: getBullRedisConnection(),
             concurrency: 2,
-            lockDuration: 120_000,    // 2 min lock — fetch can take time
+            lockDuration: 120_000,    // 2 min lock - fetch can take time
             stalledInterval: 60_000,  // Check stalled every 1 min
             maxStalledCount: 1,       // Only restart stalled once
             limiter: {

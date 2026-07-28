@@ -1,11 +1,11 @@
-// src/metrics/busFactor.ts — PURE FUNCTION
+// src/metrics/busFactor.ts - PURE FUNCTION
 // Input:  commits[] (each has author.login)
 // Output: BusFactorResult | null
 // No database calls. No API calls. No side effects.
 
 import { CommitNode, BusFactorResult } from '../types';
 
-// Bot patterns from Prompt 6.1 — filter these BEFORE computing any metrics.
+// Bot patterns from Prompt 6.1 - filter these BEFORE computing any metrics.
 const BOT_PATTERNS: string[] = [
   'bot', 'dependabot', 'renovate', 'github-actions', '[bot]',
   'greenkeeper', 'snyk-bot', 'codecov', 'netlify', 'vercel',
@@ -57,7 +57,7 @@ export function computeBusFactor(commits: CommitNode[]): BusFactorResult | null 
   // Step 2: Count commits per unique author
   const countMap = new Map<string, number>();
   for (const commit of humanCommits) {
-    const login = commit.author.user!.login; // safe — we filtered nulls above
+    const login = commit.author.user!.login; // safe - we filtered nulls above
     countMap.set(login, (countMap.get(login) || 0) + 1);
   }
 

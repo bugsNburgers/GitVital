@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { API_BASE, AUTH_URL, fetchSessionUser, type SessionUser } from "@/config";
+import { API_BASE, AUTH_URL, fetchDailyQuota, fetchSessionUser, type DailyQuotaResponse, type SessionUser } from "@/config";
 import InfoTooltip from "@/components/InfoTooltip";
 
 // ── Types matching backend AllMetrics + metadata ──
@@ -81,6 +81,20 @@ interface IssueRecommendation {
   reason: string;
   difficultyMatch: 'easy' | 'medium' | 'hard';
   githubUrl: string;
+}
+
+interface AnalyzeApiResponse {
+  status?: "queued" | "processing" | "done" | "failed";
+  jobId?: string;
+  metrics?: RepoMetrics;
+  error?: string;
+  code?: string;
+  remaining?: number;
+}
+
+interface IssueRecommendationsApiResponse {
+  recommendations?: IssueRecommendation[];
+  source?: 'gemini' | 'rule-based';
 }
 
 type LoadState = "idle" | "checking" | "queuing" | "polling" | "done" | "error";
@@ -201,6 +215,9 @@ export default function RepoDashboardPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [analyzeErrorCode, setAnalyzeErrorCode] = useState<string | null>(null);
+  const [analyzeErrorRemaining, setAnalyzeErrorRemaining] = useState<number | null>(null);
+  const [dailyQuota, setDailyQuota] = useState<DailyQuotaResponse | null>(null);
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -210,6 +227,11 @@ export default function RepoDashboardPage() {
   const [recError, setRecError] = useState<string | null>(null);
   const [recErrorCode, setRecErrorCode] = useState<string | null>(null);
   const [recSource, setRecSource] = useState<'gemini' | 'rule-based' | null>(null);
+
+  const refreshDailyQuota = useCallback(async () => {
+    const quota = await fetchDailyQuota(API_BASE, 1);
+    setDailyQuota(quota);
+  }, []);
 
   // ── Fetch current user ──
   useEffect(() => {
@@ -224,6 +246,7 @@ export default function RepoDashboardPage() {
     };
 
     void loadSession();
+    void refreshDailyQuota();
 
     return () => {
       cancelled = true;
@@ -283,7 +306,7 @@ export default function RepoDashboardPage() {
           setLoadState("error");
         }
       } catch {
-        // network blip — keep polling
+        // network blip - keep polling
       }
     }, JOB_POLL_INTERVAL_MS);
   }, [owner, repo]);
@@ -294,6 +317,8 @@ export default function RepoDashboardPage() {
 
     async function init() {
       setLoadState("checking");
+      setAnalyzeErrorCode(null);
+      setAnalyzeErrorRemaining(null);
       try {
         // 1. Try to get cached metrics
         const r = await fetch(`${API_BASE}/api/repo/${owner}/${repo}`);
@@ -303,7 +328,7 @@ export default function RepoDashboardPage() {
           return;
         }
 
-        // 2. No cache — queue analysis
+        // 2. No cache - queue analysis
         if (!cancelled) setLoadState("queuing");
         const qr = await fetch(`${API_BASE}/api/analyze`, {
           method: "POST",
@@ -312,14 +337,18 @@ export default function RepoDashboardPage() {
           body: JSON.stringify({ owner, repo }),
         });
 
+        const q = await qr.json().catch(() => ({})) as AnalyzeApiResponse;
+
         if (!qr.ok) {
           let errText = `Failed to start analysis (HTTP ${qr.status}).`;
-          try { const err = await qr.json(); errText = err.error || errText; } catch { }
+          errText = q.error || errText;
+          setAnalyzeErrorCode(q.code ?? null);
+          setAnalyzeErrorRemaining(typeof q.remaining === "number" ? q.remaining : null);
+          void refreshDailyQuota();
           if (!cancelled) { setErrorMsg(errText); setLoadState("error"); }
           return;
         }
-
-        const q = await qr.json();
+        void refreshDailyQuota();
 
         // If already cached (hit in analyze endpoint), load directly
         if (q.status === "done" && q.metrics) {
@@ -344,35 +373,51 @@ export default function RepoDashboardPage() {
       cancelled = true;
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
-  }, [owner, repo, startPolling]);
+  }, [owner, repo, refreshDailyQuota, startPolling]);
 
   // ── Re-analyze button ──
-  function reanalyze() {
+  async function reanalyze() {
     if (pollRef.current) clearInterval(pollRef.current);
     setMetrics(null);
     setErrorMsg(null);
+    setAnalyzeErrorCode(null);
+    setAnalyzeErrorRemaining(null);
     setJobProgress(0);
     setLoadState("queuing");
 
-    fetch(`${API_BASE}/api/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ owner, repo, force: true }),
-    })
-      .then((r) => r.json())
-      .then((q) => {
-        if (q.status === "done" && q.metrics) {
-          setMetrics(q.metrics);
-          setLoadState("done");
-        } else if (q.jobId) {
-          startPolling(q.jobId);
-        } else {
-          setErrorMsg(q.error || "Failed to create analysis job. Please try again.");
-          setLoadState("error");
-        }
-      })
-      .catch(() => { setErrorMsg("Failed to start analysis."); setLoadState("error"); });
+    try {
+      const response = await fetch(`${API_BASE}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ owner, repo, force: true }),
+      });
+
+      const payload = await response.json().catch(() => ({})) as AnalyzeApiResponse;
+      if (!response.ok) {
+        setAnalyzeErrorCode(payload.code ?? null);
+        setAnalyzeErrorRemaining(typeof payload.remaining === "number" ? payload.remaining : null);
+        setErrorMsg(payload.error || `Failed to start analysis (HTTP ${response.status}).`);
+        setLoadState("error");
+        void refreshDailyQuota();
+        return;
+      }
+
+      if (payload.status === "done" && payload.metrics) {
+        setMetrics(payload.metrics);
+        setLoadState("done");
+      } else if (payload.jobId) {
+        startPolling(payload.jobId);
+      } else {
+        setErrorMsg(payload.error || "Failed to create analysis job. Please try again.");
+        setLoadState("error");
+      }
+
+      void refreshDailyQuota();
+    } catch {
+      setErrorMsg("Failed to start analysis.");
+      setLoadState("error");
+    }
   }
 
   function copyBadge() {
@@ -401,12 +446,13 @@ export default function RepoDashboardPage() {
         setRecErrorCode(payload.code ?? null);
         throw new Error(payload.error ?? `HTTP ${res.status}`);
       }
-      const data = await res.json() as { recommendations: IssueRecommendation[]; source: 'gemini' | 'rule-based' };
+      const data = await res.json() as IssueRecommendationsApiResponse;
       setIssueRecommendations(data.recommendations ?? []);
-      setRecSource(data.source);
+      setRecSource(data.source ?? null);
     } catch (err) {
       setRecError(err instanceof Error ? err.message : 'Failed to load recommendations.');
     } finally {
+      void refreshDailyQuota();
       setRecLoading(false);
     }
   }
@@ -441,6 +487,7 @@ export default function RepoDashboardPage() {
 
   const isLoading = loadState !== "done" && loadState !== "error";
   const reanalyzing = loadState === "queuing" || loadState === "polling";
+  const blockedAnalyzeRemaining = analyzeErrorRemaining ?? dailyQuota?.analyzeDaily.remaining ?? 0;
 
   // Parse AI advice into summary + recommendations
   let aiSummary = metrics?.aiAdvice ?? null;
@@ -498,22 +545,24 @@ export default function RepoDashboardPage() {
           --orange: #FF5E00;
           --orange-light: #FFA066;
           --orange-dim: rgba(255,94,0,0.12);
-          --font: 'Inter', system-ui, sans-serif;
+          --font: 'Geomini', system-ui, sans-serif;
           --mono: 'Geist Mono', monospace;
+          --page-max-width: 1120px;
+          --page-padding: 24px;
         }
 
         body { font-family: var(--font); background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
 
         .dash-nav {
           position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-          height: 58px; display: flex; align-items: center; padding: 0 24px;
-          background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          height: 64px; display: flex; align-items: center; padding: 0 32px;
+          background: rgba(8,9,9,0.85); backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
           border-bottom: 1px solid var(--border);
         }
         .dash-nav-inner {
-          width: 100%; max-width: 1120px; margin: 0 auto;
-          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+          width: 100%; max-width: 1440px; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between; gap: 20px;
         }
         .dash-logo {
           display: flex; align-items: center; gap: 8px;
@@ -537,6 +586,10 @@ export default function RepoDashboardPage() {
           text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
         }
         .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+        .btn-avatar {
+          width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+          border: 1px solid rgba(255,255,255,0.14);
+        }
         .btn-primary {
           font-family: var(--font); font-size: 13px; font-weight: 600;
           color: #fff; background: var(--orange);
@@ -557,8 +610,8 @@ export default function RepoDashboardPage() {
         }
         .btn-icon:hover { color: var(--text-secondary); border-color: var(--border-hover); }
 
-        .dash-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
-        .dash-main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; display: flex; flex-direction: column; gap: 16px; }
+        .dash-page { background: var(--bg); min-height: 100vh; padding-top: 64px; display: flex; flex-direction: column; }
+        .dash-main { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 80px; display: flex; flex-direction: column; gap: 16px; }
 
         .card {
           background: var(--bg-card); border: 1px solid var(--border);
@@ -692,7 +745,6 @@ export default function RepoDashboardPage() {
         .flag-title.info { color: var(--orange-light); }
         .flag-desc { font-size: 11px; line-height: 1.45; color: var(--text-muted); }
 
-        .ai-panel { border-left: 3px solid var(--orange); }
         .ai-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
         .ai-icon-box {
           width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
@@ -746,6 +798,52 @@ export default function RepoDashboardPage() {
           .flags-grid { grid-template-columns: 1fr; }
           .dash-main { padding: 24px 16px 60px; }
           .dash-breadcrumb { display: none; }
+        }
+
+        /* LARGE SCREENS - 1440px (15-16") */
+        @media (min-width: 1440px) {
+          :root { --page-max-width: 1340px; --page-padding: 36px; }
+          .score-big { font-size: 48px; }
+          .health-meta h2 { font-size: 24px; }
+          .health-meta p { font-size: 15px; max-width: 440px; }
+          .metric-card { padding: 20px; }
+          .metric-card-val { font-size: 24px; }
+          .card-pad { padding: 32px; }
+          .commits-chart { height: 200px; }
+          .flags-grid { grid-template-columns: repeat(4, 1fr); }
+          .rec-grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        /* LARGE SCREENS - 1600px (16.6") */
+        @media (min-width: 1600px) {
+          :root { --page-max-width: 1500px; --page-padding: 48px; }
+          .score-big { font-size: 52px; }
+          .score-ring-wrap { width: 180px; height: 180px; }
+          .health-meta h2 { font-size: 26px; }
+          .health-meta p { font-size: 15.5px; max-width: 480px; }
+          .metric-card { padding: 22px; }
+          .metric-card-val { font-size: 26px; }
+          .metric-card-label { font-size: 12px; }
+          .card-pad { padding: 36px; }
+          .commits-chart { height: 220px; }
+          .hstat-val { font-size: 24px; }
+          .flag-title { font-size: 13px; }
+          .flag-desc { font-size: 12px; }
+          .ai-text { font-size: 15px; }
+          .dash-main { gap: 20px; }
+        }
+
+        /* EXTRA LARGE SCREENS - 1920px */
+        @media (min-width: 1920px) {
+          :root { --page-max-width: 1760px; --page-padding: 64px; }
+          .score-big { font-size: 58px; }
+          .score-ring-wrap { width: 200px; height: 200px; }
+          .health-meta h2 { font-size: 28px; }
+          .metric-card-val { font-size: 28px; }
+          .card-pad { padding: 40px; }
+          .commits-chart { height: 240px; }
+          .hstat-val { font-size: 26px; }
+          .dash-main { gap: 24px; }
         }
 
         /* ── Issue Recommendations ── */
@@ -823,20 +921,34 @@ export default function RepoDashboardPage() {
             </div>
             <div className="dash-nav-right">
               <div style={{ display: "flex", alignItems: "center", gap: "16px", marginRight: "12px" }}>
-                <a href="/leaderboard" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Leaderboard</a>
-                {user?.loggedIn ? (
-                  <a href={`/${user.githubUsername}`} style={{ color: "var(--orange)", fontSize: "13px", textDecoration: "none", fontWeight: "bold" }}>View Profile</a>
-                ) : (
-                  <a href={AUTH_URL} style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Login</a>
-                )}
+                <a href="/?focus=analyze" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Analyze</a>
+                <a href="/compare" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Compare</a>
+                <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Docs</a>
               </div>
               {/* Stars / Forks from real data */}
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginRight: "8px" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-                {meta ? fmt(meta.stars) : "—"}
+                {meta ? fmt(meta.stars) : "-"}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>
-                {meta ? fmt(meta.forks) : "—"}
+                {meta ? fmt(meta.forks) : "-"}
               </div>
+              {user?.loggedIn && user.githubUsername ? (
+                <a href={`/${user.githubUsername}`} className="btn-ghost" rel="noopener noreferrer">
+                  <img
+                    src={`https://github.com/${user.githubUsername}.png?size=64`}
+                    alt={`${user.githubUsername} avatar`}
+                    className="btn-avatar"
+                  />
+                  View Profile
+                </a>
+              ) : (
+                <a href={AUTH_URL} className="btn-ghost" rel="noopener noreferrer">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                  </svg>
+                  Login with GitHub
+                </a>
+              )}
               <button className="btn-ghost" onClick={() => router.push("/compare")}>⇄ Compare</button>
               <button className="btn-primary" onClick={reanalyze} disabled={reanalyzing}>
                 {reanalyzing ? "Analyzing…" : "↻ Re-analyze"}
@@ -849,6 +961,36 @@ export default function RepoDashboardPage() {
         </nav>
 
         <main className="dash-main">
+
+          {dailyQuota && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
+                Analyzes left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                {' · '}
+                {user?.loggedIn
+                  ? (
+                    <>
+                      AI usages left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                    </>
+                  )
+                  : (
+                    <>
+                      Compare AI usages left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                    </>
+                  )}
+              </div>
+              {user?.loggedIn && (
+                <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-muted)" }}>
+                  Combined AI Pool: 20/day across Profile Insights + Issue Recommendations + Compare Insights.
+                </div>
+              )}
+              {user?.loggedIn === false && (
+                <div style={{ marginTop: 4, fontSize: 12, color: "var(--text-muted)" }}>
+                  Logged-out users get Compare AI only (5/day by IP). Sign in to unlock the combined 20/day AI pool.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── LOADING / ERROR STATE ── */}
           {isLoading && (
@@ -877,7 +1019,43 @@ export default function RepoDashboardPage() {
             </div>
           )}
 
-          {loadState === "error" && (
+          {loadState === "error" && analyzeErrorCode === "ANALYZE_DAILY_LIMIT_EXCEEDED" && user?.loggedIn === false && (
+            <div className="card card-pad">
+              <div className="rec-locked">
+                <div className="rec-locked-bg">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div className="rec-skel" style={{ height: 13, width: '70%' }} />
+                      <div className="rec-skel" style={{ height: 10, width: '40%' }} />
+                      <div className="rec-skel" style={{ height: 10, width: '90%' }} />
+                      <div className="rec-skel" style={{ height: 10, width: '60%' }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="rec-locked-blur">
+                  <span style={{ fontSize: 28 }}>🔒</span>
+                  <p className="rec-locked-text">
+                    You have {blockedAnalyzeRemaining} analyze requests left today. Login for 20/day and unlock personalized issue recommendations, profile insights, and compare insights.
+                  </p>
+                  <a
+                    href={AUTH_URL}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      background: 'linear-gradient(135deg, var(--orange), #D94E00)',
+                      color: '#fff', borderRadius: 10, padding: '10px 22px',
+                      fontWeight: 700, fontSize: 13, textDecoration: 'none',
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 3-.4c1.02.005 2.05.14 3 .4 2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.22.7.83.58C20.56 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z" /></svg>
+                    Sign In with GitHub
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {loadState === "error" && !(analyzeErrorCode === "ANALYZE_DAILY_LIMIT_EXCEEDED" && user?.loggedIn === false) && (
             <div className="status-banner card">
               <span style={{ fontSize: 32 }}>⚠️</span>
               <h2>Analysis Failed</h2>
@@ -923,11 +1101,11 @@ export default function RepoDashboardPage() {
                     {metrics?._meta && (
                       <span className="cache-pill" title={`Data fetched ${new Date(metrics._meta.fetchedAt).toLocaleString()}`}>
                         {metrics._meta.source === "db_fallback" ? (
-                          <><span className="dot db" /> DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
+                          <>DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
                         ) : metrics._meta.source === "redis_cache" ? (
-                          <><span className="dot cached" /> Cached ({metrics._meta.cachedAgeHours}h ago)</>
+                          <>Cached ({metrics._meta.cachedAgeHours}h ago)</>
                         ) : (
-                          <><span className="dot fresh" /> Just Fetched</>
+                          <>Just Fetched</>
                         )}
                       </span>
                     )}
@@ -945,7 +1123,7 @@ export default function RepoDashboardPage() {
                         Bus Factor
                         <InfoTooltip metricKey="busFactor" />
                       </div>
-                      <div className="hstat-val">{busf?.busFactor ?? "—"}</div>
+                      <div className="hstat-val">{busf?.busFactor ?? "-"}</div>
                       <div className={`hstat-sub ${busf && busf.busFactor >= 3 ? "" : "orange"}`}>
                         {busf ? (busf.busFactor >= 3 ? "Stable" : "At Risk") : "N/A"}
                       </div>
@@ -956,7 +1134,7 @@ export default function RepoDashboardPage() {
                         <InfoTooltip metricKey="velocityChange" />
                       </div>
                       <div className="hstat-val">
-                        {activity ? (activity.velocityChange >= 0 ? "+" : "") + Math.round(activity.velocityChange) + "%" : "—"}
+                        {activity ? (activity.velocityChange >= 0 ? "+" : "") + Math.round(activity.velocityChange) + "%" : "-"}
                       </div>
                       <div className={`hstat-sub ${activity && activity.velocityChange < 0 ? "orange" : ""}`}>
                         {activity ? velocityLabel(activity.velocityChange) : "N/A"}
@@ -998,7 +1176,7 @@ export default function RepoDashboardPage() {
                       className={h >= 60 ? "hi" : h >= 35 ? "md" : ""} />
                   ))}
                 </div>
-                <div className="metric-card-val">{busf ? busf.busFactor : "—"}</div>
+                <div className="metric-card-val">{busf ? busf.busFactor : "-"}</div>
                 <div className="metric-card-sub">
                   {busf ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -1063,7 +1241,7 @@ export default function RepoDashboardPage() {
                         strokeLinecap="round" />
                     </svg>
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "var(--text)" }}>
-                      {issue ? `${issueClosedPct}%` : "—"}
+                      {issue ? `${issueClosedPct}%` : "-"}
                     </div>
                   </div>
                 </div>
@@ -1113,7 +1291,7 @@ export default function RepoDashboardPage() {
                     )}
                   </svg>
                 </div>
-                <div className="metric-card-val">{churn ? churnLabel(churn.churnScore) : "—"}</div>
+                <div className="metric-card-val">{churn ? churnLabel(churn.churnScore) : "-"}</div>
                 <div className="metric-card-sub" style={{ color: churn && churn.churnScore < 30 ? "var(--green)" : "var(--text-muted)" }}>
                   {churn ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -1138,21 +1316,21 @@ export default function RepoDashboardPage() {
                     Open Issues
                     <InfoTooltip metricKey="openIssueCount" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? issue.openIssueCount : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? issue.openIssueCount : "-"}</div>
                 </div>
                 <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
                     Avg Issue Age
                     <InfoTooltip metricKey="avgIssueAgeDays" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.avgIssueAgeDays.toFixed(1)}d` : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.avgIssueAgeDays.toFixed(1)}d` : "-"}</div>
                 </div>
                 <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
                     Unresponded %
                     <InfoTooltip metricKey="unrespondedIssuePct" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.unrespondedIssuePct.toFixed(1)}%` : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.unrespondedIssuePct.toFixed(1)}%` : "-"}</div>
                 </div>
               </div>
             </div>
@@ -1223,7 +1401,7 @@ export default function RepoDashboardPage() {
                 <span className="rec-section-title">Contribution Recommendations</span>
               </div>
 
-              {/* Not logged in — blurred locked card */}
+              {/* Not logged in - blurred locked card */}
               {user?.loggedIn === false ? (
                 <div className="rec-locked">
                   {/* Blurred ghost cards behind the overlay */}
@@ -1262,6 +1440,12 @@ export default function RepoDashboardPage() {
               ) : user?.loggedIn === true ? (
                 /* Logged in */
                 <>
+                  {dailyQuota && (
+                    <div style={{ marginBottom: 12, fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
+                      AI requests left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                    </div>
+                  )}
+
                   {/* Pre-fetch CTA */}
                   {!issueRecommendations && !recLoading && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1323,7 +1507,7 @@ export default function RepoDashboardPage() {
                     <>
                       {recSource === 'rule-based' && (
                         <p className="rec-note">
-                          Recommendations based on issue labels (Gemini unavailable — sign in for AI-powered suggestions)
+                          Recommendations based on issue labels (Gemini unavailable - sign in for AI-powered suggestions)
                         </p>
                       )}
                       {issueRecommendations.length === 0 ? (
@@ -1549,14 +1733,8 @@ export default function RepoDashboardPage() {
           </>)}
         </main>
 
-        <footer style={{ borderTop: "1px solid var(--border)", padding: "24px", maxWidth: 1120, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12.5px", color: "var(--text-muted)", flexWrap: "wrap", gap: 12 }}>
-          <span>© 2024 Git Vital Analytics</span>
-          <div style={{ display: "flex", gap: 20 }}>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Documentation</a>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>API</a>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Status</a>
-            <a href="#" style={{ color: "var(--text-muted)", textDecoration: "none" }}>Terms</a>
-          </div>
+        <footer style={{ borderTop: "1px solid var(--border)", padding: "24px", maxWidth: 1120, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "flex-start", fontSize: "12.5px", color: "var(--text-muted)", flexWrap: "wrap", gap: 12 }}>
+          <span>© 2026 GitVital</span>
         </footer>
       </div>
     </>

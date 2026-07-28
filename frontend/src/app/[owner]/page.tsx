@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { API_BASE, AUTH_URL } from "@/config";
+import { API_BASE, AUTH_URL, fetchDailyQuota, type DailyQuotaResponse } from "@/config";
 import InfoTooltip from "@/components/InfoTooltip";
 
 type BadgeTone = "orange" | "secondary" | "emerald" | "orange-light";
@@ -56,6 +56,7 @@ interface UserProfileResponse {
     contribution: {
         externalPRCount: number;
         externalMergedPRCount: number;
+        externalOpenPRCount: number;
         contributionAcceptanceRate: number;
         analyzedAt: string | null;
     };
@@ -223,7 +224,13 @@ export default function UserProfilePage() {
     const [aiError, setAiError] = useState<string | null>(null);
     const [aiErrorCode, setAiErrorCode] = useState<string | null>(null);
     const [aiRequested, setAiRequested] = useState(false);
+    const [dailyQuota, setDailyQuota] = useState<DailyQuotaResponse | null>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const refreshDailyQuota = useCallback(async () => {
+        const quota = await fetchDailyQuota(API_BASE, 1);
+        setDailyQuota(quota);
+    }, []);
 
     const score = Math.round(profile?.developerScore ?? 0);
     const scoreDashOffset = 113 * (1 - clamp(score) / 100);
@@ -334,6 +341,8 @@ export default function UserProfilePage() {
             .then((res) => res.json())
             .then((data) => setUser(data))
             .catch(() => setUser({ loggedIn: false }));
+
+        void refreshDailyQuota();
     }, []);
 
     useEffect(() => {
@@ -476,6 +485,7 @@ export default function UserProfilePage() {
         } catch (err) {
             setAiError(err instanceof Error ? err.message : "Failed to generate AI insights.");
         } finally {
+            void refreshDailyQuota();
             setAiLoading(false);
         }
     }
@@ -517,7 +527,9 @@ export default function UserProfilePage() {
           --text: #f4f4f5; --text-secondary: #a1a1aa; --text-muted: #52525b;
           --green: #22c55e; --yellow: #eab308; --red: #ef4444;
           --orange: #FF5E00; --orange-light: #FFA066; --orange-dim: rgba(255,94,0,0.12);
-          --font: 'Inter', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
+          --font: 'Geomini', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
+          --page-max-width: 1200px;
+          --page-padding: 24px;
         }
         .profile-root body, body { font-family: var(--font) !important; }
         .profile-root { background: var(--bg) !important; min-height: 100vh; }
@@ -544,30 +556,33 @@ export default function UserProfilePage() {
           background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
           border-bottom: 1px solid var(--border);
         }
-        .cmp-nav-inner { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+                .cmp-nav-inner { width: 100%; max-width: var(--page-max-width); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
         .cmp-logo { display: flex; align-items: center; cursor: pointer; }
         .cmp-logo img { height: 36px; }
-        .nav-search { flex: 1; max-width: 400px; position: relative; }
-        .nav-search input {
-          width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-          border-radius: 8px; padding: 6px 14px 6px 36px; color: var(--text); font-size: 13px;
-          transition: border-color 0.2s;
-        }
-        .nav-search input:focus { outline: none; border-color: rgba(255,94,0,0.4); }
-        .nav-search span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 16px; }
-        .nav-icons { display: flex; align-items: center; gap: 16px; }
-        .nav-links-inline { display: flex; gap: 20px; align-items: center; margin-right: 16px; }
-        .nav-link { color: var(--text-muted); font-size: 13px; text-decoration: none; }
-        .nav-link-profile { color: var(--orange); font-size: 13px; text-decoration: none; font-weight: 700; }
-        .nav-user {
-          display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px;
-          background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 20px;
-        }
-        .nav-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--orange-dim); color: var(--orange); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
-        .nav-username { font-size: 12px; font-weight: 600; }
+                .nav-links { display: flex; align-items: center; gap: 2px; list-style: none; }
+                .nav-links a {
+                    color: var(--text-muted); text-decoration: none; font-size: 13.5px; font-weight: 450;
+                    padding: 5px 11px; border-radius: 6px; transition: color 0.15s, background 0.15s;
+                }
+                .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+                .cmp-nav-actions { display: inline-flex; align-items: center; gap: 8px; }
+                .btn-ghost {
+                    font-family: var(--font); font-size: 13px; font-weight: 500;
+                    color: var(--text-secondary); background: none;
+                    border: 1px solid var(--border); border-radius: 20px;
+                    padding: 5px 14px; cursor: pointer;
+                    transition: color 0.15s, border-color 0.15s;
+                    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+                }
+                .btn-ghost:hover { color: var(--text); border-color: var(--border-hover); }
+                .btn-avatar {
+                    width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+                    border: 1px solid rgba(255,255,255,0.14);
+                }
+                .nav-username { font-size: 12px; font-weight: 600; }
 
-        .profile-root { background: var(--bg); min-height: 100vh; font-family: var(--font); color: var(--text); }
-        .page-main { max-width: 1200px; margin: 0 auto; padding: 90px 24px 60px; display: flex; flex-direction: column; gap: 24px; }
+        .profile-root { background: var(--bg); min-height: 100vh; font-family: var(--font); color: var(--text); display: flex; flex-direction: column; }
+        .page-main { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 90px var(--page-padding) 60px; display: flex; flex-direction: column; gap: 24px; }
 
         .status-banner {
           background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
@@ -772,15 +787,16 @@ export default function UserProfilePage() {
         .ai-error-msg { font-size: 13px; color: var(--red, #ef4444); padding: 12px 0; }
 
         .site-footer {
-          margin-top: 60px; padding: 30px 24px; border-top: 1px solid var(--border);
+          margin-top: 60px; padding: 30px 0; border-top: 1px solid var(--border);
+          width: 100%;
+        }
+        .site-footer-inner {
+          width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 0 var(--page-padding);
           display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;
         }
         .footer-left { display: flex; align-items: center; gap: 12px; }
         .footer-icon { width: 28px; height: 28px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--orange); }
         .footer-text { font-size: 13px; color: var(--text-muted); font-weight: 500; }
-        .footer-links { display: flex; gap: 24px; }
-        .footer-links a { color: var(--text-muted); font-size: 13px; text-decoration: none; transition: color 0.2s; }
-        .footer-links a:hover { color: var(--orange-light); }
 
         .spark-svg { width: 100%; height: 100%; overflow: visible; }
 
@@ -793,8 +809,47 @@ export default function UserProfilePage() {
         }
         @media (max-width: 600px) {
           .achievements-grid, .repo-grid { grid-template-columns: 1fr; }
-          .nav-search { display: none; }
+                    .nav-links { display: none; }
           .page-main { padding-top: 80px; }
+        }
+
+        /* LARGE SCREENS - 1440px (15-16") */
+        @media (min-width: 1440px) {
+          :root { --page-max-width: 1360px; --page-padding: 36px; }
+          .profile-name h1 { font-size: 36px; }
+          .profile-avatar-img { width: 152px; height: 152px; }
+          .achievements-grid { grid-template-columns: repeat(4, 1fr); }
+          .repo-grid { grid-template-columns: repeat(3, 1fr); }
+          .score-summary-val { font-size: 48px; }
+          .profile-hdr { padding: 38px; gap: 38px; }
+          .section-title { font-size: 20px; }
+          .issue-stat-value, .pr-stat-value { font-size: 32px; }
+        }
+
+        /* LARGE SCREENS - 1600px (16.6") */
+        @media (min-width: 1600px) {
+          :root { --page-max-width: 1500px; --page-padding: 48px; }
+          .profile-name h1 { font-size: 40px; }
+          .profile-avatar-img { width: 160px; height: 160px; }
+          .profile-title { font-size: 16px; }
+          .score-summary-val { font-size: 52px; }
+          .profile-hdr { padding: 42px; gap: 42px; }
+          .repo-name { font-size: 17px; }
+          .section-title { font-size: 21px; }
+          .badge-title { font-size: 15px; }
+          .issue-stat-value, .pr-stat-value { font-size: 34px; }
+        }
+
+        /* EXTRA LARGE SCREENS - 1920px */
+        @media (min-width: 1920px) {
+          :root { --page-max-width: 1760px; --page-padding: 64px; }
+          .profile-name h1 { font-size: 44px; }
+          .profile-avatar-img { width: 170px; height: 170px; }
+          .score-summary-val { font-size: 56px; }
+          .profile-hdr { padding: 48px; gap: 48px; }
+          .section-title { font-size: 22px; }
+          .issue-stat-value, .pr-stat-value { font-size: 36px; }
+          .page-main { gap: 28px; }
         }
       `,
                 }}
@@ -807,34 +862,21 @@ export default function UserProfilePage() {
                             <img src="/gitvital_logo_fixed.svg" alt="GitVital" />
                         </div>
 
-                        <div className="nav-search">
-                            <span className="material-symbols-outlined">search</span>
-                            <input
-                                type="text"
-                                placeholder="Search developers or repos..."
-                                onKeyDown={(event) => {
-                                    if (event.key !== "Enter") return;
-                                    const value = (event.currentTarget.value || "").trim();
-                                    if (!value) return;
-                                    router.push(`/${value}`);
-                                }}
-                            />
-                        </div>
+                        <ul className="nav-links">
+                            <li><a href="/?focus=analyze">Analyze</a></li>
+                            <li><a href="/compare">Compare</a></li>
+                            <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
+                        </ul>
 
-                        <div className="nav-icons">
-                            <div className="nav-links-inline">
-                                <a href="/" className="nav-link">Explore</a>
-                                <a href="/leaderboard" className="nav-link">Leaderboard</a>
-                                {user?.loggedIn ? (
-                                    <a href={`/${user.githubUsername}`} className="nav-link-profile">My Profile</a>
-                                ) : (
-                                    <a href={AUTH_URL} className="nav-link">Login</a>
-                                )}
-                            </div>
-                            <div className="nav-user">
-                                <div className="nav-avatar">{owner.charAt(0).toUpperCase()}</div>
+                        <div className="cmp-nav-actions">
+                            <a href={`/${owner}`} className="btn-ghost" rel="noopener noreferrer">
+                                <img
+                                    src={(profile?.avatarUrl || `https://github.com/${owner}.png`) + "?size=64"}
+                                    alt={`${owner} avatar`}
+                                    className="btn-avatar"
+                                />
                                 <span className="nav-username">{owner}</span>
-                            </div>
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -908,12 +950,10 @@ export default function UserProfilePage() {
                                 <div className="profile-info">
                                     <div className="profile-name">
                                         <h1>{profile.displayName}</h1>
-                                        <span className="profile-tag">{profile.percentile}</span>
                                     </div>
                                     <p className="profile-title">{profile.bio || "GitHub developer profile with live contribution analytics."}</p>
 
                                     <div className="profile-meta">
-                                        <div className="meta-item"><span className="material-symbols-outlined">code</span> {profile.topLanguage || "Polyglot"}</div>
                                         {profile.location && (
                                             <div className="meta-item"><span className="material-symbols-outlined">location_on</span> {profile.location}</div>
                                         )}
@@ -1041,7 +1081,7 @@ export default function UserProfilePage() {
                                             Currently Open
                                         </span>
                                         <span className="pr-stat-value open">
-                                            {Math.max(0, (profile.contribution.externalPRCount ?? 0) - (profile.contribution.externalMergedPRCount ?? 0)).toLocaleString()}
+                                            {(profile.contribution.externalOpenPRCount ?? 0).toLocaleString()}
                                         </span>
                                         <span className="pr-stat-hint">
                                             <span className="material-symbols-outlined" style={{ fontSize: "11px" }}>open_in_new</span>
@@ -1051,31 +1091,6 @@ export default function UserProfilePage() {
                                 </div>
                             </div>
 
-                            <div className="profile-section">
-                                <div className="section-header">
-                                    <h3 className="section-title"><span className="material-symbols-outlined">military_tech</span> Achievement Badges</h3>
-                                    <button className="btn-secondary" onClick={reanalyzeProfile} disabled={busy}>
-                                        {profile.needsAnalysis ? "Generate Insights" : "Refresh Badges"}
-                                    </button>
-                                </div>
-
-                                {profile.badges.length === 0 ? (
-                                    <div className="section-empty">No badge data yet. Run profile analysis to generate achievements.</div>
-                                ) : (
-                                    <div className="achievements-grid">
-                                        {profile.badges.map((badge) => (
-                                            <div key={`${badge.title}-${badge.level}`} className={`badge-card ${toneClass(badge.tone)}`}>
-                                                <div className="badge-icon-wrapper">
-                                                    <span className="material-symbols-outlined">{badge.icon}</span>
-                                                </div>
-                                                <h4 className="badge-title">{badge.title}</h4>
-                                                <p className="badge-desc">{badge.desc}</p>
-                                                <span className="badge-level">{badge.level}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
 
                             {/* AI Profile Insights Section */}
                             <div className="profile-section">
@@ -1100,6 +1115,36 @@ export default function UserProfilePage() {
                                         )}
                                     </button>
                                 </div>
+
+                                {dailyQuota && (
+                                    <div style={{ marginBottom: 10 }}>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
+                                            Analyzes left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                                            {' · '}
+                                            {user?.loggedIn
+                                                ? (
+                                                    <>
+                                                        AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                                                    </>
+                                                )
+                                                : (
+                                                    <>
+                                                        Compare AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                                                    </>
+                                                )}
+                                        </div>
+                                        {user?.loggedIn && (
+                                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                Combined AI Pool: 20/day across Profile Insights + Issue Recommendations + Compare Insights.
+                                            </div>
+                                        )}
+                                        {user?.loggedIn === false && (
+                                            <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                                                Logged-out users get Compare AI only (5/day by IP). Sign in to unlock the combined 20/day AI pool.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {!aiRequested && !aiInsights && (
                                     <div className="section-empty" style={{ fontStyle: "italic" }}>
@@ -1254,17 +1299,14 @@ export default function UserProfilePage() {
                     )}
                 </main>
 
-                <div className="site-footer">
-                    <div className="footer-left">
-                        <div className="footer-icon"><span className="material-symbols-outlined">pulse_alert</span></div>
-                        <span className="footer-text">© 2026 Git Vital Analytics. Build with integrity.</span>
+                <footer className="site-footer">
+                    <div className="site-footer-inner">
+                        <div className="footer-left">
+                            <div className="footer-icon"><span className="material-symbols-outlined">pulse_alert</span></div>
+                            <span className="footer-text">© 2026 GitVital.</span>
+                        </div>
                     </div>
-                    <div className="footer-links">
-                        <a href="#">Privacy Policy</a>
-                        <a href="#">Terms of Service</a>
-                        <a href="#">Documentation</a>
-                    </div>
-                </div>
+                </footer>
             </div>
         </>
     );

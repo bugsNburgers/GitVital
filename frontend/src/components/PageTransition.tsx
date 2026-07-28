@@ -36,7 +36,7 @@ function SkeletonDashboard() {
       <div className="skeleton skeleton-block" style={{ height: 160, width: "100%" }} />
       {/* 4-col metrics */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-        {[1,2,3,4].map(i => (
+        {[1, 2, 3, 4].map(i => (
           <div key={i} className="skeleton skeleton-block" style={{ height: 120 }} />
         ))}
       </div>
@@ -44,7 +44,7 @@ function SkeletonDashboard() {
       <div className="skeleton skeleton-block" style={{ height: 220 }} />
       {/* 4-col flags */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-        {[1,2,3,4].map(i => (
+        {[1, 2, 3, 4].map(i => (
           <div key={i} className="skeleton skeleton-block" style={{ height: 80 }} />
         ))}
       </div>
@@ -86,7 +86,7 @@ function SkeletonProfile() {
       <div>
         <div className="skeleton skeleton-text" style={{ width: 200, marginBottom: 16 }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
-          {[1,2,3,4].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} className="skeleton skeleton-block" style={{ height: 160 }} />
           ))}
         </div>
@@ -95,7 +95,7 @@ function SkeletonProfile() {
       <div>
         <div className="skeleton skeleton-text" style={{ width: 200, marginBottom: 16 }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
-          {[1,2,3].map(i => (
+          {[1, 2, 3].map(i => (
             <div key={i} className="skeleton skeleton-block" style={{ height: 180 }} />
           ))}
         </div>
@@ -104,23 +104,7 @@ function SkeletonProfile() {
   );
 }
 
-// ── Leaderboard skeleton ─────────────────────────────────────────────────────
-function SkeletonLeaderboard() {
-  return (
-    <div style={{ padding: "84px 24px 60px", maxWidth: 1200, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* Hero */}
-      <div className="skeleton skeleton-block" style={{ height: 80 }} />
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
-        {[1,2,3].map(i => (
-          <div key={i} className="skeleton skeleton-block" style={{ height: 80 }} />
-        ))}
-      </div>
-      {/* Table */}
-      <div className="skeleton skeleton-block" style={{ height: 360 }} />
-    </div>
-  );
-}
+
 
 // ── Compare skeleton ─────────────────────────────────────────────────────────
 function SkeletonCompare() {
@@ -130,13 +114,13 @@ function SkeletonCompare() {
       <div className="skeleton skeleton-block" style={{ height: 60 }} />
       {/* Input row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
-        {[1,2,3,4].map(i => (
+        {[1, 2, 3, 4].map(i => (
           <div key={i} className="skeleton skeleton-block" style={{ height: 44 }} />
         ))}
       </div>
       {/* Sparklines */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-        {[1,2,3].map(i => (
+        {[1, 2, 3].map(i => (
           <div key={i} className="skeleton skeleton-block" style={{ height: 100 }} />
         ))}
       </div>
@@ -151,7 +135,6 @@ function SkeletonCompare() {
 // ── Route → skeleton mapping ─────────────────────────────────────────────────
 function SkeletonBody({ to }: { to: string }) {
   if (to === "/" || to === "") return <SkeletonLanding />;
-  if (to.startsWith("/leaderboard")) return <SkeletonLeaderboard />;
   if (to.startsWith("/compare")) return <SkeletonCompare />;
   // If the path has exactly 1 segment → profile page
   const segments = to.replace(/^\//, "").split("/").filter(Boolean);
@@ -219,7 +202,7 @@ export default function PageTransition() {
     // Safety: auto-remove after 8s in case navigation failed
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => hideSkeleton(), 8000);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const hideSkeleton = useCallback(() => {
@@ -241,7 +224,7 @@ export default function PageTransition() {
     if (showingRef.current) {
       hideSkeleton();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   // Intercept ALL link clicks and programmatic router.push calls
@@ -262,7 +245,7 @@ export default function PageTransition() {
     const origPush = history.pushState.bind(history);
     const origReplace = history.replaceState.bind(history);
 
-    history.pushState = function(state, title, url) {
+    history.pushState = function (state, title, url) {
       if (url && typeof url === "string") {
         const path = url.startsWith("http") ? new URL(url).pathname : url;
         showSkeleton(path);
@@ -270,10 +253,10 @@ export default function PageTransition() {
       return origPush(state, title, url);
     };
 
-    history.replaceState = function(state, title, url) {
+    history.replaceState = function (state, title, url) {
       if (url && typeof url === "string") {
         const path = url.startsWith("http") ? new URL(url).pathname : url;
-        // replaceState on hash changes / minor updates — only show if meaningful change
+        // replaceState on hash changes / minor updates - only show if meaningful change
         if (path !== pathname) showSkeleton(path);
       }
       return origReplace(state, title, url);
@@ -286,10 +269,10 @@ export default function PageTransition() {
       history.pushState = origPush;
       history.replaceState = origReplace;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, showSkeleton]);
 
-  return null; // Renders nothing — skeleton is managed via raw DOM for cross-page guarantee
+  return null; // Renders nothing - skeleton is managed via raw DOM for cross-page guarantee
 }
 
 // ── HTML skeleton builders ───────────────────────────────────────────────────
@@ -320,19 +303,13 @@ function buildSkeletonHTML(to: string): string {
     </div>`;
   }
 
-  if (base === "leaderboard") {
-    return `<div style="padding:84px 24px 60px;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:24px;">
-      ${sk("100%", 80)}
-      ${grid(3, [sk("100%", 80), sk("100%", 80), sk("100%", 80)], 16)}
-      ${sk("100%", 360)}
-    </div>`;
-  }
+
 
   if (base === "compare") {
     return `<div style="padding:40px 24px 120px;max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
       ${sk("100%", 60)}
-      ${grid(4, [sk("100%",44),sk("100%",44),sk("100%",44),sk("100%",44)], 8)}
-      ${grid(3, [sk("100%",100),sk("100%",100),sk("100%",100)])}
+      ${grid(4, [sk("100%", 44), sk("100%", 44), sk("100%", 44), sk("100%", 44)], 8)}
+      ${grid(3, [sk("100%", 100), sk("100%", 100), sk("100%", 100)])}
       ${sk("100%", 440)}
       ${sk("100%", 320)}
     </div>`;
@@ -344,11 +321,11 @@ function buildSkeletonHTML(to: string): string {
       ${sk("100%", 200)}
       <div>
         ${skText("200px", "margin-bottom:16px;")}
-        ${grid(4, [sk("100%",160),sk("100%",160),sk("100%",160),sk("100%",160)], 16)}
+        ${grid(4, [sk("100%", 160), sk("100%", 160), sk("100%", 160), sk("100%", 160)], 16)}
       </div>
       <div>
         ${skText("200px", "margin-bottom:16px;")}
-        ${grid(3, [sk("100%",180),sk("100%",180),sk("100%",180)], 16)}
+        ${grid(3, [sk("100%", 180), sk("100%", 180), sk("100%", 180)], 16)}
       </div>
     </div>`;
   }
@@ -356,9 +333,9 @@ function buildSkeletonHTML(to: string): string {
   // Repo dashboard (default)
   return `<div style="padding:40px 24px 80px;max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">
     ${sk("100%", 160)}
-    ${grid(4, [sk("100%",120),sk("100%",120),sk("100%",120),sk("100%",120)])}
+    ${grid(4, [sk("100%", 120), sk("100%", 120), sk("100%", 120), sk("100%", 120)])}
     ${sk("100%", 220)}
-    ${grid(4, [sk("100%",80),sk("100%",80),sk("100%",80),sk("100%",80)])}
+    ${grid(4, [sk("100%", 80), sk("100%", 80), sk("100%", 80), sk("100%", 80)])}
     ${sk("100%", 140)}
     ${sk("100%", 100)}
   </div>`;

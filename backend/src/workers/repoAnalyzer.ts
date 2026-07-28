@@ -1,4 +1,4 @@
-// src/workers/repoAnalyzer.ts — BullMQ Worker (SEPARATE PROCESS)
+// src/workers/repoAnalyzer.ts - BullMQ Worker (SEPARATE PROCESS)
 //
 // This file is NOT imported by the API server.
 // It runs independently: `npm run worker` starts this file.
@@ -23,7 +23,7 @@ import { computeTimeline } from '../metrics/timeline';
 import { computeCommunityMetrics } from '../metrics/communityMetrics';
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 1: IMPORTS — Real fetchers + remaining stubs
+// SECTION 1: IMPORTS - Real fetchers + remaining stubs
 // ═══════════════════════════════════════════════════════════════
 
 import { GitHubClient } from '../github/client';
@@ -35,6 +35,7 @@ import { CLOSED_ISSUE_COUNT_QUERY } from '../github/queries';
 import { setRepoMetricsCache } from '../cache/repoCache';
 import { decryptAccessToken } from '../security/tokenCrypto';
 import { upsertRepo, insertRepoMetrics, upsertHealthTimeline } from '../db/repoQueries';
+import { upsertAnalysisJobByBullId } from '../db/analysisJobQueries';
 
 // API constraints from Planscribble.md
 const MAX_COMMITS = 1000;
@@ -67,7 +68,7 @@ async function resolveAccessToken(userId?: string): Promise<string> {
 }
 
 // ── Real Metrics Engine (Prompt 8.1 + 6.1 edge cases) ──
-// Each metrics function is pure: no DB, no API, no side effects — just math.
+// Each metrics function is pure: no DB, no API, no side effects - just math.
 // Prompt 6.1: This function now handles metadata-driven suppression and data integrity.
 function computeAllMetrics(
   commits: CommitNode[],
@@ -108,7 +109,7 @@ function computeAllMetrics(
     });
   }
 
-  // ── Issue & Churn Metrics — Prompt 8.2 ──
+  // ── Issue & Churn Metrics - Prompt 8.2 ──
   const issueMetrics = computeIssueMetrics(issues, owner, repo, closedIssueCount);
   const churnMetrics = computeChurnMetrics(commits);
 
@@ -237,20 +238,20 @@ async function setJobState(jobId: string, status: 'queued' | 'processing' | 'don
   }
 }
 
-// Safe wrapper around job.updateProgress() — BullMQ calls Redis internally.
+// Safe wrapper around job.updateProgress() - BullMQ calls Redis internally.
 // If Redis is down mid-job, progress updates should fail silently so the
 // actual analysis (GitHub fetching, metrics, AI) can still complete.
 async function safeUpdateProgress(job: Job<JobData>, progress: number): Promise<void> {
   try {
     await job.updateProgress(progress);
   } catch {
-    // Redis unavailable — progress tracking lost, analysis continues
+    // Redis unavailable - progress tracking lost, analysis continues
   }
 }
 
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 2: HELPER — GitHub Error Classifier
+// SECTION 2: HELPER - GitHub Error Classifier
 // ═══════════════════════════════════════════════════════════════
 // When GitHub returns an error, we need to handle it differently
 // depending on the HTTP status code.
@@ -276,8 +277,10 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
   const { owner, repo, userId, forceFallbackAdvice } = job.data;
   const logPrefix = `[Job ${job.id}] ${owner}/${repo}`;
   const isDirectMode = String(job.id ?? '').startsWith('direct__');
+  const bullJobId = String(job.id);
+  let repoDbId: string | null = null;
 
-  console.log(`\n🔬 ${logPrefix} — Starting analysis...`);
+  console.log(`\n🔬 ${logPrefix} - Starting analysis...`);
 
   try {
     // ──────────────────────────────────────────────
@@ -287,7 +290,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // update the database once Prisma is set up.
     await setJobState(job.id!, 'processing');
     await safeUpdateProgress(job, 5);
-    console.log(`   ${logPrefix} — Step 1: Status → processing`);
+    console.log(`   ${logPrefix} - Step 1: Status → processing`);
 
     // TODO: Update analysis_jobs table via Prisma
     // await prisma.analysisJob.update({
@@ -318,7 +321,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
 
     // ── Prompt 6.1: No default branch → empty repo, early return ──
     if (!metadata.hasDefaultBranch) {
-      console.log(`   ${logPrefix} — Step 2: Empty repo (no default branch)`);
+      console.log(`   ${logPrefix} - Step 2: Empty repo (no default branch)`);
       const emptyResult: AllMetrics = {
         busFactor: null, prMetrics: null, activityMetrics: null,
         issueMetrics: null, churnMetrics: null, communityMetrics: null, healthScore: 0,
@@ -330,39 +333,39 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       try {
         await setRepoMetricsCache(owner, repo, emptyResult, config.cacheTtlSeconds);
       } catch (cacheError) {
-        console.warn(`   ${logPrefix} — Cache write skipped (Redis unavailable):`, cacheError);
+        console.warn(`   ${logPrefix} - Cache write skipped (Redis unavailable):`, cacheError);
       }
       await setJobState(job.id!, 'done');
       await safeUpdateProgress(job, 100);
-      console.log(`   ${logPrefix} — Empty repo, analysis skipped ✓`);
+      console.log(`   ${logPrefix} - Empty repo, analysis skipped ✓`);
       return { ...emptyResult, metadata };
     }
 
-    console.log(`   ${logPrefix} — Step 2: Repo validated ✓`);
+    console.log(`   ${logPrefix} - Step 2: Repo validated ✓`);
 
 
     // ──────────────────────────────────────────────
     // Step 3: Fetch commits (paginated, max 1000, last 12 months)
     // ──────────────────────────────────────────────
-    // Raw commit data stays in memory ONLY — never written to DB.
-    console.log(`   ${logPrefix} — Step 3: Fetching commits...`);
+    // Raw commit data stays in memory ONLY - never written to DB.
+    console.log(`   ${logPrefix} - Step 3: Fetching commits...`);
     const commits = await fetchCommitsFromGitHub(client, owner, repo, MAX_COMMITS);
     await safeUpdateProgress(job, 30);
-    console.log(`   ${logPrefix} — Step 3: Fetched ${commits.length} commits ✓`);
+    console.log(`   ${logPrefix} - Step 3: Fetched ${commits.length} commits ✓`);
 
 
     // ──────────────────────────────────────────────
     // Step 4: Fetch PRs (paginated, max 500, MERGED, last 12 months)
     // ──────────────────────────────────────────────
-    // Prompt 6.1: Partial failure — if PR fetch fails, continue with empty array
+    // Prompt 6.1: Partial failure - if PR fetch fails, continue with empty array
     let prs: PRNode[] = [];
     try {
-      console.log(`   ${logPrefix} — Step 4: Fetching pull requests...`);
+      console.log(`   ${logPrefix} - Step 4: Fetching pull requests...`);
       prs = await fetchPRsFromGitHub(client, owner, repo, MAX_PRS);
-      console.log(`   ${logPrefix} — Step 4: Fetched ${prs.length} PRs ✓`);
+      console.log(`   ${logPrefix} - Step 4: Fetched ${prs.length} PRs ✓`);
     } catch (prError) {
-      console.warn(`   ${logPrefix} — Step 4: PR fetch failed (partial failure, proceeding):`, prError);
-      // PR metrics will be null / "unavailable" — still save partial results
+      console.warn(`   ${logPrefix} - Step 4: PR fetch failed (partial failure, proceeding):`, prError);
+      // PR metrics will be null / "unavailable" - still save partial results
     }
     await safeUpdateProgress(job, 50);
 
@@ -370,15 +373,15 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     // Step 5: Fetch issues (paginated, max 500, OPEN)
     // ──────────────────────────────────────────────
-    // Prompt 6.1: Partial failure — if issue fetch fails, continue with empty array
+    // Prompt 6.1: Partial failure - if issue fetch fails, continue with empty array
     let issues: IssueNode[] = [];
     try {
-      console.log(`   ${logPrefix} — Step 5: Fetching issues...`);
+      console.log(`   ${logPrefix} - Step 5: Fetching issues...`);
       issues = await fetchIssuesFromGitHub(client, owner, repo, MAX_ISSUES);
-      console.log(`   ${logPrefix} — Step 5: Fetched ${issues.length} issues ✓`);
+      console.log(`   ${logPrefix} - Step 5: Fetched ${issues.length} issues ✓`);
     } catch (issueError) {
-      console.warn(`   ${logPrefix} — Step 5: Issue fetch failed (partial failure, proceeding):`, issueError);
-      // Issue metrics will be null — still save partial results
+      console.warn(`   ${logPrefix} - Step 5: Issue fetch failed (partial failure, proceeding):`, issueError);
+      // Issue metrics will be null - still save partial results
     }
     await safeUpdateProgress(job, 60);
 
@@ -388,14 +391,14 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     let closedIssueCount = 0;
     try {
-      console.log(`   ${logPrefix} — Step 5.5: Fetching closed issue count...`);
+      console.log(`   ${logPrefix} - Step 5.5: Fetching closed issue count...`);
       const closedResponse = await client.query<{
         repository: { issues: { totalCount: number } };
       }>(CLOSED_ISSUE_COUNT_QUERY, { owner, name: repo });
       closedIssueCount = closedResponse.repository?.issues?.totalCount ?? 0;
-      console.log(`   ${logPrefix} — Step 5.5: Closed issues = ${closedIssueCount} ✓`);
+      console.log(`   ${logPrefix} - Step 5.5: Closed issues = ${closedIssueCount} ✓`);
     } catch (closedErr) {
-      console.warn(`   ${logPrefix} — Step 5.5: Closed issue count fetch failed (defaulting to 0):`, closedErr);
+      console.warn(`   ${logPrefix} - Step 5.5: Closed issue count fetch failed (defaulting to 0):`, closedErr);
     }
 
 
@@ -403,12 +406,12 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 6: Run Metrics Engine (pure functions, in-memory)
     // ──────────────────────────────────────────────
     // Prompt 6.1: Wrap entire metrics computation in try/catch → on error, save partial results
-    console.log(`   ${logPrefix} — Step 6: Computing metrics...`);
+    console.log(`   ${logPrefix} - Step 6: Computing metrics...`);
     let metrics: AllMetrics;
     try {
       metrics = computeAllMetrics(commits, prs, issues, metadata, owner, repo, closedIssueCount);
 
-      // ── Prompt 6.1: Data integrity — scrub NaN/Infinity ──
+      // ── Prompt 6.1: Data integrity - scrub NaN/Infinity ──
       if (!Number.isFinite(metrics.healthScore)) {
         console.warn(`[Data Integrity] healthScore was ${metrics.healthScore}, replacing with 0`);
         metrics.healthScore = 0;
@@ -437,7 +440,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       }
     } catch (metricsError) {
       // Prompt 6.1: On metrics computation error, save partial results
-      console.error(`   ${logPrefix} — Step 6: Metrics computation failed (saving partial):`, metricsError);
+      console.error(`   ${logPrefix} - Step 6: Metrics computation failed (saving partial):`, metricsError);
       metrics = {
         busFactor: null, prMetrics: null, activityMetrics: null,
         issueMetrics: null, churnMetrics: null, communityMetrics: null, healthScore: 0,
@@ -447,7 +450,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
       };
     }
     await safeUpdateProgress(job, 70);
-    console.log(`   ${logPrefix} — Step 6: Health score = ${metrics.healthScore} ✓`);
+    console.log(`   ${logPrefix} - Step 6: Health score = ${metrics.healthScore} ✓`);
 
     // ──────────────────────────────────────────────
     // Step 7: Health score already computed by metrics engine
@@ -459,14 +462,14 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     const timeline = computeQuarterlyTimeline(commits, prs, metrics.healthScore);
     await safeUpdateProgress(job, 75);
-    console.log(`   ${logPrefix} — Step 8: Timeline points = ${timeline.length} ✓`);
+    console.log(`   ${logPrefix} - Step 8: Timeline points = ${timeline.length} ✓`);
 
     // ──────────────────────────────────────────────
     // Step 9: Generate risk flags
     // ──────────────────────────────────────────────
     metrics.riskFlags = generateRiskFlags(metrics);
     await safeUpdateProgress(job, 78);
-    console.log(`   ${logPrefix} — Step 9: Risk flags = ${metrics.riskFlags.length} ✓`);
+    console.log(`   ${logPrefix} - Step 9: Risk flags = ${metrics.riskFlags.length} ✓`);
 
 
     // ──────────────────────────────────────────────
@@ -475,9 +478,9 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // We use Promise.race to enforce a 10-second timeout.
     // If Gemini takes too long, we skip AI advice rather than
     // holding up the entire job.
-    console.log(`   ${logPrefix} — Step 10: Generating AI advice...`);
+    console.log(`   ${logPrefix} - Step 10: Generating AI advice...`);
     if (forceFallbackAdvice) {
-      console.warn(`   ${logPrefix} — Step 10: Daily AI soft-limit reached. Using fallback engine by policy.`);
+      console.warn(`   ${logPrefix} - Step 10: Daily AI soft-limit reached. Using fallback engine by policy.`);
       const fallback = generateFallbackAdvice(metrics, owner, repo);
       metrics.aiAdvice = fallback.advice;
       metrics.aiAdviceSource = fallback.source;
@@ -496,16 +499,16 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         ]);
 
         if (!aiAdvice) {
-          console.warn(`   ${logPrefix} — Step 10: AI timed out, applying rule-based fallback...`);
+          console.warn(`   ${logPrefix} - Step 10: AI timed out, applying rule-based fallback...`);
           aiAdvice = generateFallbackAdvice(metrics, owner, repo);
         }
 
         metrics.aiAdvice = aiAdvice.advice;
         metrics.aiAdviceSource = aiAdvice.source;
         metrics.aiAdviceModel = aiAdvice.source === 'gemini' ? aiAdvice.model ?? null : null;
-        console.log(`   ${logPrefix} — Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
+        console.log(`   ${logPrefix} - Step 10: AI advice generated ✓ [source: ${aiAdvice.source}]`);
       } catch (aiError) {
-        console.warn(`   ${logPrefix} — Step 10: AI advice failed (non-blocking), applying fallback:`, aiError);
+        console.warn(`   ${logPrefix} - Step 10: AI advice failed (non-blocking), applying fallback:`, aiError);
         const fallback = generateFallbackAdvice(metrics, owner, repo);
         metrics.aiAdvice = fallback.advice;
         metrics.aiAdviceSource = fallback.source;
@@ -519,35 +522,43 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     // Step 11: Store computed metrics in PostgreSQL
     // ──────────────────────────────────────────────
-    console.log(`   ${logPrefix} — Step 11: Storing metrics in database...`);
+    console.log(`   ${logPrefix} - Step 11: Storing metrics in database...`);
     const fetchedAt = new Date().toISOString();
-    let repoDbId: string | null = null;
     try {
       repoDbId = await upsertRepo(owner, repo, metadata);
       if (repoDbId) {
+        await upsertAnalysisJobByBullId({
+          repoId: repoDbId,
+          userId,
+          bullJobId,
+          status: 'processing',
+          progress: 90,
+          error: null,
+          completedAt: null,
+        });
         await insertRepoMetrics(repoDbId, metrics);
-        console.log(`   ${logPrefix} — Step 11: Metrics stored in NeonDB ✓ (repoId: ${repoDbId})`);
+        console.log(`   ${logPrefix} - Step 11: Metrics stored in NeonDB ✓ (repoId: ${repoDbId})`);
       } else {
-        console.warn(`   ${logPrefix} — Step 11: DB unavailable — metrics not persisted (Redis cache still updated).`);
+        console.warn(`   ${logPrefix} - Step 11: DB unavailable - metrics not persisted (Redis cache still updated).`);
       }
     } catch (dbErr) {
-      console.warn(`   ${logPrefix} — Step 11: DB write failed (non-fatal):`, dbErr);
+      console.warn(`   ${logPrefix} - Step 11: DB write failed (non-fatal):`, dbErr);
     }
 
 
     // ──────────────────────────────────────────────
     // Step 12: Store quarterly timeline in PostgreSQL
     // ──────────────────────────────────────────────
-    console.log(`   ${logPrefix} — Step 12: Storing timeline...`);
+    console.log(`   ${logPrefix} - Step 12: Storing timeline...`);
     if (repoDbId) {
       try {
         await upsertHealthTimeline(repoDbId, timeline);
-        console.log(`   ${logPrefix} — Step 12: Timeline stored ✓`);
+        console.log(`   ${logPrefix} - Step 12: Timeline stored ✓`);
       } catch (tlErr) {
-        console.warn(`   ${logPrefix} — Step 12: Timeline DB write failed (non-fatal):`, tlErr);
+        console.warn(`   ${logPrefix} - Step 12: Timeline DB write failed (non-fatal):`, tlErr);
       }
     } else {
-      console.log(`   ${logPrefix} — Step 12: Timeline skipped (no DB repo ID).`);
+      console.log(`   ${logPrefix} - Step 12: Timeline skipped (no DB repo ID).`);
     }
     await safeUpdateProgress(job, 90);
 
@@ -557,9 +568,9 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     try {
       await setRepoMetricsCache(owner, repo, { ...metrics, metadata }, config.cacheTtlSeconds, fetchedAt);
-      console.log(`   ${logPrefix} — Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
+      console.log(`   ${logPrefix} - Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
     } catch (cacheError) {
-      console.warn(`   ${logPrefix} — Step 13: Cache write skipped (Redis unavailable):`, cacheError);
+      console.warn(`   ${logPrefix} - Step 13: Cache write skipped (Redis unavailable):`, cacheError);
     }
 
 
@@ -567,8 +578,19 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 14: Update job status to "done"
     // ──────────────────────────────────────────────
     await setJobState(job.id!, 'done');
+    if (repoDbId) {
+      await upsertAnalysisJobByBullId({
+        repoId: repoDbId,
+        userId,
+        bullJobId,
+        status: 'done',
+        progress: 100,
+        error: null,
+        completedAt: new Date().toISOString(),
+      });
+    }
     await safeUpdateProgress(job, 100);
-    console.log(`   ${logPrefix} — Step 14: Status → done ✓`);
+    console.log(`   ${logPrefix} - Step 14: Status → done ✓`);
 
     // TODO: Update analysis_jobs table via Prisma
     // await prisma.analysisJob.update({
@@ -581,29 +603,40 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // Step 15: If user is logged in, recompute their developer score
     // ──────────────────────────────────────────────
     if (userId) {
-      console.log(`   ${logPrefix} — Step 15: Triggering dev score recomputation for user ${userId}...`);
+      console.log(`   ${logPrefix} - Step 15: Triggering dev score recomputation for user ${userId}...`);
 
       // TODO: Recompute developer score
       // await recomputeDeveloperScore(userId);
 
-      console.log(`   ${logPrefix} — Step 15: Dev score updated ✓`);
+      console.log(`   ${logPrefix} - Step 15: Dev score updated ✓`);
     }
 
-    console.log(`\n✅ ${logPrefix} — Analysis complete! Score: ${metrics.healthScore}/100\n`);
+    console.log(`\n✅ ${logPrefix} - Analysis complete! Score: ${metrics.healthScore}/100\n`);
     return { ...metrics, metadata };
 
   } catch (error) {
     // ═══════════════════════════════════════════════════════════
-    // ERROR HANDLING — Different GitHub errors get different treatment
+    // ERROR HANDLING - Different GitHub errors get different treatment
     // ═══════════════════════════════════════════════════════════
 
     if (isGitHubApiError(error)) {
       switch (error.status) {
         // ── 401: Token expired or invalid ──
-        // This is unrecoverable — retrying won't help.
+        // This is unrecoverable - retrying won't help.
         case 401:
-          console.error(`❌ ${logPrefix} — OAuth token expired or invalid`);
+          console.error(`❌ ${logPrefix} - OAuth token expired or invalid`);
           await setJobState(job.id!, 'failed', 'OAuth token expired');
+          if (repoDbId) {
+            await upsertAnalysisJobByBullId({
+              repoId: repoDbId,
+              userId,
+              bullJobId,
+              status: 'failed',
+              progress: 100,
+              error: 'OAuth token expired',
+              completedAt: new Date().toISOString(),
+            });
+          }
           // UnrecoverableError tells BullMQ: "Don't retry this job."
           throw new UnrecoverableError('OAuth token expired. Please re-authenticate.');
 
@@ -611,7 +644,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         // We CAN retry this, but we need to wait until the rate limit resets.
         case 403:
           if (isDirectMode) {
-            console.error(`❌ ${logPrefix} — GitHub rate limited during direct API fallback mode`);
+            console.error(`❌ ${logPrefix} - GitHub rate limited during direct API fallback mode`);
             throw new Error('GitHub API rate limit reached. Please retry in a few minutes.');
           }
           if (error.rateLimitResetAt) {
@@ -619,33 +652,44 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
             const now = Date.now();
             const waitMs = Math.max(resetTime - now, 60_000); // At least 1 minute
 
-            console.warn(`⏳ ${logPrefix} — Rate limited. Retrying in ${Math.round(waitMs / 1000)}s`);
+            console.warn(`⏳ ${logPrefix} - Rate limited. Retrying in ${Math.round(waitMs / 1000)}s`);
 
-            // Move the job to "delayed" state — BullMQ will retry it after the wait
+            // Move the job to "delayed" state - BullMQ will retry it after the wait
             await job.moveToDelayed(Date.now() + waitMs, job.token);
             // Return without throwing so BullMQ doesn't count this as a failure
             return;
           }
           // If no reset time, fall through to default retry behavior
-          console.error(`❌ ${logPrefix} — Rate limited (no reset time provided)`);
+          console.error(`❌ ${logPrefix} - Rate limited (no reset time provided)`);
           throw error;
 
         // ── 404: Repo not found or is private ──
-        // This is unrecoverable — the repo simply doesn't exist.
+        // This is unrecoverable - the repo simply doesn't exist.
         case 404:
-          console.error(`❌ ${logPrefix} — Repository not found or is private`);
+          console.error(`❌ ${logPrefix} - Repository not found or is private`);
           await setJobState(job.id!, 'failed', 'Repository not found or is private');
+          if (repoDbId) {
+            await upsertAnalysisJobByBullId({
+              repoId: repoDbId,
+              userId,
+              bullJobId,
+              status: 'failed',
+              progress: 100,
+              error: 'Repository not found or is private',
+              completedAt: new Date().toISOString(),
+            });
+          }
           throw new UnrecoverableError('Repository not found or is private.');
 
         default:
-          console.error(`❌ ${logPrefix} — GitHub API error (${error.status}):`, error.message);
+          console.error(`❌ ${logPrefix} - GitHub API error (${error.status}):`, error.message);
           throw error; // Let BullMQ retry with exponential backoff
       }
     }
 
     // ── Any other error ──
     // Log it and let BullMQ retry (up to 3 times with exponential backoff)
-    console.error(`❌ ${logPrefix} — Unexpected error:`, error);
+    console.error(`❌ ${logPrefix} - Unexpected error:`, error);
     throw error;
   }
 }
@@ -687,9 +731,9 @@ if (shouldStartRepoWorker) {
     {
       connection: getBullRedisConnection(),
       concurrency: 2,           // Process 2 jobs at the same time
-      lockDuration: 300_000,    // 5 minute lock (long-running jobs) — Prompt 7.1
-      stalledInterval: 120_000, // Check for stalled jobs every 2 minutes — Prompt 7.1
-      maxStalledCount: 2,       // Restart stalled jobs up to 2 times — Prompt 7.1
+      lockDuration: 300_000,    // 5 minute lock (long-running jobs) - Prompt 7.1
+      stalledInterval: 120_000, // Check for stalled jobs every 2 minutes - Prompt 7.1
+      maxStalledCount: 2,       // Restart stalled jobs up to 2 times - Prompt 7.1
       limiter: {
         max: 5,            // Max 5 jobs started...
         duration: 60_000,  // ...per 60 seconds (1 minute)
@@ -754,7 +798,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n⚠️  Worker received ${signal}. Shutting down gracefully...`);
 
   if (worker) {
-    // Close the worker — this waits for active jobs to finish
+    // Close the worker - this waits for active jobs to finish
     await worker.close();
     console.log('   ✅ Worker closed (active jobs finished)');
   }

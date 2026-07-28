@@ -1,5 +1,5 @@
-// src/server/index.ts — The main Express API server
-// This is the "entry point" — the file you run to start the backend.
+// src/server/index.ts - The main Express API server
+// This is the "entry point" - the file you run to start the backend.
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 1: IMPORTS
@@ -19,12 +19,12 @@ import { Pool } from 'pg';
 // Our own files
 import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
-import { getLeaderboardWithLanguageFilter, type Queryable } from '../db';
-import { getLeaderboardLastUpdated, getLeaderboardStats } from '../db/userQueries';
-import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
+import { type Queryable } from '../db';
+import { getFreshRepoMetricsCache, clearRepoMetricsCache, setRepoMetricsCache } from '../cache/repoCache';
 import {
   clearUserContributionCache,
   getFreshUserContributionCache,
+  setUserContributionCache,
   UserContributionMetricsCacheValue,
 } from '../cache/userCache';
 import { JobData, JobStatus, UserJobData } from '../types';
@@ -36,7 +36,7 @@ import { generateIssueRecommendations } from '../ai/issueRecommender';
 import type { RepoIssue, UserProfileSnippet } from '../ai/issueRecommender';
 import { generateCompareInsights } from '../ai/compareInsights';
 import type { RepoMetricsForCompare } from '../ai/compareInsights';
-import { checkAndIncrementGlobalDailyQuota } from '../ai/globalQuotaGate';
+import { checkAndIncrementGlobalDailyQuota, getQuotaStatus } from '../ai/globalQuotaGate';
 
 // Analysis helpers + optional inline workers.
 // Workers only boot inline when EMBED_WORKERS_IN_API=true.
@@ -47,7 +47,7 @@ import '../workers/userAnalyzer';
 // SECTION 2: CREATE THE EXPRESS APP
 // ═══════════════════════════════════════════════════════════════
 // express() creates a new application instance.
-// Think of it as building an empty restaurant — no tables, no menu yet.
+// Think of it as building an empty restaurant - no tables, no menu yet.
 
 const app = express();
 
@@ -61,13 +61,16 @@ const MAX_PENDING_ANALYSES_PER_USER = 5;
 const MAX_ANALYZE_REQUESTS_PER_WINDOW_AUTH = 20;
 const MAX_ANALYZE_REQUESTS_PER_WINDOW_ANON = 10;
 const MAX_UNIQUE_REPOS_PER_USER_PER_DAY = 20;
-const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 10;
+const MAX_UNIQUE_REPOS_PER_IP_PER_DAY = 5;
+const MAX_COMPARE_INSIGHTS_PER_USER_PER_DAY = 20;
+const MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY = 5;
 const MAX_GEMINI_ANALYSES_PER_USER_PER_DAY = 20;
 const MAX_GEMINI_ANALYSES_PER_IP_PER_DAY = 10;
 const RAPID_FIRE_WINDOW_SECONDS = 60;
 const RAPID_FIRE_ALERT_THRESHOLD = 8;
 const GITHUB_REST_BASE_URL = 'https://api.github.com';
-const MAX_USER_PROFILE_REPOS = 9;
+const USER_REPOS_PAGE_SIZE = 100;
+const MAX_USER_PROFILE_REPOS_FETCH = 5000;
 const SENSITIVE_RESPONSE_KEYS = new Set([
   'access_token',
   'accessToken',
@@ -261,17 +264,42 @@ function getSafeFrontendRedirectOrigin(value: string | undefined | null): string
 // Middleware runs on EVERY request, in the order we define it here.
 // Think: every customer at the restaurant passes through the same door.
 
-// 3a. Helmet — sets security headers automatically
+// 3a. Helmet - sets security headers automatically
 // Protects against: XSS attacks, clickjacking, MIME sniffing, etc.
 app.use(helmet());
 
-// 3b. CORS — allow ONLY our frontend to talk to this API
-app.use(cors({
-  origin: config.corsOrigins,   // Allow multiple origins (localhost, gitvital.com, etc)
-  credentials: true,            // Allow cookies to be sent with requests
-}));
+// 3b. CORS - allow ONLY our frontend to talk to this API
+// We use a callback so we can normalise the incoming origin (strip trailing slash,
+// lowercase) before checking membership. The plain-array form does exact matching,
+// which silently drops the header for tiny variations and is hard to debug.
+const allowedOriginSet = new Set(
+  config.corsOrigins.map((o) => o.toLowerCase().replace(/\/$/, ''))
+);
 
-// 3c. JSON body parser — tells Express to understand JSON in request bodies
+const corsOptions: cors.CorsOptions = {
+  origin: (incoming, callback) => {
+    // Allow requests with no Origin header (same-origin, curl, server-to-server)
+    if (!incoming) {
+      callback(null, true);
+      return;
+    }
+    const normalised = incoming.toLowerCase().replace(/\/$/, '');
+    if (allowedOriginSet.has(normalised)) {
+      callback(null, incoming); // echo back the exact incoming origin
+    } else {
+      console.warn('[CORS] Rejected origin:', incoming);
+      callback(new Error(`CORS: origin '${incoming}' is not allowed`));
+    }
+  },
+  credentials: true,            // Allow cookies to be sent with requests
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  optionsSuccessStatus: 204,    // Some legacy browsers (IE11) choke on 204
+};
+
+app.use(cors(corsOptions));
+
+// 3c. JSON body parser - tells Express to understand JSON in request bodies
 // When the frontend sends { "url": "facebook/react" }, Express needs this to read it
 app.use(express.json());
 
@@ -342,13 +370,7 @@ const analyzeUnauthenticatedLimiter = rateLimit({
   message: { error: 'Too many unauthenticated analysis requests from this IP. Please login to view more!.' },
 });
 
-const leaderboardLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Leaderboard rate limit exceeded. Try again shortly.' },
-});
+
 
 const badgeLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -391,7 +413,7 @@ app.use(defaultLimiter);
 // SECTION 4: BULLMQ QUEUE SETUP
 // ═══════════════════════════════════════════════════════════════
 // Create a BullMQ queue named "repo-analysis".
-// This is the "order ticket rail" — we add jobs here, workers pick them up.
+// This is the "order ticket rail" - we add jobs here, workers pick them up.
 
 const bullConnection = getBullRedisConnection();
 
@@ -404,7 +426,7 @@ const userAnalysisQueue = new Queue<UserJobData>('user-analysis', {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION 5: HELPER — Validation Error Handler
+// SECTION 5: HELPER - Validation Error Handler
 // ═══════════════════════════════════════════════════════════════
 // This helper checks if express-validator found any problems with the input.
 // If there are errors, it sends a 400 Bad Request response immediately.
@@ -448,12 +470,25 @@ function currentDayBucket(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function getNextUtcMidnightIso(): string {
+  const now = new Date();
+  return new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+  )).toISOString();
+}
+
 function getDailyUniqueRepoKey(scope: 'user' | 'ip', id: string): string {
   return `abuse:unique-repos:${scope}:${id}:${currentDayBucket()}`;
 }
 
 function getDailyAnalysisCountKey(scope: 'user' | 'ip', id: string): string {
   return `abuse:analysis-count:${scope}:${id}:${currentDayBucket()}`;
+}
+
+function getDailyCompareInsightsCountKey(scope: 'user' | 'ip', id: string): string {
+  return `abuse:compare-insights-count:${scope}:${id}:${currentDayBucket()}`;
 }
 
 function getRapidFireKey(ip: string): string {
@@ -465,19 +500,60 @@ async function enforceDailyUniqueRepoLimit(
   subjectId: string,
   normalizedRepo: string,
   maxUniqueReposPerDay: number,
-): Promise<{ allowed: boolean; count: number }> {
+): Promise<{ allowed: boolean; count: number; remaining: number; limit: number }> {
   const key = getDailyUniqueRepoKey(scope, subjectId);
   const wasAdded = await redis.sadd(key, normalizedRepo);
   await redis.expire(key, DAILY_LIMIT_TTL_SECONDS);
 
-  const count = await redis.scard(key);
-  const allowed = count <= maxUniqueReposPerDay;
+  const rawCount = await redis.scard(key);
+  const allowed = rawCount <= maxUniqueReposPerDay;
+
+  let count = rawCount;
 
   if (!allowed && wasAdded === 1) {
     await redis.srem(key, normalizedRepo);
+    count = Math.max(0, rawCount - 1);
   }
 
-  return { allowed, count };
+  return {
+    allowed,
+    count,
+    remaining: Math.max(0, maxUniqueReposPerDay - count),
+    limit: maxUniqueReposPerDay,
+  };
+}
+
+async function getDailyCounterValue(key: string): Promise<number> {
+  const raw = await redis.get(key);
+  const parsed = Number(raw ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function checkAndIncrementDailyCounterLimit(
+  key: string,
+  limit: number,
+): Promise<{ allowed: boolean; used: number; remaining: number; limit: number }> {
+  const current = await getDailyCounterValue(key);
+  if (current >= limit) {
+    return {
+      allowed: false,
+      used: current,
+      remaining: 0,
+      limit,
+    };
+  }
+
+  const used = await redis.incr(key);
+  if (used === 1) {
+    await redis.expire(key, DAILY_LIMIT_TTL_SECONDS);
+  }
+
+  return {
+    allowed: true,
+    used,
+    remaining: Math.max(0, limit - used),
+    limit,
+  };
 }
 
 async function incrementDailyAnalysisCount(scope: 'user' | 'ip', subjectId: string): Promise<number> {
@@ -730,66 +806,13 @@ interface UserProfileApiResponse {
   contribution: {
     externalPRCount: number;
     externalMergedPRCount: number;
+    externalOpenPRCount: number;
     contributionAcceptanceRate: number;
     analyzedAt: string | null;
   };
   badges: UserProfileBadgeResponse[];
   repos: UserProfileRepoResponse[];
   lastAnalyzedAt: string | null;
-}
-
-type LeaderboardTier = 'gold' | 'silver' | 'bronze' | 'other';
-
-interface LeaderboardApiEntry {
-  rank: number;
-  name: string;
-  handle: string;
-  score: number;
-  lang: string;
-  repos: number;
-  percentile: string;
-  tier: LeaderboardTier;
-  img: string;
-}
-
-function parseScore(value: string | number | null | undefined): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Number(value.toFixed(2));
-  }
-
-  const parsed = Number.parseFloat(String(value ?? '0'));
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-
-  return Number(parsed.toFixed(2));
-}
-
-function getTierFromRank(rank: number): LeaderboardTier {
-  if (rank === 1) {
-    return 'gold';
-  }
-
-  if (rank === 2) {
-    return 'silver';
-  }
-
-  if (rank === 3) {
-    return 'bronze';
-  }
-
-  return 'other';
-}
-
-function formatPercentileForLeaderboard(percentileRaw: string | null, score: number): string {
-  const parsed = Number.parseFloat(String(percentileRaw ?? ''));
-  if (!Number.isFinite(parsed)) {
-    return computePercentileLabel(score).replace(' Global', '');
-  }
-
-  const topPercent = Math.max(0.1, Math.min(99.9, Number((100 - parsed).toFixed(1))));
-  const display = Number.isInteger(topPercent) ? String(topPercent) : topPercent.toFixed(1);
-  return `Top ${display}%`;
 }
 
 function getServiceGitHubToken(): string | null {
@@ -824,6 +847,201 @@ async function buildGitHubRestHeaders(req: Request, username: string): Promise<R
   }
 
   return headers;
+}
+
+async function fetchAllOwnedRepos(
+  username: string,
+  headers: Record<string, string>,
+  maxRepos = MAX_USER_PROFILE_REPOS_FETCH,
+): Promise<GitHubRepoApiResponse[]> {
+  const repos: GitHubRepoApiResponse[] = [];
+  let page = 1;
+
+  while (repos.length < maxRepos) {
+    const remaining = Math.max(0, maxRepos - repos.length);
+    if (remaining === 0) {
+      break;
+    }
+
+    const perPage = Math.min(USER_REPOS_PAGE_SIZE, remaining);
+    const response = await fetch(
+      `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${perPage}&page=${page}`,
+      { headers },
+    );
+
+    if (!response.ok) {
+      if (page === 1) {
+        return [];
+      }
+      break;
+    }
+
+    const payload = await response.json() as unknown;
+    if (!Array.isArray(payload)) {
+      break;
+    }
+
+    const pageRepos = payload.filter((entry) => {
+      return Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry);
+    }) as GitHubRepoApiResponse[];
+
+    repos.push(...pageRepos);
+
+    if (pageRepos.length < perPage) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return repos;
+}
+
+type RepoMetricsSource = 'redis_cache' | 'db_fallback' | 'none';
+
+interface RepoMetricsLookupResult<T> {
+  source: RepoMetricsSource;
+  metrics: T | null;
+  fetchedAt: string | null;
+  ttlSeconds: number | null;
+}
+
+type UserContributionSource = 'redis_cache' | 'db_fallback' | 'none';
+
+interface UserContributionLookupResult {
+  source: UserContributionSource;
+  value: UserContributionMetricsCacheValue | null;
+  ttlSeconds: number | null;
+}
+
+async function getRepoMetricsFromCacheOrDb<T extends object = Record<string, unknown>>(
+  owner: string,
+  repo: string,
+  reseedCacheTtlSeconds = 3600,
+): Promise<RepoMetricsLookupResult<T>> {
+  const cached = await getFreshRepoMetricsCache<T>(owner, repo);
+  if (cached) {
+    return {
+      source: 'redis_cache',
+      metrics: cached.value,
+      fetchedAt: (cached.value as Record<string, unknown>)._fetchedAt as string | null ?? null,
+      ttlSeconds: cached.ttlSeconds,
+    };
+  }
+
+  if (!sqlDb) {
+    return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+  }
+
+  try {
+    const repoRow = await sqlDb.query<{ id: string }>(
+      `SELECT id FROM repos WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2) LIMIT 1`,
+      [owner, repo],
+    );
+
+    if (!repoRow.rows[0]) {
+      return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+    }
+
+    const metricsRow = await sqlDb.query<{ metrics_json: unknown; analyzed_at: string }>(
+      `SELECT metrics_json, analyzed_at FROM repo_metrics WHERE repo_id = $1 ORDER BY analyzed_at DESC LIMIT 1`,
+      [repoRow.rows[0].id],
+    );
+
+    const metricsJson = metricsRow.rows[0]?.metrics_json;
+    if (!metricsJson || typeof metricsJson !== 'object' || Array.isArray(metricsJson)) {
+      return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+    }
+
+    const fetchedAt = metricsRow.rows[0].analyzed_at;
+    const metrics = metricsJson as T;
+
+    try {
+      await setRepoMetricsCache(owner, repo, metrics as unknown as Record<string, unknown>, reseedCacheTtlSeconds, fetchedAt);
+    } catch {
+      // Non-fatal: DB fallback still returns successfully even if reseed fails.
+    }
+
+    return {
+      source: 'db_fallback',
+      metrics,
+      fetchedAt,
+      ttlSeconds: null,
+    };
+  } catch (error) {
+    console.warn('[RepoMetricsLookup] DB fallback lookup failed:', { owner, repo, error });
+    return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
+  }
+}
+
+async function getUserContributionFromCacheOrDb(
+  username: string,
+): Promise<UserContributionLookupResult> {
+  const normalizedUsername = username.toLowerCase();
+  const cached = await getFreshUserContributionCache<UserContributionMetricsCacheValue>(normalizedUsername);
+  if (cached) {
+    return {
+      source: 'redis_cache',
+      value: cached.value,
+      ttlSeconds: cached.ttlSeconds,
+    };
+  }
+
+  if (!sqlDb) {
+    return { source: 'none', value: null, ttlSeconds: null };
+  }
+
+  try {
+    const rows = await sqlDb.query<{
+      external_pr_count: number | null;
+      external_merged_pr_count: number | null;
+      contribution_acceptance_rate: string | number | null;
+      analyzed_at: string | null;
+      updated_at: string | null;
+    }>(
+      `SELECT
+         u.external_pr_count,
+         u.external_merged_pr_count,
+         u.contribution_acceptance_rate,
+         h.analyzed_at,
+         u.updated_at
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT analyzed_at
+         FROM user_contribution_history h
+         WHERE LOWER(h.username) = LOWER(u.username)
+         ORDER BY analyzed_at DESC
+         LIMIT 1
+       ) h ON true
+       WHERE LOWER(u.username) = LOWER($1)
+       LIMIT 1`,
+      [normalizedUsername],
+    );
+
+    if (!rows.rows[0]) {
+      return { source: 'none', value: null, ttlSeconds: null };
+    }
+
+    const row = rows.rows[0];
+    const payload: UserContributionMetricsCacheValue = {
+      username: normalizedUsername,
+      externalPRCount: Number(row.external_pr_count ?? 0),
+      externalMergedPRCount: Number(row.external_merged_pr_count ?? 0),
+      contributionAcceptanceRate: Number(row.contribution_acceptance_rate ?? 0),
+      analyzedAt: row.analyzed_at ?? row.updated_at ?? new Date().toISOString(),
+    };
+
+    await setUserContributionCache(normalizedUsername, payload, config.cacheTtlSeconds);
+
+    return {
+      source: 'db_fallback',
+      value: payload,
+      ttlSeconds: null,
+    };
+  } catch (error) {
+    console.warn('[UserContributionLookup] DB fallback lookup failed:', { username: normalizedUsername, error });
+    return { source: 'none', value: null, ttlSeconds: null };
+  }
 }
 
 function normalizeJobStatus(status: string | null): JobStatus | null {
@@ -988,10 +1206,10 @@ function buildUserBadges(
 // ═══════════════════════════════════════════════════════════════
 // SECTION 6: ROUTES
 // ═══════════════════════════════════════════════════════════════
-// Each route is a "menu item" — a specific URL that the frontend can call.
+// Each route is a "menu item" - a specific URL that the frontend can call.
 
 // ─────────────────────────────────────────────────────────────
-// 6a. POST /api/analyze — Start analyzing a GitHub repository
+// 6a. POST /api/analyze - Start analyzing a GitHub repository
 // ─────────────────────────────────────────────────────────────
 // The frontend sends: { "owner": "facebook", "repo": "react" }
 // This route validates the input, checks for duplicate jobs, and queues the work.
@@ -1108,7 +1326,14 @@ app.post(
             count: userDaily.count,
             maxAllowed: MAX_UNIQUE_REPOS_PER_USER_PER_DAY,
           });
-          res.status(429).json({ error: 'Daily repository analysis limit reached for this account.' });
+          res.status(429).json({
+            error: 'Daily repository analysis limit reached for this account.',
+            code: 'ANALYZE_DAILY_LIMIT_EXCEEDED',
+            scope: 'user',
+            remaining: userDaily.remaining,
+            limit: userDaily.limit,
+            resetAt: getNextUtcMidnightIso(),
+          });
           return;
         }
       } else {
@@ -1125,7 +1350,15 @@ app.post(
             count: ipDaily.count,
             maxAllowed: MAX_UNIQUE_REPOS_PER_IP_PER_DAY,
           });
-          res.status(429).json({ error: 'Daily repository analysis limit reached for this IP.' });
+          res.status(429).json({
+            error: 'Daily repository analysis limit reached for this IP. Login for more requests.',
+            code: 'ANALYZE_DAILY_LIMIT_EXCEEDED',
+            scope: 'ip',
+            remaining: ipDaily.remaining,
+            limit: ipDaily.limit,
+            resetAt: getNextUtcMidnightIso(),
+            loginRecommended: true,
+          });
           return;
         }
       }
@@ -1159,7 +1392,7 @@ app.post(
             res.status(200).json({ jobId: existingJob.id, status: existingStatus, deduplicated: true });
             return;
           }
-          // Terminal state (failed/completed but not yet removed) — remove it so
+          // Terminal state (failed/completed but not yet removed) - remove it so
           // BullMQ can create a fresh job with the same deterministic ID.
           try { await existingJob.remove(); } catch { /* ignore */ }
         }
@@ -1292,7 +1525,7 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6b. GET /api/status/:jobId — Check the status of an analysis job
+// 6b. GET /api/status/:jobId - Check the status of an analysis job
 // ─────────────────────────────────────────────────────────────
 // The frontend polls this every 3 seconds after submitting a job.
 // Returns: { status: "queued" | "processing" | "done" | "failed", progress?, error? }
@@ -1346,7 +1579,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6c. GET /api/repo/:owner/:repo — Get latest metrics for a repository
+// 6c. GET /api/repo/:owner/:repo - Get latest metrics for a repository
 // ─────────────────────────────────────────────────────────────
 // Returns the full dashboard data: health score, bus factor, PR metrics,
 // risk flags, AI advice, etc.
@@ -1369,60 +1602,22 @@ app.get(
         return;
       }
 
-      // Step 1: Check the Redis cache first (fast path)
-      const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
-
-      if (cached) {
-        const payload = cached.value as Record<string, unknown>;
-        const fetchedAt = (payload._fetchedAt as string | undefined) ?? null;
+      const lookup = await getRepoMetricsFromCacheOrDb<Record<string, unknown>>(owner, repo);
+      if (lookup.metrics) {
+        const fetchedAt = lookup.fetchedAt;
         const cachedAgeHours = fetchedAt
           ? Number(((Date.now() - new Date(fetchedAt).getTime()) / 3_600_000).toFixed(1))
           : null;
         res.json({
-          ...payload,
+          ...lookup.metrics,
           _meta: {
-            source: 'redis_cache',
+            source: lookup.source,
             fetchedAt,
-            ttlSeconds: cached.ttlSeconds,
+            ttlSeconds: lookup.ttlSeconds,
             cachedAgeHours,
           },
         });
         return;
-      }
-
-      // Step 2: If not in Redis, try NeonDB (most recent persisted metrics row)
-      if (sqlDb) {
-        try {
-          const repoRow = await sqlDb.query<{ id: string }>(
-            `SELECT id FROM repos WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2) LIMIT 1`,
-            [owner, repo],
-          );
-          if (repoRow.rows[0]) {
-            const metricsRow = await sqlDb.query<{ metrics_json: unknown; analyzed_at: string }>(
-              `SELECT metrics_json, analyzed_at FROM repo_metrics WHERE repo_id = $1 ORDER BY analyzed_at DESC LIMIT 1`,
-              [repoRow.rows[0].id],
-            );
-            if (metricsRow.rows[0]?.metrics_json) {
-              const dbMetrics = metricsRow.rows[0].metrics_json as Record<string, unknown>;
-              const fetchedAt = metricsRow.rows[0].analyzed_at;
-              const cachedAgeHours = Number(
-                ((Date.now() - new Date(fetchedAt).getTime()) / 3_600_000).toFixed(1),
-              );
-              // Re-seed Redis for 1 hour so next request is fast
-              try {
-                const { setRepoMetricsCache } = await import('../cache/repoCache');
-                await setRepoMetricsCache(owner, repo, dbMetrics, 3600, fetchedAt);
-              } catch { /* non-fatal */ }
-              res.json({
-                ...dbMetrics,
-                _meta: { source: 'db_fallback', fetchedAt, ttlSeconds: null, cachedAgeHours },
-              });
-              return;
-            }
-          }
-        } catch (dbErr) {
-          console.warn('[GET /api/repo] DB lookup failed (non-fatal):', dbErr);
-        }
       }
 
       res.status(404).json({
@@ -1437,7 +1632,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6d. GET /api/compare — Compare multiple repositories side by side
+// 6d. GET /api/compare - Compare multiple repositories side by side
 // ─────────────────────────────────────────────────────────────
 // Query: ?repos=owner1/repo1,owner2/repo2
 // Returns: array of metrics for each repo
@@ -1488,12 +1683,8 @@ app.get(
       // Fetch metrics for each repo from cache or DB
       const results = await Promise.all(
         repoPairs.map(async ({ owner, repo }) => {
-          const cached = await getFreshRepoMetricsCache<unknown>(owner, repo);
-          if (cached) {
-            return { owner, repo, metrics: cached.value };
-          }
-          // TODO: Fetch from Prisma when schema is set up
-          return { owner, repo, metrics: null };
+          const lookup = await getRepoMetricsFromCacheOrDb<Record<string, unknown>>(owner, repo);
+          return { owner, repo, metrics: lookup.metrics };
         }),
       );
 
@@ -1507,7 +1698,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6e. POST /api/user/analyze — Queue a user-level contribution analysis
+// 6e. POST /api/user/analyze - Queue a user-level contribution analysis
 // ─────────────────────────────────────────────────────────────
 
 app.post(
@@ -1521,6 +1712,8 @@ app.post(
     try {
       const username = String(req.body.username).trim();
       const normalizedUsername = username.toLowerCase();
+      const sessionUserId = (req.session as any)?.userId;
+      const userIdForJob = sessionUserId !== undefined && sessionUserId !== null ? String(sessionUserId) : undefined;
       const forceReanalyze = parseBooleanFlag((req.body as { force?: unknown })?.force);
 
       if (!forceReanalyze) {
@@ -1564,7 +1757,7 @@ app.post(
 
       const job = await userAnalysisQueue.add(
         'analyzeUser',
-        { username },
+        { username, userId: userIdForJob },
         {
           jobId,
           attempts: 3,
@@ -1581,6 +1774,7 @@ app.post(
 
       await redis.set(`userjobstatus:${job.id}`, 'queued', 'EX', 3600);
       await redis.del(`userjoberror:${job.id}`);
+      await redis.del(`userjobdebug:${job.id}`);
 
       res.status(202).json({ jobId: job.id, status: 'queued', forced: forceReanalyze });
     } catch (error) {
@@ -1592,7 +1786,7 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6f. GET /api/user/status/:jobId — Check user-analysis job status
+// 6f. GET /api/user/status/:jobId - Check user-analysis job status
 // ─────────────────────────────────────────────────────────────
 
 app.get(
@@ -1643,7 +1837,69 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6g. GET /api/user/:username — Get a developer's profile/score
+// 6f-debug. GET /api/user/debug/:jobId - Temporary diagnostics for user-analysis jobs
+// ─────────────────────────────────────────────────────────────
+
+app.get(
+  '/api/user/debug/:jobId',
+  [param('jobId').isString().trim().notEmpty()],
+  handleValidationErrors,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const debugEnabled = process.env.ENABLE_USER_JOB_DEBUG === 'true' || config.nodeEnv !== 'production';
+      if (!debugEnabled) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+
+      const jobId = req.params.jobId as string;
+      const [job, cachedStatusRaw, cachedError, cachedDebugRaw] = await Promise.all([
+        userAnalysisQueue.getJob(jobId),
+        redis.get(`userjobstatus:${jobId}`),
+        redis.get(`userjoberror:${jobId}`),
+        redis.get(`userjobdebug:${jobId}`),
+      ]);
+
+      const cachedStatus = normalizeJobStatus(cachedStatusRaw);
+      let queueState: string | null = null;
+      let progress: number | null = null;
+      if (job) {
+        queueState = await job.getState();
+        progress = typeof job.progress === 'number' ? job.progress : null;
+      }
+
+      let debug: unknown = null;
+      if (cachedDebugRaw) {
+        try {
+          debug = JSON.parse(cachedDebugRaw);
+        } catch {
+          debug = { raw: cachedDebugRaw, parseError: true };
+        }
+      }
+
+      if (!job && !cachedStatus && !cachedError && !debug) {
+        res.status(404).json({ error: 'User analysis job not found' });
+        return;
+      }
+
+      res.json({
+        jobId,
+        status: cachedStatus ?? (queueState ? mapQueueStateToJobStatus(queueState) : null),
+        queueState,
+        progress,
+        error: cachedError || null,
+        debug,
+      });
+    } catch (error) {
+      console.error('Error fetching user analysis debug payload:', error);
+      res.status(500).json({ error: 'Failed to fetch user analysis debug payload' });
+    }
+  },
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// 6g. GET /api/user/:username - Get a developer's profile/score
 // ─────────────────────────────────────────────────────────────
 // Returns: developer score, badges, percentile ranking
 
@@ -1656,22 +1912,21 @@ app.get(
       const username = req.params.username as string;
       const headers = await buildGitHubRestHeaders(req, username);
 
-      const [userResponse, reposResponse, contributionCache] = await Promise.all([
+      const [userResponse, contributionLookup, githubRepos] = await Promise.all([
         fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
-        fetch(
-          `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`,
-          { headers },
-        ),
-        getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+        getUserContributionFromCacheOrDb(username),
+        fetchAllOwnedRepos(username, headers),
       ]);
 
       // Fetch user issue stats (opened + closed)
       let issuesOpened = 0;
       let issuesClosed = 0;
+      let openPRs = 0;
       try {
-        const [openedRes, closedRes] = await Promise.all([
+        const [openedRes, closedRes, openPRsRes] = await Promise.all([
           fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue&per_page=1`, { headers }),
           fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:issue+is:closed&per_page=1`, { headers }),
+          fetch(`${GITHUB_REST_BASE_URL}/search/issues?q=author:${encodeURIComponent(username)}+type:pr+is:open&per_page=1`, { headers }),
         ]);
         if (openedRes.ok) {
           const data = await openedRes.json() as { total_count?: number };
@@ -1680,6 +1935,10 @@ app.get(
         if (closedRes.ok) {
           const data = await closedRes.json() as { total_count?: number };
           issuesClosed = data.total_count ?? 0;
+        }
+        if (openPRsRes.ok) {
+          const data = await openPRsRes.json() as { total_count?: number };
+          openPRs = data.total_count ?? 0;
         }
       } catch (e) {
         console.warn('[UserProfile] Failed to fetch issue stats:', e);
@@ -1697,26 +1956,15 @@ app.get(
 
       const githubUser = await userResponse.json() as GitHubUserApiResponse;
 
-      let githubRepos: GitHubRepoApiResponse[] = [];
-      if (reposResponse.ok) {
-        const reposPayload = await reposResponse.json() as unknown;
-        if (Array.isArray(reposPayload)) {
-          githubRepos = reposPayload.filter((entry) => {
-            return Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry);
-          }) as GitHubRepoApiResponse[];
-        }
-      }
-
       const publicRepos = githubRepos
-        .filter((repo) => !repo.private)
-        .slice(0, MAX_USER_PROFILE_REPOS);
+        .filter((repo) => !repo.private);
 
       const reposWithMetrics = await Promise.all(
         publicRepos.map(async (repo): Promise<UserProfileRepoResponse> => {
           const ownerFromFullName = repo.full_name.split('/')[0] || username;
-          const cached = await getFreshRepoMetricsCache<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
-          const healthScore = cached && typeof cached.value?.healthScore === 'number'
-            ? Number(cached.value.healthScore)
+          const lookup = await getRepoMetricsFromCacheOrDb<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
+          const healthScore = lookup.metrics && typeof lookup.metrics.healthScore === 'number'
+            ? Number(lookup.metrics.healthScore)
             : null;
 
           return {
@@ -1745,13 +1993,27 @@ app.get(
         .map((repo) => repo.healthScore)
         .filter((score): score is number => score !== null);
 
-      const contribution = contributionCache?.value ?? null;
+      const contribution = contributionLookup.value;
       const developerScore = computeDeveloperScore(
         analyzedScores,
         contribution,
         githubUser.followers,
         githubUser.public_repos,
       );
+
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `UPDATE users
+             SET developer_score = $1,
+                 updated_at = NOW()
+             WHERE LOWER(username) = LOWER($2)`,
+            [developerScore, githubUser.login],
+          );
+        } catch (scorePersistErr) {
+          console.warn('[UserProfile] Failed to persist developer score snapshot:', scorePersistErr);
+        }
+      }
 
       const reliabilityPct = computeReliabilityPct(analyzedScores.length, Boolean(contribution));
       const badges = buildUserBadges(
@@ -1761,6 +2023,33 @@ app.get(
         githubUser.followers,
         githubUser.public_repos,
       );
+
+      let percentileLabel = computePercentileLabel(developerScore);
+      if (sqlDb) {
+        try {
+          const snapshot = await sqlDb.query<{ percentile_raw: string | null }>(
+            `WITH scored_users AS (
+               SELECT developer_score
+               FROM users
+               WHERE developer_score > 0
+             )
+             SELECT
+               CASE
+                 WHEN COUNT(*) = 0 THEN NULL
+                 WHEN COUNT(*) = 1 THEN '100'
+                 ELSE (((SUM(CASE WHEN developer_score <= $1 THEN 1 ELSE 0 END)::numeric - 1) / (COUNT(*) - 1)::numeric) * 100)::text
+               END AS percentile_raw
+             FROM scored_users`,
+            [developerScore],
+          );
+
+          if (snapshot.rows.length > 0 && snapshot.rows[0].percentile_raw !== null) {
+            percentileLabel = `Top 50% Global`;
+          }
+        } catch (dbErr) {
+          console.warn('[UserProfile] Failed to load DB percentile snapshot:', dbErr);
+        }
+      }
 
       const profile: UserProfileApiResponse = {
         username: githubUser.login,
@@ -1779,7 +2068,7 @@ app.get(
         topLanguage: getTopLanguage(publicRepos),
         developerScore,
         reliabilityPct,
-        percentile: computePercentileLabel(developerScore),
+        percentile: percentileLabel,
         needsAnalysis: !contribution,
         issuesOpened,
         issuesClosed,
@@ -1787,6 +2076,7 @@ app.get(
         contribution: {
           externalPRCount: contribution?.externalPRCount ?? 0,
           externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
+          externalOpenPRCount: openPRs,
           contributionAcceptanceRate: contribution?.contributionAcceptanceRate ?? 0,
           analyzedAt: contribution?.analyzedAt ?? null,
         },
@@ -1794,6 +2084,39 @@ app.get(
         repos: reposWithMetrics,
         lastAnalyzedAt: contribution?.analyzedAt ?? null,
       };
+
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO user_profile_snapshots (
+               user_id,
+               username,
+               snapshot,
+               developer_score,
+               reliability_pct,
+               captured_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2::jsonb,
+               $3,
+               $4,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              githubUser.login,
+              JSON.stringify(profile),
+              developerScore,
+              reliabilityPct,
+            ],
+          );
+        } catch (snapshotError) {
+          console.warn('[UserProfile] Failed to persist user profile snapshot (non-fatal):', snapshotError);
+        }
+      }
 
       res.json(profile);
     } catch (error) {
@@ -1805,7 +2128,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6h. POST /api/user/:username/ai-insights — Gemini profile analysis
+// 6h. POST /api/user/:username/ai-insights - Gemini profile analysis
 // ─────────────────────────────────────────────────────────────
 // Returns AI-generated summary, strengths, areas for growth,
 // contribution style, and recommended focus areas. Cached 24h.
@@ -1819,7 +2142,7 @@ app.post(
     try {
       const username = req.params.username as string;
 
-      // Quota gate — global + per-user daily cap
+      // Quota gate - global + per-user daily cap
       const loggedInUser = (req as Request & { user?: { githubUsername?: string } }).user?.githubUsername || username;
       const quota = await checkAndIncrementGlobalDailyQuota(loggedInUser);
       if (!quota.allowed) {
@@ -1835,13 +2158,10 @@ app.post(
       const headers = await buildGitHubRestHeaders(req, username);
 
       // Fetch GitHub user + repos + contribution cache in parallel
-      const [userResponse, reposResponse, contributionCache] = await Promise.all([
+      const [userResponse, contributionLookup, githubRepos] = await Promise.all([
         fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}`, { headers }),
-        fetch(
-          `${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`,
-          { headers },
-        ),
-        getFreshUserContributionCache<UserContributionMetricsCacheValue>(username),
+        getUserContributionFromCacheOrDb(username),
+        fetchAllOwnedRepos(username, headers),
       ]);
 
       if (userResponse.status === 404) {
@@ -1856,19 +2176,8 @@ app.post(
 
       const githubUser = await userResponse.json() as GitHubUserApiResponse;
 
-      let githubRepos: GitHubRepoApiResponse[] = [];
-      if (reposResponse.ok) {
-        const reposPayload = await reposResponse.json() as unknown;
-        if (Array.isArray(reposPayload)) {
-          githubRepos = reposPayload.filter((entry) =>
-            Boolean(entry && typeof entry === 'object' && 'name' in entry && 'full_name' in entry),
-          ) as GitHubRepoApiResponse[];
-        }
-      }
-
       const publicRepos = githubRepos
-        .filter((repo) => !repo.private)
-        .slice(0, MAX_USER_PROFILE_REPOS);
+        .filter((repo) => !repo.private);
 
       // Pull health scores from cache for each repo
       const repoHealthScores: number[] = [];
@@ -1880,14 +2189,14 @@ app.post(
           repoNames.push(repo.name);
           repoLanguages.push(repo.language);
           const ownerFromFullName = repo.full_name.split('/')[0] || username;
-          const cached = await getFreshRepoMetricsCache<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
-          if (cached && typeof cached.value?.healthScore === 'number') {
-            repoHealthScores.push(Number(cached.value.healthScore));
+          const lookup = await getRepoMetricsFromCacheOrDb<{ healthScore?: unknown }>(ownerFromFullName, repo.name);
+          if (lookup.metrics && typeof lookup.metrics.healthScore === 'number') {
+            repoHealthScores.push(Number(lookup.metrics.healthScore));
           }
         }),
       );
 
-      const contribution = contributionCache?.value ?? null;
+      const contribution = contributionLookup.value;
 
       const profileData: UserProfileData = {
         username: githubUser.login,
@@ -1898,7 +2207,7 @@ app.post(
         externalPRCount: contribution?.externalPRCount ?? 0,
         externalMergedPRCount: contribution?.externalMergedPRCount ?? 0,
         contributionAcceptanceRate: contribution?.contributionAcceptanceRate ?? 0,
-        issuesOpened: 0, // Not fetched again here — use cached value if available
+        issuesOpened: 0, // Not fetched again here - use cached value if available
         issuesClosed: 0,
         repoHealthScores,
         repoNames,
@@ -1906,6 +2215,42 @@ app.post(
       };
 
       const insights = await generateUserInsights(profileData);
+
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO ai_user_insights_history (
+               user_id,
+               username,
+               source,
+               model,
+               input_profile,
+               output_insight,
+               generated_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2,
+               $3,
+               $4::jsonb,
+               $5::jsonb,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              githubUser.login,
+              insights.source,
+              null,
+              JSON.stringify(profileData),
+              JSON.stringify(insights),
+            ],
+          );
+        } catch (insightPersistErr) {
+          console.warn('[AI][UserInsights] Failed to persist insights history (non-fatal):', insightPersistErr);
+        }
+      }
 
       res.json(insights);
     } catch (error) {
@@ -1917,9 +2262,9 @@ app.post(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6j. GET /api/repo/:owner/:repo/recommendations — AI issue recommendations
+// 6j. GET /api/repo/:owner/:repo/recommendations - AI issue recommendations
 // ─────────────────────────────────────────────────────────────
-// Query: ?username=octocat  (optional — omit for label-only fallback)
+// Query: ?username=octocat  (optional - omit for label-only fallback)
 // Fetches open issues from GitHub REST API, then calls Gemini to match
 // them to the developer's skill profile.
 
@@ -1939,7 +2284,7 @@ app.get(
       const username = (req.query.username as string | undefined)?.trim() || '';
       const forceRefresh = req.query.refresh === 'true';
 
-      // Auth guard — must be logged in to get personalized recommendations
+      // Auth guard - must be logged in to get personalized recommendations
       const sessionUserId = (req.session as any)?.userId as number | string | undefined;
       const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
       if (!sessionUserId || !sessionUsername) {
@@ -1960,12 +2305,12 @@ app.get(
         return;
       }
 
-      // 1. Check repo metrics cache — repo must have been analyzed first.
-      const cached = await getFreshRepoMetricsCache<{
+      // 1. Check repo metrics cache - repo must have been analyzed first.
+      const lookup = await getRepoMetricsFromCacheOrDb<{
         issueMetrics?: { labelBreakdown?: { label: string; count: number; githubFilterUrl: string }[] } | null;
       }>(owner, repo);
 
-      if (!cached) {
+      if (!lookup.metrics) {
         res.status(404).json({
           error: 'No metrics found for this repository. Analyze it first before requesting recommendations.',
         });
@@ -2005,7 +2350,16 @@ app.get(
 
       // 3. If no issues found, return empty result early.
       if (repoIssues.length === 0) {
-        res.json({ recommendations: [], source: 'rule-based', message: 'No open issues found for this repository.' });
+        res.json({
+          recommendations: [],
+          source: 'rule-based',
+          message: 'No open issues found for this repository.',
+          dailyQuota: {
+            limit: 20,
+            remaining: quota.remaining,
+            resetAt: quota.resetAt,
+          },
+        });
         return;
       }
 
@@ -2026,37 +2380,23 @@ app.get(
       if (effectiveUsername) {
         try {
           const userHeaders = await buildGitHubRestHeaders(req, effectiveUsername);
-          const [ghUserRes, ghReposRes, contribCache] = await Promise.all([
+          const [ghUserRes, contribLookup, repos] = await Promise.all([
             fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(effectiveUsername)}`, { headers: userHeaders }),
-            fetch(`${GITHUB_REST_BASE_URL}/users/${encodeURIComponent(effectiveUsername)}/repos?type=owner&sort=updated&per_page=${MAX_USER_PROFILE_REPOS}`, { headers: userHeaders }),
-            getFreshUserContributionCache<UserContributionMetricsCacheValue>(effectiveUsername),
+            getUserContributionFromCacheOrDb(effectiveUsername),
+            fetchAllOwnedRepos(effectiveUsername, userHeaders),
           ]);
 
           if (ghUserRes.ok) {
             const ghUserData = await ghUserRes.json() as GitHubUserApiResponse;
-            let repoLanguages: (string | null)[] = [];
-            let repoNames: string[] = [];
-
-            if (ghReposRes.ok) {
-              const rawRepos = await ghReposRes.json() as unknown[];
-              if (Array.isArray(rawRepos)) {
-                const repos = rawRepos.filter(
-                  (r): r is GitHubRepoApiResponse =>
-                    Boolean(r && typeof r === 'object' && 'name' in (r as object)),
-                ) as GitHubRepoApiResponse[];
-                repoLanguages = repos.map((r) => r.language);
-                repoNames = repos.map((r) => r.name);
-              }
-            }
+            const repoLanguages = repos.map((r) => r.language);
+            const repoNames = repos.map((r) => r.name);
 
             userProfile = {
               username: ghUserData.login,
-              topLanguage: getTopLanguage(
-                (await ghReposRes.clone().json().catch(() => [])) as GitHubRepoApiResponse[],
-              ),
-              externalPRCount: contribCache?.value?.externalPRCount ?? 0,
-              externalMergedPRCount: contribCache?.value?.externalMergedPRCount ?? 0,
-              contributionAcceptanceRate: contribCache?.value?.contributionAcceptanceRate ?? 0,
+              topLanguage: getTopLanguage(repos),
+              externalPRCount: contribLookup.value?.externalPRCount ?? 0,
+              externalMergedPRCount: contribLookup.value?.externalMergedPRCount ?? 0,
+              contributionAcceptanceRate: contribLookup.value?.contributionAcceptanceRate ?? 0,
               followers: ghUserData.followers ?? 0,
               issuesOpened: 0, // not critical for matching; keep 0 to avoid extra API call
               repoLanguages,
@@ -2065,14 +2405,67 @@ app.get(
           }
         } catch (profileErr) {
           console.warn('[Recommendations] Failed to fetch user profile for recommendations:', profileErr);
-          // Continue with anonymous profile — will use rule-based fallback
+          // Continue with anonymous profile - will use rule-based fallback
         }
       }
 
       // 5. Generate recommendations (pass forceRefresh for fresh batch).
       const result = await generateIssueRecommendations(userProfile, repoIssues, owner, repo, forceRefresh);
 
-      res.json(result);
+      if (sqlDb) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO ai_issue_recommendations_history (
+               requested_by_user_id,
+               requested_by_username,
+               owner,
+               repo,
+               source,
+               model,
+               input_payload,
+               output_recommendations,
+               generated_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2,
+               $3,
+               $4,
+               $5,
+               $6::jsonb,
+               $7::jsonb,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              authedUsername,
+              owner,
+              repo,
+              (result as { source?: string }).source ?? 'rule-based',
+              null,
+              JSON.stringify({
+                userProfile,
+                issueCount: repoIssues.length,
+                refresh: forceRefresh,
+              }),
+              JSON.stringify(result),
+            ],
+          );
+        } catch (recommendPersistErr) {
+          console.warn('[Recommendations] Failed to persist recommendations history (non-fatal):', recommendPersistErr);
+        }
+      }
+
+      res.json({
+        ...result,
+        dailyQuota: {
+          limit: 20,
+          remaining: quota.remaining,
+          resetAt: quota.resetAt,
+        },
+      });
     } catch (error) {
       console.error('[Recommendations] Error generating issue recommendations:', error);
       res.status(500).json({ error: 'Failed to generate issue recommendations' });
@@ -2082,7 +2475,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6k. POST /api/compare/insights — AI-powered repo comparison
+// 6k. POST /api/compare/insights - AI-powered repo comparison
 // ─────────────────────────────────────────────────────────────
 // Body: { repos: string[] }  (2–4 "owner/repo" strings)
 // Looks up each repo from Redis cache, passes metrics to Gemini.
@@ -2095,17 +2488,32 @@ app.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const rawRepos = req.body.repos as unknown[];
-
-      // Auth guard — must be logged in for AI comparison
       const sessionUserId = (req.session as any)?.userId as number | string | undefined;
       const sessionUsername = (req.session as any)?.githubUsername as string | undefined;
-      if (!sessionUserId || !sessionUsername) {
-        res.status(401).json({ error: 'Login required to generate AI comparison insights.', code: 'LOGIN_REQUIRED' });
-        return;
+
+      const isLoggedIn = sessionUserId !== undefined && sessionUserId !== null && Boolean(sessionUsername);
+      if (!isLoggedIn) {
+        const requesterIp = getClientIp(req);
+        const compareDaily = await checkAndIncrementDailyCounterLimit(
+          getDailyCompareInsightsCountKey('ip', requesterIp),
+          MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY,
+        );
+
+        if (!compareDaily.allowed) {
+          res.status(401).json({
+            error: 'Daily AI comparison limit reached for logged-out users. Login for more requests.',
+            code: 'LOGIN_REQUIRED_COMPARE_DAILY',
+            remaining: compareDaily.remaining,
+            limit: compareDaily.limit,
+            resetAt: getNextUtcMidnightIso(),
+            loginRecommended: true,
+          });
+          return;
+        }
       }
 
       // Quota gate
-      const quota = await checkAndIncrementGlobalDailyQuota(sessionUsername);
+      const quota = await checkAndIncrementGlobalDailyQuota(sessionUsername ?? '');
       if (!quota.allowed) {
         res.status(429).json({
           error: 'Daily AI limit reached. Come back tomorrow.',
@@ -2133,9 +2541,9 @@ app.post(
         validRepos.map(async (repoRef) => {
           const [owner, repoName] = repoRef.split('/');
           if (!owner || !repoName) return null;
-          const cached = await getFreshRepoMetricsCache<object>(owner, repoName);
-          if (!cached) return null;
-          return { repo: repoRef, metrics: cached.value } as RepoMetricsForCompare;
+          const lookup = await getRepoMetricsFromCacheOrDb<object>(owner, repoName);
+          if (!lookup.metrics) return null;
+          return { repo: repoRef, metrics: lookup.metrics } as RepoMetricsForCompare;
         }),
       );
 
@@ -2151,6 +2559,46 @@ app.post(
       }
 
       const result = await generateCompareInsights(validEntries);
+
+      if (sqlDb && sessionUsername) {
+        try {
+          await sqlDb.query(
+            `INSERT INTO ai_compare_insights_history (
+               requested_by_user_id,
+               requested_by_username,
+               repos,
+               source,
+               model,
+               input_metrics,
+               output_insight,
+               generated_at
+             )
+             SELECT
+               u.id,
+               $1,
+               $2::text[],
+               $3,
+               $4,
+               $5::jsonb,
+               $6::jsonb,
+               NOW()
+             FROM users u
+             WHERE LOWER(u.username) = LOWER($1)
+             LIMIT 1`,
+            [
+              sessionUsername,
+              validRepos,
+              result.source,
+              null,
+              JSON.stringify(validEntries),
+              JSON.stringify(result),
+            ],
+          );
+        } catch (comparePersistErr) {
+          console.warn('[AI][Compare] Failed to persist compare insights history (non-fatal):', comparePersistErr);
+        }
+      }
+
       res.json(result);
     } catch (error) {
       console.error('[AI][Compare] Error generating compare insights:', error);
@@ -2160,66 +2608,11 @@ app.post(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// 6l. GET /api/leaderboard — Get top developers
-// ─────────────────────────────────────────────────────────────
-// Optional filter: ?lang=typescript (filter by primary language)
-// Returns: top 100 developers sorted by their developer score
 
-app.get(
-  '/api/leaderboard',
-  leaderboardLimiter,
-  [query('lang').optional().isString().trim()],
-  handleValidationErrors,
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const lang = req.query.lang as string | undefined;
-
-      if (!sqlDb) {
-        res.status(503).json({ error: 'Database is unavailable for leaderboard requests.' });
-        return;
-      }
-
-      const normalizedLang = lang && lang.toLowerCase() !== 'all languages' ? lang : undefined;
-      const rows = await getLeaderboardWithLanguageFilter(sqlDb, normalizedLang);
-
-      const leaderboard: LeaderboardApiEntry[] = rows.map((row, index) => {
-        const rank = row.global_rank ?? index + 1;
-        const score = parseScore(row.developer_score);
-        return {
-          rank,
-          name: row.username,
-          handle: `@${row.username}`,
-          score,
-          lang: row.primary_language || 'Unknown',
-          repos: row.repos_count,
-          percentile: formatPercentileForLeaderboard(row.percentile, score),
-          tier: getTierFromRank(rank),
-          img: row.avatar_url || `https://github.com/${row.username}.png`,
-        };
-      });
-
-      const [updatedAt, stats] = await Promise.allSettled([
-        getLeaderboardLastUpdated(),
-        getLeaderboardStats(),
-      ]);
-
-      res.json({
-        leaderboard,
-        filter: normalizedLang || 'all',
-        updatedAt: updatedAt.status === 'fulfilled' ? updatedAt.value : null,
-        stats: stats.status === 'fulfilled' ? stats.value : { totalDevelopers: leaderboard.length, totalRepos: 0 },
-      });
-    } catch (error) {
-      console.error('Error fetching leaderboard:', error);
-      res.status(500).json({ error: 'Failed to fetch leaderboard' });
-    }
-  },
-);
 
 
 // ─────────────────────────────────────────────────────────────
-// 6h. GET /badge/:owner/:repo — Generate an embeddable SVG badge
+// 6h. GET /badge/:owner/:repo - Generate an embeddable SVG badge
 // ─────────────────────────────────────────────────────────────
 // Returns an SVG image that can be embedded in a README.md:
 // ![GitVital Score](https://gitvital.com/badge/facebook/react)
@@ -2238,13 +2631,13 @@ app.get(
       // Strip .svg extension if provided so cache fetch works
       const repo = (req.params.repo as string).replace(/\.svg$/, '');
 
-      // Fetch actual score from Redis Cache (or soon DB)
+      // Fetch score from cache with Neon DB fallback
       let score = 0;
       let statusText = "Unanalyzed";
 
-      const cached = await getFreshRepoMetricsCache<any>(owner, repo);
-      if (cached && cached.value && typeof cached.value.healthScore === 'number') {
-        score = Math.round(cached.value.healthScore);
+      const lookup = await getRepoMetricsFromCacheOrDb<{ healthScore?: unknown }>(owner, repo);
+      if (lookup.metrics && typeof lookup.metrics.healthScore === 'number') {
+        score = Math.round(Number(lookup.metrics.healthScore));
         statusText = `${score}/100`;
       }
 
@@ -2285,7 +2678,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6i. GET /badge/user/:username — Generate a developer SVG badge
+// 6i. GET /badge/user/:username - Generate a developer SVG badge
 // ─────────────────────────────────────────────────────────────
 
 app.get(
@@ -2334,7 +2727,7 @@ app.get(
 
 
 // ─────────────────────────────────────────────────────────────
-// 6j. GET /auth/github — Start GitHub OAuth login flow
+// 6j. GET /auth/github - Start GitHub OAuth login flow
 // ─────────────────────────────────────────────────────────────
 // Redirects the user to GitHub's authorization page
 
@@ -2349,9 +2742,10 @@ app.get('/auth/github', (req: Request, res: Response) => {
   const referer = queryReturnTo || req.get('Referer') || config.frontendUrl;
   (req.session as any).returnTo = getSafeFrontendRedirectOrigin(referer);
 
-  const protocol = req.get('x-forwarded-proto') || req.protocol;
-  const host = req.get('host');
-  const redirect_uri = `${protocol}://${host}/auth/github/callback`;
+  // Use the configured callback URL - never build it dynamically from the request host.
+  // On Render, req.get('host') can return the internal hostname which won't match the
+  // GitHub OAuth App's registered callback URL, causing a redirect_uri_mismatch error.
+  const redirect_uri = config.github.callbackUrl;
 
   const params = new URLSearchParams({
     client_id: config.github.clientId,
@@ -2369,7 +2763,7 @@ app.get('/auth/github', (req: Request, res: Response) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// 6k. GET /auth/github/callback — Handle GitHub OAuth callback
+// 6k. GET /auth/github/callback - Handle GitHub OAuth callback
 // ─────────────────────────────────────────────────────────────
 // After the user approves on GitHub, GitHub redirects here with a ?code=
 // We exchange that code for an access_token, create a session, and redirect.
@@ -2399,6 +2793,8 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
         client_id: config.github.clientId,
         client_secret: config.github.clientSecret,
         code,
+        // Must match exactly what was sent in the /auth/github step
+        redirect_uri: config.github.callbackUrl,
       }),
     });
 
@@ -2414,12 +2810,45 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
 
-    const userData = await userResponse.json() as { login: string; id: number; avatar_url: string; name: string };
+    const userData = await userResponse.json() as {
+      login: string;
+      id: number;
+      avatar_url: string;
+      name: string;
+      followers?: number;
+      public_repos?: number;
+    };
 
     if (!userData || !userData.id || !userData.login) {
       res.status(401).json({ error: 'Unable to load GitHub user profile.' });
       return;
     }
+
+    if (!sqlDb) {
+      res.status(503).json({ error: 'Database is unavailable for login. Please try again shortly.' });
+      return;
+    }
+
+    const initialDeveloperScore = computeDeveloperScore(
+      [],
+      null,
+      typeof userData.followers === 'number' ? userData.followers : 0,
+      typeof userData.public_repos === 'number' ? userData.public_repos : 0,
+    );
+
+    // Keep users table in sync with OAuth logins so leaderboard/dev features have source data.
+    const encryptedTokenForDb = encryptAccessToken(tokenData.access_token, config.encryptionKey);
+    await sqlDb.query(
+      `INSERT INTO users (github_id, username, avatar_url, access_token, developer_score)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (github_id) DO UPDATE SET
+         username = EXCLUDED.username,
+         avatar_url = EXCLUDED.avatar_url,
+         access_token = EXCLUDED.access_token,
+         developer_score = GREATEST(users.developer_score, EXCLUDED.developer_score),
+         updated_at = NOW()`,
+      [String(userData.id), userData.login, userData.avatar_url || null, encryptedTokenForDb, initialDeveloperScore],
+    );
 
     // Encrypt before persistence and avoid storing plain access tokens in session.
     // Redis outages should not block login: we can still keep session auth active.
@@ -2473,7 +2902,7 @@ app.post('/auth/logout', async (req: Request, res: Response): Promise<void> => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 6l. GET /api/me — Get current user session
+// 6l. GET /api/me - Get current user session
 // ─────────────────────────────────────────────────────────────
 app.get('/api/me', (req: Request, res: Response) => {
   // Prevent aggressive browser/Next.js caching of the session state
@@ -2491,12 +2920,130 @@ app.get('/api/me', (req: Request, res: Response) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────
+// GET /api/health/auth - Diagnose auth + Redis health
+// ─────────────────────────────────────────────────────────────
+// Returns: Redis ping, OAuth config presence, session state, callback URL in use.
+// Safe to expose - never returns secrets, only confirms they are set.
+app.get('/api/health/auth', async (req: Request, res: Response): Promise<void> => {
+  let redisPing: 'ok' | 'error' = 'error';
+  let redisSessionCount: number | null = null;
+  try {
+    const ping = await redis.ping();
+    redisPing = ping === 'PONG' ? 'ok' : 'error';
+    // Count active session keys as a rough health signal
+    const sessionKeys = await redis.keys('sess:*');
+    redisSessionCount = sessionKeys.length;
+  } catch {
+    redisPing = 'error';
+  }
+
+  const sessionUserId = (req.session as any)?.userId;
+  const sessionUsername = (req.session as any)?.githubUsername;
+
+  res.json({
+    redis: {
+      status: redisPing,
+      activeSessions: redisSessionCount,
+    },
+    oauth: {
+      clientIdSet: Boolean(config.github.clientId),
+      clientSecretSet: Boolean(config.github.clientSecret),
+      callbackUrl: config.github.callbackUrl,   // shows what redirect_uri will be sent to GitHub
+    },
+    session: {
+      active: Boolean(sessionUserId && sessionUsername),
+      username: sessionUsername || null,
+    },
+  });
+});
+
+app.get('/api/quota/daily', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req.session as any)?.userId as number | string | undefined;
+    const githubUsername = (req.session as any)?.githubUsername as string | undefined;
+    const requesterIp = getClientIp(req);
+    const loggedIn = userId !== undefined && userId !== null;
+
+    const analyzeScope = loggedIn
+      ? { scope: 'user' as const, id: String(userId), limit: MAX_UNIQUE_REPOS_PER_USER_PER_DAY }
+      : { scope: 'ip' as const, id: requesterIp, limit: MAX_UNIQUE_REPOS_PER_IP_PER_DAY };
+
+    const [analyzeUsed, anonCompareUsed, sharedAiStatus] = await Promise.all([
+      redis.scard(getDailyUniqueRepoKey(analyzeScope.scope, analyzeScope.id)),
+      getDailyCounterValue(getDailyCompareInsightsCountKey('ip', requesterIp)),
+      loggedIn && githubUsername
+        ? getQuotaStatus(githubUsername)
+        : Promise.resolve(null),
+    ]);
+
+    const resetAt = getNextUtcMidnightIso();
+
+    res.json({
+      loggedIn,
+      analyzeDaily: {
+        scope: analyzeScope.scope,
+        limit: analyzeScope.limit,
+        used: analyzeUsed,
+        remaining: Math.max(0, analyzeScope.limit - analyzeUsed),
+        resetAt,
+      },
+      aiDaily: loggedIn && sharedAiStatus
+        ? {
+          scope: 'user' as const,
+          limit: sharedAiStatus.userCap,
+          used: sharedAiStatus.userUsed,
+          remaining: Math.max(0, sharedAiStatus.userCap - sharedAiStatus.userUsed),
+          resetAt,
+        }
+        : null,
+      compareDaily: loggedIn && sharedAiStatus
+        ? {
+          scope: 'user' as const,
+          limit: sharedAiStatus.userCap,
+          used: sharedAiStatus.userUsed,
+          remaining: Math.max(0, sharedAiStatus.userCap - sharedAiStatus.userUsed),
+          resetAt,
+        }
+        : {
+          scope: 'ip' as const,
+          limit: MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY,
+          used: anonCompareUsed,
+          remaining: Math.max(0, MAX_COMPARE_INSIGHTS_PER_IP_PER_DAY - anonCompareUsed),
+          resetAt,
+        },
+      issueRecommendationsDaily: loggedIn && sharedAiStatus
+        ? {
+          scope: 'user' as const,
+          limit: sharedAiStatus.userCap,
+          used: sharedAiStatus.userUsed,
+          remaining: Math.max(0, sharedAiStatus.userCap - sharedAiStatus.userUsed),
+          resetAt,
+        }
+        : null,
+    });
+  } catch (error) {
+    console.error('Error fetching daily quota status:', error);
+    res.status(500).json({ error: 'Failed to fetch daily quota status' });
+  }
+});
+
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION 7: HEALTH CHECK
 // ═══════════════════════════════════════════════════════════════
 // A simple endpoint that deployment platforms (Render, Railway) use
 // to check if our server is alive and healthy.
+
+// Lightweight liveness probe for keep-alive pingers.
+// Does not touch dependencies so it stays fast and stable.
+app.get('/healthz', (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    env: config.nodeEnv,
+  });
+});
 
 app.get('/health', async (_req: Request, res: Response) => {
   let redisStatus = 'error';
@@ -2519,7 +3066,7 @@ app.get('/health', async (_req: Request, res: Response) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// ADMIN: GET /api/admin/test-ai — Direct Gemini API diagnostic
+// ADMIN: GET /api/admin/test-ai - Direct Gemini API diagnostic
 // Hit this endpoint to see exactly why Gemini may be failing.
 // ─────────────────────────────────────────────────────────────
 app.get('/api/admin/test-ai', async (req: Request, res: Response): Promise<void> => {
@@ -2584,7 +3131,7 @@ const server = app.listen(config.port, () => {
   console.log(`   Environment: ${config.nodeEnv}`);
 });
 
-// Graceful shutdown — when the server is stopped (Ctrl+C, deployment restart),
+// Graceful shutdown - when the server is stopped (Ctrl+C, deployment restart),
 // we cleanly close all connections instead of abruptly dropping them.
 // This prevents data corruption and lost jobs.
 

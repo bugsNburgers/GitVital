@@ -1,4 +1,4 @@
-// src/ai/userInsights.ts — AI-powered developer profile insights using Gemini
+// src/ai/userInsights.ts - AI-powered developer profile insights using Gemini
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config';
@@ -183,7 +183,7 @@ export async function generateUserInsights(profileData: UserProfileData): Promis
 
   // 2. API key guard
   if (!config.geminiApiKey) {
-    console.warn('[AI][UserInsights] GEMINI_API_KEY missing — using rule-based fallback.');
+    console.warn('[AI][UserInsights] GEMINI_API_KEY missing - using rule-based fallback.');
     const fallback: UserAIInsights = { ...buildRuleBasedInsights(profileData), source: 'rule-based' };
     await cacheInsights(cacheKey, fallback);
     return fallback;
@@ -259,7 +259,7 @@ export async function generateUserInsights(profileData: UserProfileData): Promis
     await markGeminiQuotaLimited();
   }
 
-  console.warn('[AI][UserInsights] All Gemini candidates failed — using rule-based fallback.');
+  console.warn('[AI][UserInsights] All Gemini candidates failed - using rule-based fallback.');
   const fallback: UserAIInsights = { ...buildRuleBasedInsights(profileData), source: 'rule-based' };
   await cacheInsights(cacheKey, fallback);
   return fallback;

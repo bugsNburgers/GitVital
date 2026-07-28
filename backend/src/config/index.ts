@@ -1,4 +1,4 @@
-// src/config/index.ts — Central configuration, reads from environment variables
+// src/config/index.ts - Central configuration, reads from environment variables
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -23,26 +23,24 @@ export const config = {
   port: parseInt(process.env.PORT || '4000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  // The URL of your frontend app — used by CORS to only allow YOUR frontend to talk to this API
+  // The URL of your frontend app - used by CORS to only allow YOUR frontend to talk to this API
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
-  corsOrigins: [
+  corsOrigins: Array.from(new Set([
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'https://gitvital.com',
     'https://www.gitvital.com',
     'https://api.gitvital.com',
-    'https://gitvital.com',
-    'https://api.gitvital.com',
-    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
-  ],
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim().replace(/\/$/, '')] : [])
+  ])),
 
   // ──────────────────────────────────────────────
-  // Redis — used by BullMQ (job queue) and session store
+  // Redis - used by BullMQ (job queue) and session store
   // ──────────────────────────────────────────────
   redisUrl: getRequiredEnv('REDIS_URL'),
 
   // ──────────────────────────────────────────────
-  // Session — the secret key used to encrypt session cookies
+  // Session - the secret key used to encrypt session cookies
   // ──────────────────────────────────────────────
   sessionSecret: getRequiredEnv('SESSION_SECRET'),
   encryptionKey: getRequiredEnv('ENCRYPTION_KEY'),
@@ -61,7 +59,7 @@ export const config = {
   },
 
   // ──────────────────────────────────────────────
-  // GitHub OAuth — credentials from your GitHub Developer Settings
+  // GitHub OAuth - credentials from your GitHub Developer Settings
   // ──────────────────────────────────────────────
   github: {
     clientId: process.env.GITHUB_CLIENT_ID || '',
@@ -70,7 +68,7 @@ export const config = {
   },
 
   // ──────────────────────────────────────────────
-  // Gemini AI — your API key for Google's Gemini model
+  // Gemini AI - your API key for Google's Gemini model
   // ──────────────────────────────────────────────
   geminiApiKey: process.env.GEMINI_API_KEY || '',
 
@@ -91,7 +89,7 @@ export const config = {
   },
 
   // ──────────────────────────────────────────────
-  // Cache TTL (Time To Live) — how long cached data stays valid
+  // Cache TTL (Time To Live) - how long cached data stays valid
   // ──────────────────────────────────────────────
   cacheTtlSeconds: parseInt(process.env.CACHE_TTL_SECONDS || '86400', 10), // 24 hours default (Guidesrc §9)
 };

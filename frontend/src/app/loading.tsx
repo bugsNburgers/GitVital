@@ -1,4 +1,4 @@
-// Root loading — shown while the home page (app/page.tsx) is loading server-side
+// Root loading - shown while the home page (app/page.tsx) is loading server-side
 export default function Loading() {
   return (
     <div style={{ background: "#080909", minHeight: "100vh", overflow: "hidden" }}>
