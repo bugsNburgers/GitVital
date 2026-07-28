@@ -9,7 +9,7 @@ interface InfoTooltipProps {
 }
 
 /**
- * InfoTooltip — renders an ℹ icon next to a metric label.
+ * InfoTooltip - renders an ℹ icon next to a metric label.
  * Uses a React Portal to render the tooltip on document.body so it
  * always appears above the navbar and escapes card overflow/stacking contexts.
  */
@@ -52,64 +52,64 @@ export default function InfoTooltip({ metricKey }: InfoTooltipProps) {
   const tooltip =
     mounted && visible
       ? createPortal(
+        <span
+          role="tooltip"
+          style={{
+            position: 'absolute',
+            top: `${pos.top}px`,
+            left: `${pos.left}px`,
+            transform: 'translateY(-100%)',
+            zIndex: 99999,
+            pointerEvents: 'none',
+            width: `${TOOLTIP_WIDTH}px`,
+            background: 'rgba(17, 19, 20, 0.97)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255, 255, 255, 0.10)',
+            borderRadius: '10px',
+            padding: '12px 16px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+          }}
+        >
           <span
-            role="tooltip"
             style={{
-              position: 'absolute',
-              top: `${pos.top}px`,
-              left: `${pos.left}px`,
-              transform: 'translateY(-100%)',
-              zIndex: 99999,
-              pointerEvents: 'none',
-              width: `${TOOLTIP_WIDTH}px`,
-              background: 'rgba(17, 19, 20, 0.97)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '1px solid rgba(255, 255, 255, 0.10)',
-              borderRadius: '10px',
-              padding: '12px 16px',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+              display: 'block',
+              fontSize: '12px',
+              fontWeight: 700,
+              color: '#ffffff',
+              marginBottom: '4px',
+              lineHeight: 1.4,
             }}
           >
-            <span
-              style={{
-                display: 'block',
-                fontSize: '12px',
-                fontWeight: 700,
-                color: '#ffffff',
-                marginBottom: '4px',
-                lineHeight: 1.4,
-              }}
-            >
-              {info.name}
-            </span>
-            <span
-              style={{
-                display: 'block',
-                fontSize: '11px',
-                color: 'rgba(255,255,255,0.65)',
-                lineHeight: 1.5,
-                marginBottom: '6px',
-              }}
-            >
-              {info.description}
-            </span>
-            <span
-              style={{
-                display: 'block',
-                fontSize: '10px',
-                fontFamily: '"JetBrains Mono", "Geist Mono", monospace',
-                color: 'rgba(255,255,255,0.35)',
-                lineHeight: 1.5,
-                paddingTop: '6px',
-                borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-              }}
-            >
-              {info.calculation}
-            </span>
-          </span>,
-          document.body,
-        )
+            {info.name}
+          </span>
+          <span
+            style={{
+              display: 'block',
+              fontSize: '11px',
+              color: 'rgba(255,255,255,0.65)',
+              lineHeight: 1.5,
+              marginBottom: '6px',
+            }}
+          >
+            {info.description}
+          </span>
+          <span
+            style={{
+              display: 'block',
+              fontSize: '10px',
+              fontFamily: '"JetBrains Mono", "Geist Mono", monospace',
+              color: 'rgba(255,255,255,0.35)',
+              lineHeight: 1.5,
+              paddingTop: '6px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+            }}
+          >
+            {info.calculation}
+          </span>
+        </span>,
+        document.body,
+      )
       : null;
 
   return (

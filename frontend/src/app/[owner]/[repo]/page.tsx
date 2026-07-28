@@ -306,7 +306,7 @@ export default function RepoDashboardPage() {
           setLoadState("error");
         }
       } catch {
-        // network blip — keep polling
+        // network blip - keep polling
       }
     }, JOB_POLL_INTERVAL_MS);
   }, [owner, repo]);
@@ -328,7 +328,7 @@ export default function RepoDashboardPage() {
           return;
         }
 
-        // 2. No cache — queue analysis
+        // 2. No cache - queue analysis
         if (!cancelled) setLoadState("queuing");
         const qr = await fetch(`${API_BASE}/api/analyze`, {
           method: "POST",
@@ -545,7 +545,7 @@ export default function RepoDashboardPage() {
           --orange: #FF5E00;
           --orange-light: #FFA066;
           --orange-dim: rgba(255,94,0,0.12);
-          --font: 'Inter', system-ui, sans-serif;
+          --font: 'Geomini', system-ui, sans-serif;
           --mono: 'Geist Mono', monospace;
           --page-max-width: 1120px;
           --page-padding: 24px;
@@ -555,14 +555,14 @@ export default function RepoDashboardPage() {
 
         .dash-nav {
           position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-          height: 58px; display: flex; align-items: center; padding: 0 24px;
-          background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          height: 64px; display: flex; align-items: center; padding: 0 32px;
+          background: rgba(8,9,9,0.85); backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
           border-bottom: 1px solid var(--border);
         }
         .dash-nav-inner {
-          width: 100%; max-width: var(--page-max-width); margin: 0 auto;
-          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+          width: 100%; max-width: 1440px; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between; gap: 20px;
         }
         .dash-logo {
           display: flex; align-items: center; gap: 8px;
@@ -610,8 +610,8 @@ export default function RepoDashboardPage() {
         }
         .btn-icon:hover { color: var(--text-secondary); border-color: var(--border-hover); }
 
-        .dash-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
-        .dash-main { max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 80px; display: flex; flex-direction: column; gap: 16px; }
+        .dash-page { background: var(--bg); min-height: 100vh; padding-top: 64px; display: flex; flex-direction: column; }
+        .dash-main { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 80px; display: flex; flex-direction: column; gap: 16px; }
 
         .card {
           background: var(--bg-card); border: 1px solid var(--border);
@@ -745,7 +745,6 @@ export default function RepoDashboardPage() {
         .flag-title.info { color: var(--orange-light); }
         .flag-desc { font-size: 11px; line-height: 1.45; color: var(--text-muted); }
 
-        .ai-panel { border-left: 3px solid var(--orange); }
         .ai-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
         .ai-icon-box {
           width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
@@ -801,7 +800,7 @@ export default function RepoDashboardPage() {
           .dash-breadcrumb { display: none; }
         }
 
-        /* LARGE SCREENS — 1440px (15-16") */
+        /* LARGE SCREENS - 1440px (15-16") */
         @media (min-width: 1440px) {
           :root { --page-max-width: 1340px; --page-padding: 36px; }
           .score-big { font-size: 48px; }
@@ -815,7 +814,7 @@ export default function RepoDashboardPage() {
           .rec-grid { grid-template-columns: 1fr 1fr; }
         }
 
-        /* LARGE SCREENS — 1600px (16.6") */
+        /* LARGE SCREENS - 1600px (16.6") */
         @media (min-width: 1600px) {
           :root { --page-max-width: 1500px; --page-padding: 48px; }
           .score-big { font-size: 52px; }
@@ -834,7 +833,7 @@ export default function RepoDashboardPage() {
           .dash-main { gap: 20px; }
         }
 
-        /* EXTRA LARGE SCREENS — 1920px */
+        /* EXTRA LARGE SCREENS - 1920px */
         @media (min-width: 1920px) {
           :root { --page-max-width: 1760px; --page-padding: 64px; }
           .score-big { font-size: 58px; }
@@ -924,15 +923,14 @@ export default function RepoDashboardPage() {
               <div style={{ display: "flex", alignItems: "center", gap: "16px", marginRight: "12px" }}>
                 <a href="/?focus=analyze" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Analyze</a>
                 <a href="/compare" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Compare</a>
-                <a href="/leaderboard" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Leaderboard</a>
                 <a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-muted)", fontSize: "13px", textDecoration: "none" }}>Docs</a>
               </div>
               {/* Stars / Forks from real data */}
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginRight: "8px" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-                {meta ? fmt(meta.stars) : "—"}
+                {meta ? fmt(meta.stars) : "-"}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8 }}><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>
-                {meta ? fmt(meta.forks) : "—"}
+                {meta ? fmt(meta.forks) : "-"}
               </div>
               {user?.loggedIn && user.githubUsername ? (
                 <a href={`/${user.githubUsername}`} className="btn-ghost" rel="noopener noreferrer">
@@ -967,17 +965,17 @@ export default function RepoDashboardPage() {
           {dailyQuota && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--orange-light)" }}>
-                Analyze left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                Analyzes left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
                 {' · '}
                 {user?.loggedIn
                   ? (
                     <>
-                      AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                      AI usages left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
                     </>
                   )
                   : (
                     <>
-                      Compare AI left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                      Compare AI usages left today: <strong style={{ color: "var(--orange-light)", fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
                     </>
                   )}
               </div>
@@ -1103,11 +1101,11 @@ export default function RepoDashboardPage() {
                     {metrics?._meta && (
                       <span className="cache-pill" title={`Data fetched ${new Date(metrics._meta.fetchedAt).toLocaleString()}`}>
                         {metrics._meta.source === "db_fallback" ? (
-                          <><span className="dot db" /> DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
+                          <>DB Fallback ({metrics._meta.cachedAgeHours}h ago)</>
                         ) : metrics._meta.source === "redis_cache" ? (
-                          <><span className="dot cached" /> Cached ({metrics._meta.cachedAgeHours}h ago)</>
+                          <>Cached ({metrics._meta.cachedAgeHours}h ago)</>
                         ) : (
-                          <><span className="dot fresh" /> Just Fetched</>
+                          <>Just Fetched</>
                         )}
                       </span>
                     )}
@@ -1125,7 +1123,7 @@ export default function RepoDashboardPage() {
                         Bus Factor
                         <InfoTooltip metricKey="busFactor" />
                       </div>
-                      <div className="hstat-val">{busf?.busFactor ?? "—"}</div>
+                      <div className="hstat-val">{busf?.busFactor ?? "-"}</div>
                       <div className={`hstat-sub ${busf && busf.busFactor >= 3 ? "" : "orange"}`}>
                         {busf ? (busf.busFactor >= 3 ? "Stable" : "At Risk") : "N/A"}
                       </div>
@@ -1136,7 +1134,7 @@ export default function RepoDashboardPage() {
                         <InfoTooltip metricKey="velocityChange" />
                       </div>
                       <div className="hstat-val">
-                        {activity ? (activity.velocityChange >= 0 ? "+" : "") + Math.round(activity.velocityChange) + "%" : "—"}
+                        {activity ? (activity.velocityChange >= 0 ? "+" : "") + Math.round(activity.velocityChange) + "%" : "-"}
                       </div>
                       <div className={`hstat-sub ${activity && activity.velocityChange < 0 ? "orange" : ""}`}>
                         {activity ? velocityLabel(activity.velocityChange) : "N/A"}
@@ -1178,7 +1176,7 @@ export default function RepoDashboardPage() {
                       className={h >= 60 ? "hi" : h >= 35 ? "md" : ""} />
                   ))}
                 </div>
-                <div className="metric-card-val">{busf ? busf.busFactor : "—"}</div>
+                <div className="metric-card-val">{busf ? busf.busFactor : "-"}</div>
                 <div className="metric-card-sub">
                   {busf ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -1243,7 +1241,7 @@ export default function RepoDashboardPage() {
                         strokeLinecap="round" />
                     </svg>
                     <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "var(--text)" }}>
-                      {issue ? `${issueClosedPct}%` : "—"}
+                      {issue ? `${issueClosedPct}%` : "-"}
                     </div>
                   </div>
                 </div>
@@ -1293,7 +1291,7 @@ export default function RepoDashboardPage() {
                     )}
                   </svg>
                 </div>
-                <div className="metric-card-val">{churn ? churnLabel(churn.churnScore) : "—"}</div>
+                <div className="metric-card-val">{churn ? churnLabel(churn.churnScore) : "-"}</div>
                 <div className="metric-card-sub" style={{ color: churn && churn.churnScore < 30 ? "var(--green)" : "var(--text-muted)" }}>
                   {churn ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -1318,21 +1316,21 @@ export default function RepoDashboardPage() {
                     Open Issues
                     <InfoTooltip metricKey="openIssueCount" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? issue.openIssueCount : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? issue.openIssueCount : "-"}</div>
                 </div>
                 <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
                     Avg Issue Age
                     <InfoTooltip metricKey="avgIssueAgeDays" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.avgIssueAgeDays.toFixed(1)}d` : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.avgIssueAgeDays.toFixed(1)}d` : "-"}</div>
                 </div>
                 <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", display: "inline-flex", alignItems: "center" }}>
                     Unresponded %
                     <InfoTooltip metricKey="unrespondedIssuePct" />
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.unrespondedIssuePct.toFixed(1)}%` : "—"}</div>
+                  <div style={{ marginTop: 8, fontSize: 22, fontWeight: 700, letterSpacing: "-0.03em" }}>{issue ? `${issue.unrespondedIssuePct.toFixed(1)}%` : "-"}</div>
                 </div>
               </div>
             </div>
@@ -1403,7 +1401,7 @@ export default function RepoDashboardPage() {
                 <span className="rec-section-title">Contribution Recommendations</span>
               </div>
 
-              {/* Not logged in — blurred locked card */}
+              {/* Not logged in - blurred locked card */}
               {user?.loggedIn === false ? (
                 <div className="rec-locked">
                   {/* Blurred ghost cards behind the overlay */}
@@ -1509,7 +1507,7 @@ export default function RepoDashboardPage() {
                     <>
                       {recSource === 'rule-based' && (
                         <p className="rec-note">
-                          Recommendations based on issue labels (Gemini unavailable — sign in for AI-powered suggestions)
+                          Recommendations based on issue labels (Gemini unavailable - sign in for AI-powered suggestions)
                         </p>
                       )}
                       {issueRecommendations.length === 0 ? (
@@ -1736,7 +1734,7 @@ export default function RepoDashboardPage() {
         </main>
 
         <footer style={{ borderTop: "1px solid var(--border)", padding: "24px", maxWidth: 1120, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "flex-start", fontSize: "12.5px", color: "var(--text-muted)", flexWrap: "wrap", gap: 12 }}>
-          <span>© 2026 Git Vital Analytics</span>
+          <span>© 2026 GitVital</span>
         </footer>
       </div>
     </>

@@ -1,4 +1,4 @@
-// src/config/redis.ts — Creates and exports a single shared Redis connection
+// src/config/redis.ts - Creates and exports a single shared Redis connection
 
 import Redis from 'ioredis';
 import { config } from './index';
@@ -17,7 +17,7 @@ function redactRedisUrl(url: string): string {
 // ioredis parses the URL automatically (host, port, password, etc.)
 // We create ONE connection here and reuse it everywhere.
 export const redis = new Redis(config.redisUrl, {
-  maxRetriesPerRequest: null, // Required by BullMQ — it handles retries itself
+  maxRetriesPerRequest: null, // Required by BullMQ - it handles retries itself
 });
 
 type BullRedisConnection = {

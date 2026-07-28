@@ -502,8 +502,6 @@ export default function RepoComparePage() {
     { label: "ISSUE_AGE_AVG_DAYS", metricKey: "avgIssueAgeDays", get: getIssueAge, fmt: v => `${v.toFixed(0)}d`, lowerBetter: true },
     { label: "UNRESPONDED_ISSUES%", metricKey: "unrespondedIssuePct", get: getUnresponded, fmt: v => `${v}%`, lowerBetter: true },
     { label: "CHURN_SCORE", metricKey: "churnScore", get: getChurnScore, lowerBetter: true },
-    { label: "AVG_WEEKLY_CHURN", metricKey: "avgWeeklyChurn", get: getAvgChurn, lowerBetter: true },
-    { label: "DANGER_FLAGS", get: getDangerFlags, lowerBetter: true },
   ];
 
   // For best/worst coloring per row
@@ -535,7 +533,7 @@ export default function RepoComparePage() {
           --yellow: #eab308; --yellow-dim: rgba(234,179,8,0.12);
           --red: #ef4444; --red-dim: rgba(239,68,68,0.12);
           --orange: #FF5E00; --orange-light: #FFA066; --orange-dim: rgba(255,94,0,0.12);
-          --font: 'Inter', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
+          --font: 'Geomini', system-ui, sans-serif; --mono: 'Geist Mono', monospace;
           --page-max-width: 1120px;
           --page-padding: 24px;
         }
@@ -543,12 +541,12 @@ export default function RepoComparePage() {
 
         /* NAV */
         .cmp-nav {
-          position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 58px;
-          display: flex; align-items: center; padding: 0 24px;
-          background: rgba(8,9,9,0.80); backdrop-filter: blur(12px);
+          position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 64px;
+          display: flex; align-items: center; padding: 0 32px;
+          background: rgba(8,9,9,0.85); backdrop-filter: blur(16px);
           border-bottom: 1px solid var(--border);
         }
-        .cmp-nav-inner { width: 100%; max-width: var(--page-max-width); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .cmp-nav-inner { width: 100%; max-width: 1440px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
         .cmp-logo { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
         .cmp-logo img { height: 36px; }
         .nav-links { display: flex; align-items: center; gap: 2px; list-style: none; }
@@ -579,8 +577,8 @@ export default function RepoComparePage() {
         .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* PAGE */
-        .cmp-page { background: var(--bg); min-height: 100vh; padding-top: 58px; }
-        .cmp-main { max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 120px; }
+        .cmp-page { background: var(--bg); min-height: 100vh; padding-top: 64px; display: flex; flex-direction: column; }
+        .cmp-main { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 40px var(--page-padding) 120px; }
         .section-gap { display: flex; flex-direction: column; gap: 16px; }
 
         /* HEADING */
@@ -682,7 +680,7 @@ export default function RepoComparePage() {
         @media (max-width: 900px) { .input-grid { grid-template-columns: 1fr 1fr; } .nav-links { display: none; } }
         @media (max-width: 600px) { .input-grid { grid-template-columns: 1fr; } .cmp-main { padding: 24px 16px 120px; } .float-bar { flex-direction: column; gap: 12px; bottom: 16px; } }
 
-        /* LARGE SCREENS — 1440px (15-16") */
+        /* LARGE SCREENS - 1440px (15-16") */
         @media (min-width: 1440px) {
           :root { --page-max-width: 1340px; --page-padding: 36px; }
           .cmp-heading h1 { font-size: clamp(30px, 3.5vw, 42px); }
@@ -693,7 +691,7 @@ export default function RepoComparePage() {
           th { padding: 13px 20px; }
         }
 
-        /* LARGE SCREENS — 1600px (16.6") */
+        /* LARGE SCREENS - 1600px (16.6") */
         @media (min-width: 1600px) {
           :root { --page-max-width: 1500px; --page-padding: 48px; }
           .cmp-heading h1 { font-size: clamp(32px, 3.5vw, 46px); }
@@ -706,7 +704,7 @@ export default function RepoComparePage() {
           .section-gap { gap: 20px; }
         }
 
-        /* EXTRA LARGE SCREENS — 1920px */
+        /* EXTRA LARGE SCREENS - 1920px */
         @media (min-width: 1920px) {
           :root { --page-max-width: 1760px; --page-padding: 64px; }
           .cmp-heading h1 { font-size: 52px; }
@@ -755,12 +753,10 @@ export default function RepoComparePage() {
         .ai-verdict-label { color: var(--text-secondary); }
         .ai-verdict-text { font-size: 13px; color: var(--text); line-height: 1.6; font-style: italic; }
         .ai-overall-card {
-          background: var(--bg-card); border: 1px solid rgba(255,94,0,0.22); border-radius: 14px;
+          background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
           padding: 24px;
-          background-image: linear-gradient(135deg, rgba(255,94,0,0.06) 0%, transparent 55%);
           position: relative; overflow: hidden;
         }
-        .ai-overall-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,94,0,0.45), transparent); }
         .ai-overall-title { font-size: 14px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; display: flex; align-items: center; gap: 7px; }
         .ai-overall-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.65; }
         .ai-source-badge { font-family: var(--mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 6px; border: 1px solid; }
@@ -806,7 +802,6 @@ export default function RepoComparePage() {
             <ul className="nav-links">
               <li><a href="/?focus=analyze">Analyze</a></li>
               <li><a href="/compare" className="active">Compare</a></li>
-              <li><a href="/leaderboard">Leaderboard</a></li>
               <li><a href="https://github.com/bugsNburgers/GitVital#readme" target="_blank" rel="noopener noreferrer">Docs</a></li>
             </ul>
             <div className="cmp-nav-actions">
@@ -839,7 +834,7 @@ export default function RepoComparePage() {
             {/* HEADING */}
             <div className="cmp-heading">
               <h1>Compare <span>Repositories</span></h1>
-              <p>Full metric breakdown across {validRepos.length} repos — health, activity, bus factor, PR speed, issue health, churn.</p>
+              <p>Full metric breakdown across repos - health, activity, bus factor, PR speed, issue health, churn.</p>
               {statusMsg && (
                 <p style={{ marginTop: 10, fontSize: 12, color: 'var(--orange-light)' }}>{statusMsg}</p>
               )}
@@ -849,17 +844,17 @@ export default function RepoComparePage() {
               {dailyQuota && (
                 <>
                   <p style={{ marginTop: 6, fontSize: 14, fontWeight: 700, color: 'var(--orange-light)' }}>
-                    Analyze left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
+                    Analyzes left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.analyzeDaily.remaining}</strong>
                     {' · '}
                     {user?.loggedIn
                       ? (
                         <>
-                          AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
+                          AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.aiDaily?.remaining ?? dailyQuota.compareDaily.remaining}</strong>
                         </>
                       )
                       : (
                         <>
-                          Compare AI left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
+                          Compare AI usages left today: <strong style={{ color: 'var(--orange-light)', fontWeight: 800 }}>{dailyQuota.compareDaily.remaining}</strong>
                         </>
                       )}
                   </p>
@@ -905,7 +900,7 @@ export default function RepoComparePage() {
               )}
             </div>
 
-            {/* DYNAMIC COMMIT SPARKLINE CARDS — one per repo */}
+            {/* DYNAMIC COMMIT SPARKLINE CARDS - one per repo */}
             {validRepos.length >= 1 && (() => {
               const cols = Math.min(validRepos.length, 4);
               const gridCols = cols === 1 ? "1fr" : cols === 2 ? "1fr 1fr" : cols === 3 ? "1fr 1fr 1fr" : "1fr 1fr 1fr 1fr";
@@ -926,7 +921,7 @@ export default function RepoComparePage() {
                         <div key={idx} className={`spark-card${loading ? " spark-loading" : ""}`}>
                           <div className="spark-card-repo">{r.toUpperCase()}</div>
                           <div className="spark-card-meta">
-                            <span className="spark-card-commits">{commits30 ?? "—"}</span>
+                            <span className="spark-card-commits">{commits30 ?? "-"}</span>
                             <span className="spark-card-sub">commits/30d</span>
                             {velocity != null && (
                               <span style={{ fontSize: 11, fontWeight: 700, marginLeft: 4, color: velocity >= 0 ? 'var(--green)' : 'var(--red)' }}>
@@ -957,10 +952,8 @@ export default function RepoComparePage() {
             {/* RADAR PENTAGON */}
             <div className="radar-card">
               <div className="radar-bg" />
-              <div className="radar-scanner" />
               <div className="radar-header">
-                <div className="radar-title"><div className="radar-pulse" /> Multidimensional Health Analysis</div>
-                <div className="radar-sys-tag">5-axis // fetched_metrics</div>
+                <div className="radar-title">Multidimensional Health Analysis</div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
                 <div style={{ width: '100%', maxWidth: 500, aspectRatio: '1', position: 'relative' }}>
@@ -979,7 +972,7 @@ export default function RepoComparePage() {
                       <line key={i} x1="200" y1="200" x2={x} y2={y} stroke="rgba(255,94,0,0.2)" strokeWidth="1" strokeDasharray="3 3" />
                     ))}
 
-                    {/* Data polygons — live if available, else concentric fallback */}
+                    {/* Data polygons - live if available, else concentric fallback */}
                     {useLivePentagon
                       ? radarSeries.map((series) => (
                         series.scores ? (
@@ -1028,7 +1021,6 @@ export default function RepoComparePage() {
               <div className="radar-legend">
                 {validRepos.slice(0, 4).map((r, i) => (
                   <div key={i} className="radar-legend-item">
-                    <div className="radar-legend-dot" style={{ background: COLORS[i], boxShadow: `0 0 6px ${COLORS[i]}` }} />
                     {(r.split("/")[1] ?? r).toUpperCase()}.sys
                   </div>
                 ))}
@@ -1039,7 +1031,6 @@ export default function RepoComparePage() {
             <div className="table-card">
               <div className="table-card-header">
                 <h3>Full Metric Breakdown</h3>
-                <span>15 METRICS // {validRepos.length} REPOS</span>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table>
@@ -1073,7 +1064,7 @@ export default function RepoComparePage() {
                           {validRepos.map((repoRef, ci) => {
                             const e = entryForRepo(repoRef);
                             const v = row.get(e);
-                            const fmted = v != null ? (row.fmt ? row.fmt(v) : String(v)) : "—";
+                            const fmted = v != null ? (row.fmt ? row.fmt(v) : String(v)) : "-";
                             const cls = v == null ? "td-null" : ci === best ? "td-best" : ci === worst ? "td-worst" : "td-mid";
                             const bgCls = v == null ? "" : ci === best ? "best-bg" : ci === worst ? "worst-bg" : "";
                             return (
@@ -1102,11 +1093,6 @@ export default function RepoComparePage() {
               </div>
               {canUseCompareAi && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {aiInsights && (
-                    <span className={`ai-source-badge ${aiInsights.source === 'gemini' ? 'ai-source-gemini' : 'ai-source-rule'}`}>
-                      {aiInsights.source === 'gemini' ? '✦ Gemini' : 'Rule-Based'}
-                    </span>
-                  )}
                   <button
                     id="ai-compare-btn"
                     className="ai-cmp-btn"
@@ -1239,24 +1225,7 @@ export default function RepoComparePage() {
           </div>
         </main>
 
-        {/* FLOAT BAR */}
-        <div className="float-bar">
-          <div className="float-bar-left">
-            <div className="float-bar-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-            </div>
-            <div>
-              <div className="float-bar-tag">Git Vital Intelligence</div>
-              <div className="float-bar-text">
-                Comparing <strong>{validRepos.length} repos</strong> across 15 metrics.
-                {loading ? ` ${statusMsg ?? 'Fetching live data…'}` : ` ${statusMsg ?? 'Data sourced from backend.'}`}
-              </div>
-            </div>
-          </div>
-          <button className="float-bar-btn" onClick={() => fetchComparison(repos)} disabled={loading}>
-            {loading ? "Refreshing..." : "↻ Refresh"}
-          </button>
-        </div>
+
       </div>
     </>
   );

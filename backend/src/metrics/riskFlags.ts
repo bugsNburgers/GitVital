@@ -1,4 +1,4 @@
-// src/metrics/riskFlags.ts — PURE FUNCTION
+// src/metrics/riskFlags.ts - PURE FUNCTION
 // Input: all computed metrics object (AllMetrics, which now carries metadata)
 // Output: RiskFlag[]
 // No database calls. No API calls. No side effects.
@@ -75,7 +75,7 @@ export function generateRiskFlags(metrics: AllMetrics): RiskFlag[] {
     }
   }
 
-  // ── Issue backlog — ratio-based so large repos aren't penalised ──
+  // ── Issue backlog - ratio-based so large repos aren't penalised ──
   if (
     openIssueCount !== undefined &&
     openIssueCount > 500 &&
@@ -155,7 +155,7 @@ export function generateRiskFlags(metrics: AllMetrics): RiskFlag[] {
       pushFlag({
         level: 'success',
         title: 'ACTIVE CODE REVIEW',
-        detail: `Average ${avgReviewsPerPR.toFixed(1)} reviews per PR — solid review culture.`,
+        detail: `Average ${avgReviewsPerPR.toFixed(1)} reviews per PR - solid review culture.`,
       });
     }
   }

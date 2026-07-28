@@ -1,4 +1,4 @@
-// src/metrics/activityMetrics.ts — PURE FUNCTION
+// src/metrics/activityMetrics.ts - PURE FUNCTION
 // Input:  commits[] (each has committedDate)
 // Output: ActivityMetricsResult
 // No database calls. No API calls. No side effects.

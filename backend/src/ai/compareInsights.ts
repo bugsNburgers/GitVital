@@ -1,4 +1,4 @@
-// src/ai/compareInsights.ts — AI-powered repository comparison insights
+// src/ai/compareInsights.ts - AI-powered repository comparison insights
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config';
@@ -136,18 +136,18 @@ function buildRuleBasedInsights(repoMetrics: RepoMetricsForCompare[]): CompareIn
     if (healthScore >= 75) pros.push('High overall repository health score');
     else if (healthScore >= 50) pros.push('Moderate health score with room to grow');
 
-    if (busFactor !== null && busFactor >= 3) pros.push('Good resilience — multiple key contributors');
-    else if (busFactor !== null && busFactor < 2) cons.push('Low bus factor — heavily dependent on 1-2 contributors');
+    if (busFactor !== null && busFactor >= 3) pros.push('Good resilience - multiple key contributors');
+    else if (busFactor !== null && busFactor < 2) cons.push('Low bus factor - heavily dependent on 1-2 contributors');
 
-    if (avgMergeDays !== null && avgMergeDays <= 3) pros.push('Fast PR turnaround — active review culture');
-    else if (avgMergeDays !== null && avgMergeDays > 14) cons.push('Slow PR merge time — reviews may take a while');
+    if (avgMergeDays !== null && avgMergeDays <= 3) pros.push('Fast PR turnaround - active review culture');
+    else if (avgMergeDays !== null && avgMergeDays > 14) cons.push('Slow PR merge time - reviews may take a while');
 
     if (commitsLast30Days !== null && commitsLast30Days >= 50) pros.push('Very active development in the past 30 days');
     else if (commitsLast30Days !== null && commitsLast30Days < 10) cons.push('Low recent commit activity');
 
     if (openIssueCount !== null && openIssueCount > 200) cons.push('Large open issue backlog may be overwhelming');
     if (unrespondedIssuePct !== null && unrespondedIssuePct < 20) pros.push('Good issue response rate from maintainers');
-    else if (unrespondedIssuePct !== null && unrespondedIssuePct > 60) cons.push('Many issues go unresponded — maintainer availability may be limited');
+    else if (unrespondedIssuePct !== null && unrespondedIssuePct > 60) cons.push('Many issues go unresponded - maintainer availability may be limited');
 
     if (pros.length === 0) pros.push('Established project with a public codebase');
     if (cons.length === 0) cons.push('Detailed analysis requires a full metrics refresh');
@@ -162,7 +162,7 @@ function buildRuleBasedInsights(repoMetrics: RepoMetricsForCompare[]): CompareIn
 
     const verdict = healthScore >= 70
       ? `${repo.split('/')[1] ?? repo} is in good shape and welcomes contributors.`
-      : `${repo.split('/')[1] ?? repo} has room for improvement — contributions here could have meaningful impact.`;
+      : `${repo.split('/')[1] ?? repo} has room for improvement - contributions here could have meaningful impact.`;
 
     return { repo, pros, cons, bestFor, avoidIf, verdict };
   });
@@ -206,7 +206,7 @@ export async function generateCompareInsights(
 
   // 2. API key guard
   if (!config.geminiApiKey) {
-    console.warn('[AI][Compare] GEMINI_API_KEY missing — using rule-based fallback.');
+    console.warn('[AI][Compare] GEMINI_API_KEY missing - using rule-based fallback.');
     const result = buildRuleBasedInsights(repoMetrics);
     await cacheResult(cacheKey, result);
     return result;
@@ -253,8 +253,8 @@ export async function generateCompareInsights(
     '      "repo": "owner/repo",',
     '      "pros": ["pro 1", "pro 2", "pro 3"],',
     '      "cons": ["con 1", "con 2"],',
-    '      "bestFor": "1 sentence — what type of contributor/contribution this repo is best for",',
-    '      "avoidIf": "1 sentence — when you should NOT contribute here",',
+    '      "bestFor": "1 sentence - what type of contributor/contribution this repo is best for",',
+    '      "avoidIf": "1 sentence - when you should NOT contribute here",',
     '      "verdict": "1-2 sentence final verdict"',
     '    }',
     '  ],',
@@ -318,7 +318,7 @@ export async function generateCompareInsights(
     await markGeminiQuotaLimited();
   }
 
-  console.warn('[AI][Compare] All Gemini candidates failed — using rule-based fallback.');
+  console.warn('[AI][Compare] All Gemini candidates failed - using rule-based fallback.');
   const fallback = buildRuleBasedInsights(repoMetrics);
   await cacheResult(cacheKey, fallback);
   return fallback;

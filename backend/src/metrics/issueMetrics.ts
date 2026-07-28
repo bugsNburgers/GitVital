@@ -1,4 +1,4 @@
-// src/metrics/issueMetrics.ts — PURE FUNCTION
+// src/metrics/issueMetrics.ts - PURE FUNCTION
 // Input: issues[] (IssueNode[]), owner, repo, closedIssueCount?
 // Output: IssueMetricsResult | null
 // No database calls. No API calls. No side effects.
@@ -36,7 +36,7 @@ export function computeIssueMetrics(
   const openIssueCount = openIssues.length;
 
   // ── Label breakdown ──
-  // An issue can have multiple labels — count it under each one.
+  // An issue can have multiple labels - count it under each one.
   const labelCounts = new Map<string, number>();
   for (const issue of openIssues) {
     for (const labelNode of issue.labels?.nodes ?? []) {

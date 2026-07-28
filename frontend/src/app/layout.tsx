@@ -51,6 +51,10 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
         <link
+          href="https://fonts.googleapis.com/css2?family=Geomini:wght@200..800&family=Jersey+10+Charted&family=Jost:ital,wght@0,100..900;1,100..900&display=swap"
+          rel="stylesheet"
+        />
+        <link
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
           rel="stylesheet"
         />

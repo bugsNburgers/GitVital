@@ -1,4 +1,4 @@
-// src/db/repoQueries.ts — SQL helpers: upsert repos, metrics, health timeline
+// src/db/repoQueries.ts - SQL helpers: upsert repos, metrics, health timeline
 
 import { dbQuery } from './pool';
 import type { AllMetrics, RepoMetadata, TimelineEntry } from '../types';

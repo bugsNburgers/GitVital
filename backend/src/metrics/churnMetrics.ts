@@ -1,4 +1,4 @@
-// src/metrics/churnMetrics.ts — PURE FUNCTION
+// src/metrics/churnMetrics.ts - PURE FUNCTION
 // Input: commits[] (CommitNode[])
 // Output: ChurnMetricsResult
 // No database calls. No API calls. No side effects.

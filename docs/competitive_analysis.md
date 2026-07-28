@@ -47,31 +47,31 @@ I researched **9 tools/platforms** that do GitHub repository analytics. Here's e
 ## Per-Competitor Breakdown
 
 ### 1. repopulse.dev (the one you found)
-**Overlap: ~30%** — Only the obvious baseline metrics (health score, bus factor, contributor charts). Their dashboard is barebones — a single report page with a few charts. No comparison, no gamification, no AI advice, no badges. Low traffic (last update on facebook/react was 16 days stale). Looks like a side project, not a serious product.
+**Overlap: ~30%** - Only the obvious baseline metrics (health score, bus factor, contributor charts). Their dashboard is barebones - a single report page with a few charts. No comparison, no gamification, no AI advice, no badges. Low traffic (last update on facebook/react was 16 days stale). Looks like a side project, not a serious product.
 
 ### 2. OSS Insight (ossinsight.io)
-**Overlap: ~40%** — The most capable competitor. Tracks 10B+ GitHub events via TiDB. Has repo comparison, contributor analysis, commit/PR/issue trends. **But:** no health score, no bus factor, no risk flags, no gamification, no AI advice. It's a data explorer, not a health analyzer. Different angle entirely.
+**Overlap: ~40%** - The most capable competitor. Tracks 10B+ GitHub events via TiDB. Has repo comparison, contributor analysis, commit/PR/issue trends. **But:** no health score, no bus factor, no risk flags, no gamification, no AI advice. It's a data explorer, not a health analyzer. Different angle entirely.
 
 ### 3. GitPulse (gitpulse.xyz)
-**Overlap: ~45%** — Closest competitor feature-wise. Has health scores, commit heatmaps, repo comparison, contributor rankings, PR/issue tracking, Redis caching. **But:** no bus factor, no risk flags, no developer profile scores, no gamification/badges/leaderboards, no embeddable badges. Also targets teams (gitpulse.team) with enterprise features, a different market.
+**Overlap: ~45%** - Closest competitor feature-wise. Has health scores, commit heatmaps, repo comparison, contributor rankings, PR/issue tracking, Redis caching. **But:** no bus factor, no risk flags, no developer profile scores, no gamification/badges/leaderboards, no embeddable badges. Also targets teams (gitpulse.team) with enterprise features, a different market.
 
 ### 4. CodeScene
-**Overlap: ~25% (different category)** — Enterprise-grade behavioral code analysis. Focuses on code quality, hotspot analysis, code smells, tech debt. Has health metrics but for *code maintainability*, not *project/community health*. Costs $$. Completely different target audience (engineering managers). Not a real competitor.
+**Overlap: ~25% (different category)** - Enterprise-grade behavioral code analysis. Focuses on code quality, hotspot analysis, code smells, tech debt. Has health metrics but for *code maintainability*, not *project/community health*. Costs $$. Completely different target audience (engineering managers). Not a real competitor.
 
 ### 5. Cauldron (by Bitergia / GrimoireLab)
-**Overlap: ~20%** — Open-source community analytics. Multi-platform (GitHub + GitLab + StackExchange). Focuses on contributor identities, engagement KPIs, community health. Academic/foundation-oriented. No health scores, no gamification.
+**Overlap: ~20%** - Open-source community analytics. Multi-platform (GitHub + GitLab + StackExchange). Focuses on contributor identities, engagement KPIs, community health. Academic/foundation-oriented. No health scores, no gamification.
 
 ### 6. CHAOSS
-**Overlap: ~15%** — Not a product, it's a *metrics framework* from the Linux Foundation. Defines what metrics *should* exist. Tools like Augur and GrimoireLab implement them. Completely different thing.
+**Overlap: ~15%** - Not a product, it's a *metrics framework* from the Linux Foundation. Defines what metrics *should* exist. Tools like Augur and GrimoireLab implement them. Completely different thing.
 
 ### 7. RepoTracker (githubtracker.com)
-**Overlap: ~25%** — Basic GitHub stats tracker. Commits, PRs, issues, contributors with charts. No health score, no bus factor, no AI, no gamification. Just a nicer view of GitHub's built-in stats.
+**Overlap: ~25%** - Basic GitHub stats tracker. Commits, PRs, issues, contributors with charts. No health score, no bus factor, no AI, no gamification. Just a nicer view of GitHub's built-in stats.
 
 ### 8. Repo Doctor
-**Overlap: ~20%** — CLI tool (not a web app). Checks documentation, onboarding, security. AI-powered suggestions. Totally different UX and use case — one-time audits, not ongoing monitoring.
+**Overlap: ~20%** - CLI tool (not a web app). Checks documentation, onboarding, security. AI-powered suggestions. Totally different UX and use case - one-time audits, not ongoing monitoring.
 
 ### 9. NxCode Health Checker
-**Overlap: ~25%** — Web-based health score across 8 dimensions (activity, docs, code quality, security, testing, etc.). AI-powered insights. **But:** no bus factor, no PR analysis, no comparison, no gamification, no ongoing monitoring. One-shot analysis.
+**Overlap: ~25%** - Web-based health score across 8 dimensions (activity, docs, code quality, security, testing, etc.). AI-powered insights. **But:** no bus factor, no PR analysis, no comparison, no gamification, no ongoing monitoring. One-shot analysis.
 
 ---
 
@@ -83,8 +83,8 @@ These features exist in **zero** of the 9 competitors:
 |---|---|
 | **Developer Health Score** (aggregate across all repos) | Turns it from "repo tool" → "developer tool" |
 | **Gamified Badges** ("The Speedster", "The Closer") | Addictive, shareable, drives organic growth |
-| **Global Leaderboard** with percentile ranking | "You're better than 90% of devs" — viral potential |
-| **Embeddable SVG Badge** for READMEs | Growth hack — every badge is free advertising |
+| **Global Leaderboard** with percentile ranking | "You're better than 90% of devs" - viral potential |
+| **Embeddable SVG Badge** for READMEs | Growth hack - every badge is free advertising |
 | **Combined**: health score + bus factor + risk flags + AI advice + comparison + gamification | No single tool combines all of these |
 
 ---
@@ -99,12 +99,12 @@ These features exist in **zero** of the 9 competitors:
 | ⚪ **Zero overlap** (nobody does it) | Developer score, gamification, badges, leaderboard, embeddable SVG |
 
 > [!IMPORTANT]
-> **The core analytics metrics (commits, PRs, issues, contributors) are table stakes — every tool has them.** That's like saying "both restaurants serve food." The differentiation is in your gamification layer, developer profiles, and the combination of all features in one place. **No single tool does what your full plan does.**
+> **The core analytics metrics (commits, PRs, issues, contributors) are table stakes - every tool has them.** That's like saying "both restaurants serve food." The differentiation is in your gamification layer, developer profiles, and the combination of all features in one place. **No single tool does what your full plan does.**
 
 ---
 
 ## Recommendation
 
-1. **Rename the project** — Avoid confusion with repopulse.dev. Ideas: RepoRadar, GitVitals, DevPulse, CodeHealthCheck, RepoScope
-2. **Keep building** — Your unique features (gamification + developer profiles + leaderboard) are where 0/9 competitors exist
-3. **In interviews, lean into the unique angle**: "Unlike existing tools that just show repo metrics, mine gamifies the developer experience with personal health scores, badges, and a global leaderboard — like Spotify Wrapped for GitHub"
+1. **Rename the project** - Avoid confusion with repopulse.dev. Ideas: RepoRadar, GitVitals, DevPulse, CodeHealthCheck, RepoScope
+2. **Keep building** - Your unique features (gamification + developer profiles + leaderboard) are where 0/9 competitors exist
+3. **In interviews, lean into the unique angle**: "Unlike existing tools that just show repo metrics, mine gamifies the developer experience with personal health scores, badges, and a global leaderboard - like Spotify Wrapped for GitHub"

@@ -1,4 +1,4 @@
-// src/metrics/communityMetrics.ts — PURE FUNCTION
+// src/metrics/communityMetrics.ts - PURE FUNCTION
 // Input:  metadata, prMetrics, issueMetrics, prs[]
 // Output: CommunityMetricsResult
 // No database calls. No API calls. No side effects.
@@ -45,11 +45,11 @@ export function computeCommunityMetrics(
   const avgReviewsPerPR =
     prs.length > 0
       ? parseFloat(
-          (prs.reduce((sum, pr) => sum + (pr.reviews?.totalCount ?? 0), 0) / prs.length).toFixed(2),
-        )
+        (prs.reduce((sum, pr) => sum + (pr.reviews?.totalCount ?? 0), 0) / prs.length).toFixed(2),
+      )
       : 0;
 
-  // ── Issue response score (default 75 when no issue data — neutral) ──
+  // ── Issue response score (default 75 when no issue data - neutral) ──
   const issueResponseScore =
     issueMetrics !== null ? 100 - issueMetrics.unrespondedIssuePct : 75;
 

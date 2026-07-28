@@ -104,14 +104,14 @@ async function queueRepoRefreshJobs(): Promise<void> {
 
         queuedCount += 1;
 
-        // Stagger — wait 2 seconds before adding the next job ──
+        // Stagger - wait 2 seconds before adding the next job ──
         // This prevents a thundering herd where 50 jobs slam GitHub API + Redis at once.
         if (queuedCount < eligibleRepos.slice(0, refreshCapForRun).length) {
             await sleep(STAGGER_DELAY_MS);
         }
     }
 
-    // ── Prompt 7.1: Queue cleanup — remove completed jobs older than 7 days ──
+    // ── Prompt 7.1: Queue cleanup - remove completed jobs older than 7 days ──
     // Keeps Redis memory lean; BullMQ stores job data indefinitely unless cleaned.
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const cleaned = await analysisQueue.clean(sevenDaysMs, 1000, 'completed');
@@ -129,7 +129,7 @@ async function recomputeDeveloperScoresAndBadges(): Promise<void> {
     try {
         const { recomputedUsers, manualReviewAlerts } = await recomputeAllDeveloperScores(startedAt);
         console.log(
-            `[CRON 03:00] Score recompute finished. users=${recomputedUsers}, reviewAlerts=${manualReviewAlerts}. Leaderboard materialized view refreshed.`,
+            `[CRON 03:00] Score recompute finished. users=${recomputedUsers}, reviewAlerts=${manualReviewAlerts}.`,
         );
     } catch (err) {
         console.error('[CRON 03:00] Developer score recomputation failed:', err);
@@ -145,7 +145,7 @@ const recomputeTask = cron.schedule('0 3 * * *', () => {
 });
 
 console.log('⏱️ Scheduled referesh cron started');
-console.log('   Score recompute + leaderboard refresh: daily at 03:00 server time');
+console.log('   Score recompute: daily at 03:00 server time');
 
 async function gracefulShutdown(signal: string): Promise<void> {
     console.log(`\n⚠️ Cron service received ${signal}. Shutting down gracefully...`);

@@ -1,4 +1,4 @@
-// src/types/api.ts — Readonly response types mirroring backend AllMetrics
+// src/types/api.ts - Readonly response types mirroring backend AllMetrics
 
 export interface ReadonlyCommitNode {
   readonly committedDate: string;
@@ -92,16 +92,4 @@ export interface ReadonlyJobData {
 
 export type ReadonlyJobStatus = 'queued' | 'processing' | 'done' | 'failed';
 
-export type LeaderboardTier = 'gold' | 'silver' | 'bronze' | 'other';
 
-export interface LeaderboardApiEntry {
-  readonly rank: number;
-  readonly name: string;
-  readonly handle: string;
-  readonly score: number;
-  readonly lang: string;
-  readonly repos: number;
-  readonly percentile: string;
-  readonly tier: LeaderboardTier;
-  readonly img: string;
-}
