@@ -7,7 +7,6 @@
     "dev": "ts-node -r dotenv/config src/server/index.ts",
     "worker": "ts-node -r dotenv/config src/workers/repoAnalyzer.ts",
     "worker:user": "ts-node -r dotenv/config src/workers/userAnalyzer.ts",
-    "cron:refresh": "ts-node -r dotenv/config src/cron/refreshRepos.ts",
     "build": "tsc",
     "start": "node -r dotenv/config dist/server/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -22,7 +21,6 @@
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
     "@types/node": "^25.5.0",
-    "@types/node-cron": "^3.0.11",
     "bullmq": "^5.71.0",
     "connect-redis": "^9.0.0",
     "cors": "^2.8.6",
@@ -33,7 +31,6 @@
     "express-validator": "^7.3.1",
     "helmet": "^8.1.0",
     "ioredis": "^5.10.0",
-    "node-cron": "^4.2.1",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.2"
   }

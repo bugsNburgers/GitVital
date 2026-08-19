@@ -135,12 +135,7 @@ cd backend
 npm run worker:user
 ```
 
-Optional Terminal 5 (Cron refresher/recompute):
 
-```bash
-cd backend
-npm run cron:refresh
-```
 
 ### Mode B: Production-Style Local Mode (No Docker)
 
@@ -190,12 +185,7 @@ cd backend
 node -r dotenv/config dist/workers/userAnalyzer.js
 ```
 
-Optional Terminal 5 (Cron, built JS runtime):
 
-```bash
-cd backend
-node -r dotenv/config dist/cron/refreshRepos.js
-```
 
 ## 6. Multi-Process Rules (Important)
 
