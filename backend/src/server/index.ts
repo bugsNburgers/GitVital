@@ -14,22 +14,21 @@ import { rateLimit } from 'express-rate-limit';
 import { body, param, query, validationResult } from 'express-validator';
 import { Queue } from 'bullmq';
 import { RedisStore } from 'connect-redis';
-import { Pool } from 'pg';
+
 
 // Our own files
 import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
-import { type Queryable } from '../db';
-import { getFreshRepoMetricsCache, clearRepoMetricsCache, setRepoMetricsCache } from '../cache/repoCache';
+
+import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
 import {
   clearUserContributionCache,
   getFreshUserContributionCache,
-  setUserContributionCache,
   UserContributionMetricsCacheValue,
 } from '../cache/userCache';
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
-import { resetGeminiCooldown, getGeminiModelCandidates } from '../ai/advice';
+import { getGeminiModelCandidates } from '../ai/advice';
 import { generateUserInsights } from '../ai/userInsights';
 import type { UserProfileData } from '../ai/userInsights';
 import { generateIssueRecommendations } from '../ai/issueRecommender';
@@ -80,26 +79,7 @@ const SENSITIVE_RESPONSE_KEYS = new Set([
   'clientSecret',
 ]);
 
-const databaseUrl = process.env.DATABASE_URL?.trim() || null;
-const databaseRequiresSsl = databaseUrl ? databaseUrl.includes('sslmode=require') : false;
-const pgPool = databaseUrl
-  ? new Pool({
-    connectionString: databaseUrl,
-    ssl: databaseRequiresSsl ? { rejectUnauthorized: false } : undefined,
-  })
-  : null;
 
-const sqlDb: Queryable | null = pgPool
-  ? {
-    async query<T>(sql: string, params?: readonly unknown[]) {
-      const queryResult = await pgPool.query(sql, params ? [...params] : []);
-      return {
-        rows: queryResult.rows as T[],
-        rowCount: queryResult.rowCount ?? undefined,
-      };
-    },
-  }
-  : null;
 
 function getTokenCacheKeyForUser(userId: number | string): string {
   return `oauth:github:token:user:${String(userId)}`;
@@ -897,7 +877,7 @@ async function fetchAllOwnedRepos(
   return repos;
 }
 
-type RepoMetricsSource = 'redis_cache' | 'db_fallback' | 'none';
+type RepoMetricsSource = 'redis_cache' | 'none';
 
 interface RepoMetricsLookupResult<T> {
   source: RepoMetricsSource;
@@ -906,7 +886,7 @@ interface RepoMetricsLookupResult<T> {
   ttlSeconds: number | null;
 }
 
-type UserContributionSource = 'redis_cache' | 'db_fallback' | 'none';
+type UserContributionSource = 'redis_cache' | 'none';
 
 interface UserContributionLookupResult {
   source: UserContributionSource;
@@ -917,7 +897,6 @@ interface UserContributionLookupResult {
 async function getRepoMetricsFromCacheOrDb<T extends object = Record<string, unknown>>(
   owner: string,
   repo: string,
-  reseedCacheTtlSeconds = 3600,
 ): Promise<RepoMetricsLookupResult<T>> {
   const cached = await getFreshRepoMetricsCache<T>(owner, repo);
   if (cached) {
@@ -929,49 +908,7 @@ async function getRepoMetricsFromCacheOrDb<T extends object = Record<string, unk
     };
   }
 
-  if (!sqlDb) {
-    return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
-  }
-
-  try {
-    const repoRow = await sqlDb.query<{ id: string }>(
-      `SELECT id FROM repos WHERE LOWER(owner) = LOWER($1) AND LOWER(name) = LOWER($2) LIMIT 1`,
-      [owner, repo],
-    );
-
-    if (!repoRow.rows[0]) {
-      return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
-    }
-
-    const metricsRow = await sqlDb.query<{ metrics_json: unknown; analyzed_at: string }>(
-      `SELECT metrics_json, analyzed_at FROM repo_metrics WHERE repo_id = $1 ORDER BY analyzed_at DESC LIMIT 1`,
-      [repoRow.rows[0].id],
-    );
-
-    const metricsJson = metricsRow.rows[0]?.metrics_json;
-    if (!metricsJson || typeof metricsJson !== 'object' || Array.isArray(metricsJson)) {
-      return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
-    }
-
-    const fetchedAt = metricsRow.rows[0].analyzed_at;
-    const metrics = metricsJson as T;
-
-    try {
-      await setRepoMetricsCache(owner, repo, metrics as unknown as Record<string, unknown>, reseedCacheTtlSeconds, fetchedAt);
-    } catch {
-      // Non-fatal: DB fallback still returns successfully even if reseed fails.
-    }
-
-    return {
-      source: 'db_fallback',
-      metrics,
-      fetchedAt,
-      ttlSeconds: null,
-    };
-  } catch (error) {
-    console.warn('[RepoMetricsLookup] DB fallback lookup failed:', { owner, repo, error });
-    return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
-  }
+  return { source: 'none', metrics: null, fetchedAt: null, ttlSeconds: null };
 }
 
 async function getUserContributionFromCacheOrDb(
@@ -987,61 +924,7 @@ async function getUserContributionFromCacheOrDb(
     };
   }
 
-  if (!sqlDb) {
-    return { source: 'none', value: null, ttlSeconds: null };
-  }
-
-  try {
-    const rows = await sqlDb.query<{
-      external_pr_count: number | null;
-      external_merged_pr_count: number | null;
-      contribution_acceptance_rate: string | number | null;
-      analyzed_at: string | null;
-      updated_at: string | null;
-    }>(
-      `SELECT
-         u.external_pr_count,
-         u.external_merged_pr_count,
-         u.contribution_acceptance_rate,
-         h.analyzed_at,
-         u.updated_at
-       FROM users u
-       LEFT JOIN LATERAL (
-         SELECT analyzed_at
-         FROM user_contribution_history h
-         WHERE LOWER(h.username) = LOWER(u.username)
-         ORDER BY analyzed_at DESC
-         LIMIT 1
-       ) h ON true
-       WHERE LOWER(u.username) = LOWER($1)
-       LIMIT 1`,
-      [normalizedUsername],
-    );
-
-    if (!rows.rows[0]) {
-      return { source: 'none', value: null, ttlSeconds: null };
-    }
-
-    const row = rows.rows[0];
-    const payload: UserContributionMetricsCacheValue = {
-      username: normalizedUsername,
-      externalPRCount: Number(row.external_pr_count ?? 0),
-      externalMergedPRCount: Number(row.external_merged_pr_count ?? 0),
-      contributionAcceptanceRate: Number(row.contribution_acceptance_rate ?? 0),
-      analyzedAt: row.analyzed_at ?? row.updated_at ?? new Date().toISOString(),
-    };
-
-    await setUserContributionCache(normalizedUsername, payload, config.cacheTtlSeconds);
-
-    return {
-      source: 'db_fallback',
-      value: payload,
-      ttlSeconds: null,
-    };
-  } catch (error) {
-    console.warn('[UserContributionLookup] DB fallback lookup failed:', { username: normalizedUsername, error });
-    return { source: 'none', value: null, ttlSeconds: null };
-  }
+  return { source: 'none', value: null, ttlSeconds: null };
 }
 
 function normalizeJobStatus(status: string | null): JobStatus | null {
@@ -2001,19 +1884,7 @@ app.get(
         githubUser.public_repos,
       );
 
-      if (sqlDb) {
-        try {
-          await sqlDb.query(
-            `UPDATE users
-             SET developer_score = $1,
-                 updated_at = NOW()
-             WHERE LOWER(username) = LOWER($2)`,
-            [developerScore, githubUser.login],
-          );
-        } catch (scorePersistErr) {
-          console.warn('[UserProfile] Failed to persist developer score snapshot:', scorePersistErr);
-        }
-      }
+
 
       const reliabilityPct = computeReliabilityPct(analyzedScores.length, Boolean(contribution));
       const badges = buildUserBadges(
@@ -2024,32 +1895,7 @@ app.get(
         githubUser.public_repos,
       );
 
-      let percentileLabel = computePercentileLabel(developerScore);
-      if (sqlDb) {
-        try {
-          const snapshot = await sqlDb.query<{ percentile_raw: string | null }>(
-            `WITH scored_users AS (
-               SELECT developer_score
-               FROM users
-               WHERE developer_score > 0
-             )
-             SELECT
-               CASE
-                 WHEN COUNT(*) = 0 THEN NULL
-                 WHEN COUNT(*) = 1 THEN '100'
-                 ELSE (((SUM(CASE WHEN developer_score <= $1 THEN 1 ELSE 0 END)::numeric - 1) / (COUNT(*) - 1)::numeric) * 100)::text
-               END AS percentile_raw
-             FROM scored_users`,
-            [developerScore],
-          );
-
-          if (snapshot.rows.length > 0 && snapshot.rows[0].percentile_raw !== null) {
-            percentileLabel = `Top 50% Global`;
-          }
-        } catch (dbErr) {
-          console.warn('[UserProfile] Failed to load DB percentile snapshot:', dbErr);
-        }
-      }
+      const percentileLabel = computePercentileLabel(developerScore);
 
       const profile: UserProfileApiResponse = {
         username: githubUser.login,
@@ -2084,39 +1930,6 @@ app.get(
         repos: reposWithMetrics,
         lastAnalyzedAt: contribution?.analyzedAt ?? null,
       };
-
-      if (sqlDb) {
-        try {
-          await sqlDb.query(
-            `INSERT INTO user_profile_snapshots (
-               user_id,
-               username,
-               snapshot,
-               developer_score,
-               reliability_pct,
-               captured_at
-             )
-             SELECT
-               u.id,
-               $1,
-               $2::jsonb,
-               $3,
-               $4,
-               NOW()
-             FROM users u
-             WHERE LOWER(u.username) = LOWER($1)
-             LIMIT 1`,
-            [
-              githubUser.login,
-              JSON.stringify(profile),
-              developerScore,
-              reliabilityPct,
-            ],
-          );
-        } catch (snapshotError) {
-          console.warn('[UserProfile] Failed to persist user profile snapshot (non-fatal):', snapshotError);
-        }
-      }
 
       res.json(profile);
     } catch (error) {
@@ -2215,42 +2028,6 @@ app.post(
       };
 
       const insights = await generateUserInsights(profileData);
-
-      if (sqlDb) {
-        try {
-          await sqlDb.query(
-            `INSERT INTO ai_user_insights_history (
-               user_id,
-               username,
-               source,
-               model,
-               input_profile,
-               output_insight,
-               generated_at
-             )
-             SELECT
-               u.id,
-               $1,
-               $2,
-               $3,
-               $4::jsonb,
-               $5::jsonb,
-               NOW()
-             FROM users u
-             WHERE LOWER(u.username) = LOWER($1)
-             LIMIT 1`,
-            [
-              githubUser.login,
-              insights.source,
-              null,
-              JSON.stringify(profileData),
-              JSON.stringify(insights),
-            ],
-          );
-        } catch (insightPersistErr) {
-          console.warn('[AI][UserInsights] Failed to persist insights history (non-fatal):', insightPersistErr);
-        }
-      }
 
       res.json(insights);
     } catch (error) {
@@ -2412,52 +2189,6 @@ app.get(
       // 5. Generate recommendations (pass forceRefresh for fresh batch).
       const result = await generateIssueRecommendations(userProfile, repoIssues, owner, repo, forceRefresh);
 
-      if (sqlDb) {
-        try {
-          await sqlDb.query(
-            `INSERT INTO ai_issue_recommendations_history (
-               requested_by_user_id,
-               requested_by_username,
-               owner,
-               repo,
-               source,
-               model,
-               input_payload,
-               output_recommendations,
-               generated_at
-             )
-             SELECT
-               u.id,
-               $1,
-               $2,
-               $3,
-               $4,
-               $5,
-               $6::jsonb,
-               $7::jsonb,
-               NOW()
-             FROM users u
-             WHERE LOWER(u.username) = LOWER($1)
-             LIMIT 1`,
-            [
-              authedUsername,
-              owner,
-              repo,
-              (result as { source?: string }).source ?? 'rule-based',
-              null,
-              JSON.stringify({
-                userProfile,
-                issueCount: repoIssues.length,
-                refresh: forceRefresh,
-              }),
-              JSON.stringify(result),
-            ],
-          );
-        } catch (recommendPersistErr) {
-          console.warn('[Recommendations] Failed to persist recommendations history (non-fatal):', recommendPersistErr);
-        }
-      }
-
       res.json({
         ...result,
         dailyQuota: {
@@ -2559,45 +2290,6 @@ app.post(
       }
 
       const result = await generateCompareInsights(validEntries);
-
-      if (sqlDb && sessionUsername) {
-        try {
-          await sqlDb.query(
-            `INSERT INTO ai_compare_insights_history (
-               requested_by_user_id,
-               requested_by_username,
-               repos,
-               source,
-               model,
-               input_metrics,
-               output_insight,
-               generated_at
-             )
-             SELECT
-               u.id,
-               $1,
-               $2::text[],
-               $3,
-               $4,
-               $5::jsonb,
-               $6::jsonb,
-               NOW()
-             FROM users u
-             WHERE LOWER(u.username) = LOWER($1)
-             LIMIT 1`,
-            [
-              sessionUsername,
-              validRepos,
-              result.source,
-              null,
-              JSON.stringify(validEntries),
-              JSON.stringify(result),
-            ],
-          );
-        } catch (comparePersistErr) {
-          console.warn('[AI][Compare] Failed to persist compare insights history (non-fatal):', comparePersistErr);
-        }
-      }
 
       res.json(result);
     } catch (error) {
@@ -2824,34 +2516,7 @@ app.get('/auth/github/callback', [query('code').isString().trim().notEmpty()], h
       return;
     }
 
-    if (!sqlDb) {
-      res.status(503).json({ error: 'Database is unavailable for login. Please try again shortly.' });
-      return;
-    }
-
-    const initialDeveloperScore = computeDeveloperScore(
-      [],
-      null,
-      typeof userData.followers === 'number' ? userData.followers : 0,
-      typeof userData.public_repos === 'number' ? userData.public_repos : 0,
-    );
-
-    // Keep users table in sync with OAuth logins so leaderboard/dev features have source data.
-    const encryptedTokenForDb = encryptAccessToken(tokenData.access_token, config.encryptionKey);
-    await sqlDb.query(
-      `INSERT INTO users (github_id, username, avatar_url, access_token, developer_score)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (github_id) DO UPDATE SET
-         username = EXCLUDED.username,
-         avatar_url = EXCLUDED.avatar_url,
-         access_token = EXCLUDED.access_token,
-         developer_score = GREATEST(users.developer_score, EXCLUDED.developer_score),
-         updated_at = NOW()`,
-      [String(userData.id), userData.login, userData.avatar_url || null, encryptedTokenForDb, initialDeveloperScore],
-    );
-
-    // Encrypt before persistence and avoid storing plain access tokens in session.
-    // Redis outages should not block login: we can still keep session auth active.
+    // Store the encrypted GitHub token in Redis for use by workers.
     await storeEncryptedGitHubToken(userData.id, tokenData.access_token);
 
     // Store user info in the session
@@ -3155,16 +2820,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
   redis.disconnect();
   console.log('   ✅ Redis disconnected');
 
-  // 5. Close PostgreSQL connection pool if enabled
-  if (pgPool) {
-    await pgPool.end();
-    console.log('   ✅ PostgreSQL pool disconnected');
-  }
 
-  // 6. Close Prisma (database) connection
-  // TODO: Uncomment when Prisma is set up
-  // await prisma.$disconnect();
-  // console.log('   ✅ Prisma disconnected');
+
+
 
   console.log('   👋 Goodbye!');
   process.exit(0);

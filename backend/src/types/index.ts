@@ -102,13 +102,6 @@ export interface CommunityMetricsResult {
   communityScore: number;       // composite 0-100
 }
 
-export interface TimelineEntry {
-  period: string;
-  healthScore: number;
-  commitCount: number;
-  prCount: number;
-}
-
 export interface AllMetrics {
   busFactor: BusFactorResult | null;
   prMetrics: PRMetricsResult | null;

@@ -13,7 +13,6 @@ Install these before starting:
 
 - Node.js 20+ and npm 10+
 - Git
-- PostgreSQL database (local or managed, e.g. Neon)
 - Redis (local, managed, or Docker)
 - GitHub OAuth App
 - Optional: Gemini API key (AI features fall back when missing)
@@ -66,7 +65,6 @@ Minimum required for stable local runtime:
 - PORT=8080
 - NODE_ENV=development
 - FRONTEND_URL=http://localhost:3000
-- DATABASE_URL=<postgres connection string>
 - REDIS_URL=<redis connection string>
 - ENCRYPTION_KEY=<64-char hex>
 - SESSION_SECRET=<64-char hex>
@@ -89,25 +87,7 @@ Generate secure keys:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-## 4. Database Bootstrap (PostgreSQL)
-
-Run SQL scripts in order against your target database:
-
-1. backend/sql/001_refined_schema.sql
-2. backend/sql/003_score_updated_at.sql
-
-Optional maintenance script (not bootstrap):
-
-- backend/sql/002_maintenance.sql
-
-Example using psql:
-
-```bash
-psql "$DATABASE_URL" -f backend/sql/001_refined_schema.sql
-psql "$DATABASE_URL" -f backend/sql/003_score_updated_at.sql
-```
-
-## 5. Runtime Modes
+## 4. Runtime Modes
 
 ### Mode A: Local Contributor Mode (Docker for Redis)
 
@@ -169,7 +149,6 @@ Use this when validating behavior closer to deployment.
 1. Point backend/.env to managed/local infra (no Docker):
 
 - REDIS_URL=rediss://... (or redis://...)
-- DATABASE_URL=postgresql://...
 
 2. Build both apps:
 

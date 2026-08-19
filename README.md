@@ -65,45 +65,224 @@ It also gamifies open-source contributions by aggregating a **Developer Health S
 
 ## Technical Architecture
 
-GitVital is built as an asynchronous data pipeline designed to handle extensive third-party API rate limits and complex data aggregation.
+GitVital is built as an asynchronous data pipeline designed to handle extensive GitHub API rate limits and real-time data aggregation — all without a traditional database. Everything is powered by Redis.
 
-<div align="center">
-  <!-- <img src="./docs/architecture-diagram.png" alt="Architecture Diagram" width="800"/> -->
-  <p><em>GitVital Architecture: Next.js, Express, BullMQ, Redis, PostgreSQL. (Placeholder)</em></p>
-</div>
+### System Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph CLIENT["🌐 Client Layer"]
+        BROWSER["User Browser"]
+        FE["Next.js Frontend\ngitvital.com / localhost:3000"]
+    end
+
+    subgraph API["⚙️ Express API Server\napi.gitvital.com / localhost:8080"]
+        direction TB
+        MW["Middleware Stack\nHelmet · CORS · Rate Limiter\nSession (connect-redis) · Body Parser"]
+        ROUTES["REST Routes\nPOST /api/analyze\nGET  /api/status/:jobId\nGET  /api/repo/:owner/:repo\nGET  /api/user/:username\nPOST /api/user/analyze\nGET  /api/compare\nPOST /api/compare/insights\nPOST /api/user/:username/ai-insights\nGET  /api/repo/:owner/:repo/recommendations\nGET  /badge/:owner/:repo"]
+        AUTH["GitHub OAuth\n/auth/github\n/auth/github/callback\n/auth/logout\n/api/me"]
+        QUOTA["AI Quota Gate\nglobal: 800/day\nper-user: 20/day"]
+        CRYPTO["Token Crypto\nAES-256-GCM\nencrypt / decrypt"]
+    end
+
+    subgraph REDIS["🔴 Redis (Upstash / Local)"]
+        direction TB
+        BQ["BullMQ Queues\nrepo-analysis\nuser-analysis"]
+        RCACHE["Repo Metrics Cache\nrepo:metrics:{owner}:{repo}\nTTL: 24h"]
+        UCACHE["User Contribution Cache\nuser:contribution:{username}\nTTL: 24h"]
+        SESS["Session Store\nsess:{id}  TTL: 7d"]
+        TOKCACHE["OAuth Token Cache\noauth:github:token:user:{id}\nTTL: 7d (encrypted)"]
+        RATELIM["Rate Limit Counters\njobstatus:{id}\nai:global:daily:{date}\nai:user:daily:{user}:{date}"]
+    end
+
+    subgraph WORKERS["🔧 Background Workers (Node.js)"]
+        direction TB
+        RW["Repo Analyzer Worker\n(repoAnalyzer.ts)\n1. Fetch Commits via GraphQL\n2. Fetch PRs via GraphQL\n3. Fetch Issues via GraphQL\n4. Compute Bus Factor\n5. Compute PR Metrics\n6. Compute Activity Metrics\n7. Compute Issue Metrics\n8. Compute Churn Score\n9. Compute Community Score\n10. Compute Health Score 0–100\n11. Generate Risk Flags\n12. Generate AI Advice (Gemini)\n13. Write to Redis Cache"]
+        UW["User Analyzer Worker\n(userAnalyzer.ts)\n1. Fetch Merged PRs via GraphQL\n2. Filter External PRs\n3. Compute Acceptance Rate\n4. Write to Redis Cache"]
+    end
+
+    subgraph METRICS["📐 Pure Metrics Engine"]
+        direction LR
+        BF["busFactor.ts"]
+        PR["prMetrics.ts"]
+        ACT["activityMetrics.ts"]
+        ISS["issueMetrics.ts"]
+        CHN["churnMetrics.ts"]
+        COM["communityMetrics.ts"]
+        HS["healthScore.ts"]
+        RF["riskFlags.ts"]
+    end
+
+    subgraph AI["🤖 AI Layer"]
+        direction TB
+        GEM["Gemini API\n(google/generative-ai)\nModel cascade fallback"]
+        RBA["Rule-Based Fallback\n(ruleBasedAdvice.ts)\nNo API call"]
+        UI["userInsights.ts\nDeveloper Persona"]
+        IR["issueRecommender.ts\nIssue Matching"]
+        CI["compareInsights.ts\nRepo Comparison"]
+    end
+
+    subgraph GITHUB["🐙 GitHub APIs"]
+        GQL["GraphQL API v4\nCommits · PRs · Issues\nRate: 5,000 pts/hr"]
+        REST["REST API v3\nUser Profile · Repos\nSearch Issues"]
+    end
+
+    subgraph CRON["⏰ Cron"]
+        CR["refreshRepos.ts\nRuns daily 02:00 UTC\nCleans stale BullMQ jobs"]
+    end
+
+    BROWSER <-->|"HTTPS"| FE
+    FE <-->|"REST / JSON\nPolling job status"| API
+
+    API --> MW --> ROUTES
+    API --> AUTH
+    ROUTES --> QUOTA
+    AUTH --> CRYPTO
+    AUTH <-->|"OAuth 2.0"| GITHUB
+
+    ROUTES -->|"Queue job"| BQ
+    ROUTES <-->|"Read cache"| RCACHE
+    ROUTES <-->|"Read cache"| UCACHE
+    AUTH <-->|"Session R/W"| SESS
+    AUTH <-->|"Token R/W"| TOKCACHE
+    ROUTES <-->|"Rate counters"| RATELIM
+    QUOTA <-->|"Quota counters"| RATELIM
+
+    BQ -->|"Dequeue jobs"| RW
+    BQ -->|"Dequeue jobs"| UW
+
+    RW --> METRICS
+    RW <-->|"OAuth token lookup"| TOKCACHE
+    RW <-->|"GraphQL pagination"| GQL
+    RW -->|"Cache write"| RCACHE
+    RW <-->|"Job status write"| RATELIM
+
+    UW <-->|"OAuth token lookup"| TOKCACHE
+    UW <-->|"GraphQL"| GQL
+    UW -->|"Cache write"| UCACHE
+
+    METRICS --> BF & PR & ACT & ISS & CHN & COM & HS & RF
+
+    RW -->|"AI Advice"| AI
+    ROUTES -->|"AI Insights / Recommend / Compare"| AI
+    AI --> QUOTA
+    AI --> GEM
+    AI --> RBA
+    GEM -->|"Fallback if quota hit"| RBA
+    ROUTES <-->|"User profile / Search"| REST
+
+    CRON --> BQ
+    CRON --> CR
+```
+
+### Architecture Deep Dive
+
+#### Request → Response Flow (Repo Analysis)
+
+```
+User submits repo URL
+  → POST /api/analyze
+    → Rate limiter check (IP + user window)
+    → Daily unique-repo limit check (Redis SET)
+    → Gemini soft-cap check (Redis INCR counter)
+    → Cache short-circuit: Redis HIT → return instantly ✅
+    → Cache MISS: clear old key, enqueue BullMQ job
+  → 202 Accepted { jobId }
+  
+Frontend polls GET /api/status/:jobId every 3s
+  → BullMQ job state (queued → processing → done)
+  → Fallback: Redis jobstatus:{id} key
+
+Worker (repoAnalyzer.ts) picks up job:
+  1. Resolves GitHub OAuth token from Redis (AES-256-GCM encrypted)
+     → Falls back to service GITHUB_TOKEN env var
+  2. Fetches up to 1,000 commits (GraphQL, paginated)
+  3. Fetches up to 500 PRs (GraphQL, paginated)
+  4. Fetches up to 500 issues (GraphQL, paginated)
+  5. Runs pure-function metrics engine:
+     Bus Factor · PR Metrics · Activity · Issues · Churn · Community · Health Score
+  6. Generates risk flags (rule-based + AI hybrid)
+  7. Calls Gemini AI for 2-sentence actionable advice
+     → Falls back to rule-based engine on quota/error
+  8. Writes full metrics JSON to Redis:
+     key: repo:metrics:{owner}:{repo} | TTL: 24h
+
+Frontend polls GET /api/repo/:owner/:repo
+  → Cache HIT → render full dashboard ✅
+```
+
+#### Redis Key Taxonomy
+
+| Key Pattern | Purpose | TTL |
+|---|---|---|
+| `repo:metrics:{owner}:{repo}` | Full repo analysis JSON | 24h |
+| `user:contribution:{username}` | External PR count + acceptance rate | 24h |
+| `sess:{sessionId}` | User session (connect-redis) | 7d |
+| `oauth:github:token:user:{id}` | AES-256-GCM encrypted OAuth token | 7d |
+| `jobstatus:{jobId}` | Repo analysis job state | 1h |
+| `userjobstatus:{jobId}` | User analysis job state | 1h |
+| `ai:global:daily:{YYYY-MM-DD}` | Gemini global call counter | until midnight UTC |
+| `ai:user:daily:{user}:{date}` | Per-user Gemini call counter | until midnight UTC |
+| `ai:gemini:quota:cooldown-until-ms` | Quota cooldown timestamp | dynamic |
+| `daily:analyze:{scope}:{id}:{date}` | Unique repos analyzed per day | 25h |
+
+#### Security Model
+
+- **OAuth tokens** are never stored in plaintext. On login, the GitHub access token is immediately encrypted with `AES-256-GCM` (random IV + auth tag per token) and stored in Redis with a 7-day TTL. The session only holds the numeric GitHub user ID.
+- **Workers** decrypt the token at job start using the `ENCRYPTION_KEY` env var — a 32-byte key (hex-64 or base64).
+- **Sensitive keys** (`access_token`, `token`, `client_secret`) are automatically redacted from all API responses by a middleware interceptor.
+- **Session cookies** are `httpOnly`, `secure`, `SameSite=None` in production, scoped to `.gitvital.com` to work across subdomains.
+
+#### AI Quota & Cost Management
+
+```
+Every AI endpoint:
+  → checkAndIncrementGlobalDailyQuota(username)
+     → Read ai:global:daily:{date}  (cap: 800/day)
+     → Read ai:user:daily:{user}:{date} (cap: 20/day)
+     → If either exceeded → HTTP 429 immediately
+     → Else → atomic INCR both keys via pipeline
+     → On Redis failure → fail open (allow request)
+
+Per analysis job:
+  → Daily analysis count > per-user soft cap?
+     → forceFallbackAdvice = true
+     → Worker uses rule-based engine, never calls Gemini
+     → Analysis still completes, just without AI advice
+```
 
 **Tech Stack:**
-- **Frontend:** Next.js 14, Tailwind CSS, Recharts / D3.js
+- **Frontend:** Next.js 14, Tailwind CSS, Recharts
 - **Backend:** Node.js, Express.js
-- **Database:** PostgreSQL (with Prisma ORM), Redis
-- **Queueing / Workers:** BullMQ
-- **External AI:** Gemini AI API for User/Repo Insights and Issue Recommendations
-- **External Services:** GitHub GraphQL API v4, REST API
+- **Cache, Queue & Session Store:** Redis (ioredis + BullMQ + connect-redis)
+- **Security:** AES-256-GCM token encryption, helmet, express-rate-limit
+- **External AI:** Google Gemini API (model-cascade fallback)
+- **External Services:** GitHub GraphQL API v4, GitHub REST API v3
 
 <details>
 <summary><strong>Engineering Challenges Solved</strong> (Click to expand)</summary>
 
 #### 1. Overcoming Strict 3rd-Party API Rate Limits
-GitHub's GraphQL API strictly limits authenticated users to 5,000 points per hour. A naive implementation querying deep historical data would consume this on a single large repository. 
+GitHub's GraphQL API strictly limits authenticated users to 5,000 points per hour. A naive implementation querying deep historical data would consume this on a single large repository.
 - **Solution:** Implemented adaptive rate-limit monitoring within the BullMQ worker that intelligently calculates wait times based on GitHub's `resetAt` timestamps, automatically backing off before limits are hit.
 - **Enforced Limits:** Analysis is capped at the last 12 months, analyzing up to 1,000 commits, 500 PRs, and 500 issues per repository to ensure predictable API consumption.
 
-#### 2. Asynchronous Worker pipeline
+#### 2. Asynchronous Worker Pipeline
 Fetching paginated data via GraphQL takes significant time. Keeping the HTTP request open would cause timeouts and poor UX.
-- **Solution:** Integrated **BullMQ** (running on Redis) to offload ingestion and computation to separate Node.js worker processes (e.g., `repoAnalyzer`, `userAnalyzer`). The Next.js frontend polls for the job status (`queued`, `processing`, `done`) and seamlessly renders the dashboard once the background worker finishes.
+- **Solution:** Integrated **BullMQ** (running on Redis) to offload ingestion and computation to separate Node.js worker processes (`repoAnalyzer`, `userAnalyzer`). The Next.js frontend polls for the job status (`queued`, `processing`, `done`) and seamlessly renders the dashboard once the background worker finishes.
 - **Idempotent Queueing:** Robust deduplication logic ensures that repeated requests for the same repository or user don't flood the queue with redundant jobs.
 
 #### 3. Defensive Pagination Handling
 GitHub's cursor-based pagination can be brittle, occasionally returning empty nodes while indicating a `hasNextPage`.
 - **Solution:** Built bulletproof while-loops with explicit infinite-loop guards (checking if cursors change) and hard iteration limits to guarantee reliable data fetching across thousands of commits.
 
-#### 4. Complex Data Aggregation (Leaderboards & Matchmaking)
-Ranking developers globally based on aggregated repository metrics requires intensive calculation, as does matching developer styles with suitable repo issues.
-- **Solution:** Leveraged PostgreSQL window functions (`PERCENT_RANK()`, `RANK()`) against a **Materialized View** that is refreshed incrementally via a scheduled Cron job. This ensures that leaderboard queries on the frontend remain lightning fast (O(1) read time) regardless of the number of users.
+#### 4. Redis-Only Persistence (No Database)
+All analysis results, user sessions, OAuth tokens, job state, and AI quota counters live exclusively in Redis.
+- **Solution:** Each data type has a purpose-built key schema with appropriate TTLs. Cache-miss on a repo returns 404 — the frontend prompts re-analysis. This eliminates a whole operational layer (migrations, connection pools, ORM) at the cost of ephemeral storage.
 
 #### 5. Intelligent Multi-Tier Quota & Cost Management for AI
-Running multi-layered LLM analyses scaling across thousands of users and repos runs high risks of unbounded API costs.
-- **Solution:** Built a global custom quote telemetry and gating system for the Gemini API that rigorously monitors usage limits and intelligently falls back to purely rule-based analysis (e.g., standard heuristics) if the target budget is hit or API rates exceed provisions.
+Running multi-layered LLM analyses scaling across thousands of users and repos risks unbounded API costs.
+- **Solution:** A global + per-user daily quota gate backed by Redis INCR counters. At 800 global calls/day and 20 per-user, the system auto-falls back to a pure rule-based advice engine, so analysis always completes — just without the Gemini layer.
 
 #### 6. Multi-Variable Scoring Algorithm
 Designing a metric that accurately reflects "health" requires nuanced handling of missing or sparse data (e.g., repositories that don't use Pull Requests).
@@ -153,8 +332,7 @@ The core analytics (commits, PRs, issues, contributors) are table stakes — mos
 - **AI Developer Intelligence** — AI profiles a developer's history, tells them their strengths, and proactively finds them the best next GitHub issue they should work on based on their skillset.
 - **AI Repository Analysis** — Rather than just showing a chart, AI provides deeply thoughtful analysis on *why* a repo's metrics look the way they do, directly actionable towards maintainers.
 - **Developer Health Score** — Aggregating metrics across all of a user's repositories into a single profile score. No existing tool does this.
-- **Gamified Achievement Badges** — Unlockable badges like *"The Speedster"* (< 2hr PR merge time) and *"The Closer"* (50+ resolved issues). Designed to drive engagement the way Spotify Wrapped drives sharing.
-- **Global Leaderboard** — Percentile rankings using PostgreSQL window functions. "You're better than 90% of developers on GitVital."
+- **Global Leaderboard** — Fast percentile rankings and developer score benchmarks. "You're better than 90% of developers on GitVital."
 - **Embeddable SVG Badges** — Dynamic health badges for READMEs. Every badge is organic distribution.
 
 Together, these features turn GitVital from a passive analytics dashboard into an incredibly sticky engagement and growth platform for developers.
@@ -177,8 +355,7 @@ GitVital supports comprehensive environments for both general contributors and c
    cd ../frontend && npm install
    ```
 
-3. **Configure the Environment:**
-   Run `cp backend/.env.example backend/.env` and update the core connection strings including your local Redis, Postgres, GitHub OAuth IDs, and Gemini AI Key.
+   Run `cp backend/.env.example backend/.env` and update the core connection strings including your local Redis, GitHub OAuth IDs, and Gemini AI Key.
 
 For the definitive local setup guide (detailing Database Bootstrap, Redis via Docker vs system process, and multi-terminal command flows), please consult the **[SETUP.md](./SETUP.md)**.
 
@@ -196,5 +373,5 @@ Follow the private reporting processes documented in **[.github/SECURITY.md](.gi
 ---
 
 <div align="center">
-  <em>Built with Next.js, Node.js, PostgreSQL, Redis, BullMQ, Gemini AI, and the GitHub GraphQL API.</em>
+  <em>Built with Next.js, Node.js, Redis, BullMQ, Gemini AI, and the GitHub GraphQL API.</em>
 </div>

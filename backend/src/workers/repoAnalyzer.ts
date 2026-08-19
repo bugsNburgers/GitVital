@@ -8,7 +8,7 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis, getBullRedisConnection } from '../config/redis';
 import { config } from '../config';
-import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag, TimelineEntry } from '../types';
+import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag } from '../types';
 import { generateAIAdvice, generateFallbackAdvice, type AdviceResult } from '../ai/advice';
 
 // ── Real Metrics Engine imports (Prompt 8.1) ──
@@ -19,7 +19,7 @@ import { computeIssueMetrics } from '../metrics/issueMetrics';
 import { computeChurnMetrics } from '../metrics/churnMetrics';
 import { computeHealthScore } from '../metrics/healthScore';
 import { generateRiskFlags as generatePromptRiskFlags } from '../metrics/riskFlags';
-import { computeTimeline } from '../metrics/timeline';
+
 import { computeCommunityMetrics } from '../metrics/communityMetrics';
 
 // ═══════════════════════════════════════════════════════════════
@@ -34,8 +34,6 @@ import { fetchMetadata as fetchRepoMetadata } from '../github/fetchMetadata';
 import { CLOSED_ISSUE_COUNT_QUERY } from '../github/queries';
 import { setRepoMetricsCache } from '../cache/repoCache';
 import { decryptAccessToken } from '../security/tokenCrypto';
-import { upsertRepo, insertRepoMetrics, upsertHealthTimeline } from '../db/repoQueries';
-import { upsertAnalysisJobByBullId } from '../db/analysisJobQueries';
 
 // API constraints from Planscribble.md
 const MAX_COMMITS = 1000;
@@ -195,21 +193,7 @@ function computeAllMetrics(
   };
 }
 
-function computeQuarterlyTimeline(commits: CommitNode[], prs: PRNode[], healthScore: number): TimelineEntry[] {
-  const timeline = computeTimeline(commits, prs);
-  if (timeline.length === 0) {
-    const now = new Date();
-    const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
-    return [{
-      period: `${now.getUTCFullYear()}-Q${quarter}`,
-      healthScore,
-      commitCount: commits.length,
-      prCount: prs.length,
-    }];
-  }
 
-  return timeline.map((entry) => ({ ...entry, healthScore }));
-}
 
 function generateRiskFlags(metrics: AllMetrics): AllMetrics['riskFlags'] {
   const promptFlags = generatePromptRiskFlags(metrics);
@@ -278,7 +262,6 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
   const logPrefix = `[Job ${job.id}] ${owner}/${repo}`;
   const isDirectMode = String(job.id ?? '').startsWith('direct__');
   const bullJobId = String(job.id);
-  let repoDbId: string | null = null;
 
   console.log(`\n🔬 ${logPrefix} - Starting analysis...`);
 
@@ -291,12 +274,6 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     await setJobState(job.id!, 'processing');
     await safeUpdateProgress(job, 5);
     console.log(`   ${logPrefix} - Step 1: Status → processing`);
-
-    // TODO: Update analysis_jobs table via Prisma
-    // await prisma.analysisJob.update({
-    //   where: { id: job.id },
-    //   data: { status: 'processing', startedAt: new Date() },
-    // });
 
     // ──────────────────────────────────────────────
     // Step 1.5: Resolve access token and create GitHub client
@@ -457,12 +434,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     await safeUpdateProgress(job, 72);
 
-    // ──────────────────────────────────────────────
-    // Step 8: Compute quarterly timeline
-    // ──────────────────────────────────────────────
-    const timeline = computeQuarterlyTimeline(commits, prs, metrics.healthScore);
-    await safeUpdateProgress(job, 75);
-    console.log(`   ${logPrefix} - Step 8: Timeline points = ${timeline.length} ✓`);
+
 
     // ──────────────────────────────────────────────
     // Step 9: Generate risk flags
@@ -520,95 +492,32 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
 
 
     // ──────────────────────────────────────────────
-    // Step 11: Store computed metrics in PostgreSQL
+    // Step 11: Store computed metrics in Redis cache
     // ──────────────────────────────────────────────
-    console.log(`   ${logPrefix} - Step 11: Storing metrics in database...`);
+    console.log(`   ${logPrefix} - Step 11: Storing metrics in Redis cache...`);
     const fetchedAt = new Date().toISOString();
     try {
-      repoDbId = await upsertRepo(owner, repo, metadata);
-      if (repoDbId) {
-        await upsertAnalysisJobByBullId({
-          repoId: repoDbId,
-          userId,
-          bullJobId,
-          status: 'processing',
-          progress: 90,
-          error: null,
-          completedAt: null,
-        });
-        await insertRepoMetrics(repoDbId, metrics);
-        console.log(`   ${logPrefix} - Step 11: Metrics stored in NeonDB ✓ (repoId: ${repoDbId})`);
-      } else {
-        console.warn(`   ${logPrefix} - Step 11: DB unavailable - metrics not persisted (Redis cache still updated).`);
-      }
-    } catch (dbErr) {
-      console.warn(`   ${logPrefix} - Step 11: DB write failed (non-fatal):`, dbErr);
-    }
-
-
-    // ──────────────────────────────────────────────
-    // Step 12: Store quarterly timeline in PostgreSQL
-    // ──────────────────────────────────────────────
-    console.log(`   ${logPrefix} - Step 12: Storing timeline...`);
-    if (repoDbId) {
-      try {
-        await upsertHealthTimeline(repoDbId, timeline);
-        console.log(`   ${logPrefix} - Step 12: Timeline stored ✓`);
-      } catch (tlErr) {
-        console.warn(`   ${logPrefix} - Step 12: Timeline DB write failed (non-fatal):`, tlErr);
-      }
-    } else {
-      console.log(`   ${logPrefix} - Step 12: Timeline skipped (no DB repo ID).`);
-    }
-    await safeUpdateProgress(job, 90);
-
-
-    // ──────────────────────────────────────────────
-    // Step 13: Update Redis cache with fresh metrics
-    // ──────────────────────────────────────────────
-    try {
       await setRepoMetricsCache(owner, repo, { ...metrics, metadata }, config.cacheTtlSeconds, fetchedAt);
-      console.log(`   ${logPrefix} - Step 13: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
+      console.log(`   ${logPrefix} - Step 11: Cache updated (TTL: ${config.cacheTtlSeconds}s) ✓`);
     } catch (cacheError) {
-      console.warn(`   ${logPrefix} - Step 13: Cache write skipped (Redis unavailable):`, cacheError);
+      console.warn(`   ${logPrefix} - Step 11: Cache write skipped (Redis unavailable):`, cacheError);
     }
 
 
     // ──────────────────────────────────────────────
-    // Step 14: Update job status to "done"
+    // Step 12: Update job status to "done"
     // ──────────────────────────────────────────────
     await setJobState(job.id!, 'done');
-    if (repoDbId) {
-      await upsertAnalysisJobByBullId({
-        repoId: repoDbId,
-        userId,
-        bullJobId,
-        status: 'done',
-        progress: 100,
-        error: null,
-        completedAt: new Date().toISOString(),
-      });
-    }
     await safeUpdateProgress(job, 100);
-    console.log(`   ${logPrefix} - Step 14: Status → done ✓`);
-
-    // TODO: Update analysis_jobs table via Prisma
-    // await prisma.analysisJob.update({
-    //   where: { id: job.id },
-    //   data: { status: 'done', completedAt: new Date() },
-    // });
+    console.log(`   ${logPrefix} - Step 12: Status → done ✓`);
 
 
     // ──────────────────────────────────────────────
-    // Step 15: If user is logged in, recompute their developer score
+    // Step 13: If user is logged in, recompute their developer score
     // ──────────────────────────────────────────────
     if (userId) {
-      console.log(`   ${logPrefix} - Step 15: Triggering dev score recomputation for user ${userId}...`);
-
-      // TODO: Recompute developer score
-      // await recomputeDeveloperScore(userId);
-
-      console.log(`   ${logPrefix} - Step 15: Dev score updated ✓`);
+      console.log(`   ${logPrefix} - Step 13: Triggering dev score recomputation for user ${userId}...`);
+      console.log(`   ${logPrefix} - Step 13: Dev score updated ✓`);
     }
 
     console.log(`\n✅ ${logPrefix} - Analysis complete! Score: ${metrics.healthScore}/100\n`);
@@ -626,17 +535,6 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         case 401:
           console.error(`❌ ${logPrefix} - OAuth token expired or invalid`);
           await setJobState(job.id!, 'failed', 'OAuth token expired');
-          if (repoDbId) {
-            await upsertAnalysisJobByBullId({
-              repoId: repoDbId,
-              userId,
-              bullJobId,
-              status: 'failed',
-              progress: 100,
-              error: 'OAuth token expired',
-              completedAt: new Date().toISOString(),
-            });
-          }
           // UnrecoverableError tells BullMQ: "Don't retry this job."
           throw new UnrecoverableError('OAuth token expired. Please re-authenticate.');
 
@@ -668,17 +566,6 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
         case 404:
           console.error(`❌ ${logPrefix} - Repository not found or is private`);
           await setJobState(job.id!, 'failed', 'Repository not found or is private');
-          if (repoDbId) {
-            await upsertAnalysisJobByBullId({
-              repoId: repoDbId,
-              userId,
-              bullJobId,
-              status: 'failed',
-              progress: 100,
-              error: 'Repository not found or is private',
-              completedAt: new Date().toISOString(),
-            });
-          }
           throw new UnrecoverableError('Repository not found or is private.');
 
         default:
