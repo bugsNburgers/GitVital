@@ -127,10 +127,6 @@ flowchart TD
         REST["REST API v3\nUser Profile · Repos\nSearch Issues"]
     end
 
-    subgraph CRON["⏰ Cron"]
-        CR["refreshRepos.ts\nRuns daily 02:00 UTC\nCleans stale BullMQ jobs"]
-    end
-
     BROWSER <-->|"HTTPS"| FE
     FE <-->|"REST / JSON\nPolling job status"| API
 
@@ -170,9 +166,6 @@ flowchart TD
     AI --> RBA
     GEM -->|"Fallback if quota hit"| RBA
     ROUTES <-->|"User profile / Search"| REST
-
-    CRON --> BQ
-    CRON --> CR
 ```
 
 ### Architecture Deep Dive
@@ -232,6 +225,16 @@ Frontend polls GET /api/repo/:owner/:repo
 - **Workers** decrypt the token at job start using the `ENCRYPTION_KEY` env var — a 32-byte key (hex-64 or base64).
 - **Sensitive keys** (`access_token`, `token`, `client_secret`) are automatically redacted from all API responses by a middleware interceptor.
 - **Session cookies** are `httpOnly`, `secure`, `SameSite=None` in production, scoped to `.gitvital.com` to work across subdomains.
+
+#### Key Architecture Concepts & Vocabulary
+
+- **OAuth 2.0:** The industry-standard authorization framework for "Log in with GitHub." GitVital exchanges authorization codes for scoped access tokens without ever seeing, requesting, or storing the user's GitHub password.
+- **Middleware (Helmet & CORS):** Functions running before request handlers to enforce defense-in-depth:
+  - **Helmet:** Configures critical security-related HTTP headers automatically (protecting against clickjacking, XSS, MIME-sniffing, etc.).
+  - **CORS (Cross-Origin Resource Sharing):** Enforces strict origin allowlists to ensure only approved frontend domains (`gitvital.com`, local dev) can make API calls.
+- **Session (Redis-Backed):** Server-side tracking of user authentication state backed by Redis via `connect-redis` (separate from stateless JWTs). This guarantees immediate session invalidation on logout and keeps tokens off client devices.
+- **Encryption at Rest:** Sensitive data (OAuth access tokens) is encrypted before storage using `AES-256-GCM` with unique IVs and auth tags, and decrypted only in-memory when worker processes execute GitHub API queries.
+
 
 #### AI Quota & Cost Management
 
