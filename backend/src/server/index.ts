@@ -20,16 +20,15 @@ import { RedisStore } from 'connect-redis';
 import { config } from '../config';
 import { redis, getBullRedisConnection } from '../config/redis';
 
-import { getFreshRepoMetricsCache, clearRepoMetricsCache, setRepoMetricsCache } from '../cache/repoCache';
+import { getFreshRepoMetricsCache, clearRepoMetricsCache } from '../cache/repoCache';
 import {
   clearUserContributionCache,
   getFreshUserContributionCache,
-  setUserContributionCache,
   UserContributionMetricsCacheValue,
 } from '../cache/userCache';
 import { JobData, JobStatus, UserJobData } from '../types';
 import { decryptAccessToken, encryptAccessToken } from '../security/tokenCrypto';
-import { resetGeminiCooldown, getGeminiModelCandidates } from '../ai/advice';
+import { getGeminiModelCandidates } from '../ai/advice';
 import { generateUserInsights } from '../ai/userInsights';
 import type { UserProfileData } from '../ai/userInsights';
 import { generateIssueRecommendations } from '../ai/issueRecommender';

@@ -8,7 +8,7 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { redis, getBullRedisConnection } from '../config/redis';
 import { config } from '../config';
-import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag, TimelineEntry } from '../types';
+import { JobData, CommitNode, PRNode, IssueNode, AllMetrics, RepoMetadata, RiskFlag } from '../types';
 import { generateAIAdvice, generateFallbackAdvice, type AdviceResult } from '../ai/advice';
 
 // ── Real Metrics Engine imports (Prompt 8.1) ──
@@ -19,7 +19,7 @@ import { computeIssueMetrics } from '../metrics/issueMetrics';
 import { computeChurnMetrics } from '../metrics/churnMetrics';
 import { computeHealthScore } from '../metrics/healthScore';
 import { generateRiskFlags as generatePromptRiskFlags } from '../metrics/riskFlags';
-import { computeTimeline } from '../metrics/timeline';
+
 import { computeCommunityMetrics } from '../metrics/communityMetrics';
 
 // ═══════════════════════════════════════════════════════════════
@@ -193,21 +193,7 @@ function computeAllMetrics(
   };
 }
 
-function computeQuarterlyTimeline(commits: CommitNode[], prs: PRNode[], healthScore: number): TimelineEntry[] {
-  const timeline = computeTimeline(commits, prs);
-  if (timeline.length === 0) {
-    const now = new Date();
-    const quarter = Math.floor(now.getUTCMonth() / 3) + 1;
-    return [{
-      period: `${now.getUTCFullYear()}-Q${quarter}`,
-      healthScore,
-      commitCount: commits.length,
-      prCount: prs.length,
-    }];
-  }
 
-  return timeline.map((entry) => ({ ...entry, healthScore }));
-}
 
 function generateRiskFlags(metrics: AllMetrics): AllMetrics['riskFlags'] {
   const promptFlags = generatePromptRiskFlags(metrics);
@@ -448,12 +434,7 @@ async function processAnalysisJob(job: Job<JobData>): Promise<(AllMetrics & { me
     // ──────────────────────────────────────────────
     await safeUpdateProgress(job, 72);
 
-    // ──────────────────────────────────────────────
-    // Step 8: Compute quarterly timeline
-    // ──────────────────────────────────────────────
-    const timeline = computeQuarterlyTimeline(commits, prs, metrics.healthScore);
-    await safeUpdateProgress(job, 75);
-    console.log(`   ${logPrefix} - Step 8: Timeline points = ${timeline.length} ✓`);
+
 
     // ──────────────────────────────────────────────
     // Step 9: Generate risk flags
