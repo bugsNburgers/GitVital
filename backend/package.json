@@ -21,7 +21,7 @@
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
     "@types/node": "^25.5.0",
-    "bullmq": "^5.71.0",
+    "bullmq": "^6.3.12",
     "connect-redis": "^9.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
