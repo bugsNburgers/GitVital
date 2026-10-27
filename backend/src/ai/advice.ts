@@ -131,7 +131,7 @@ export async function generateAIAdvice(metrics: AllMetrics, owner: string, repo:
     }
 
     const candidateModels = getGeminiModelCandidates();
-    console.log(`[AI] GEMINI_API_KEY present (length=${config.geminiApiKey.length}), candidates=${candidateModels.join(', ')}`);
+    console.log(`[AI] Gemini API key configured, candidates=${candidateModels.join(', ')}`);
 
     // Guard 2: Per-job dedup (only skip if this exact jobId already succeeded or was attempted)
     if (options.jobId) {

@@ -151,6 +151,20 @@ export default function PageTransition() {
   const showingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const hideSkeleton = useCallback(() => {
+    showingRef.current = false;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    overlay.style.transition = "opacity 0.25s ease";
+    overlay.style.opacity = "0";
+    overlay.style.pointerEvents = "none";
+    setTimeout(() => {
+      overlay.remove();
+      if (overlayRef.current === overlay) overlayRef.current = null;
+    }, 260);
+  }, []);
+
   const showSkeleton = useCallback((targetPath: string) => {
     if (showingRef.current) return;
     showingRef.current = true;
@@ -202,29 +216,13 @@ export default function PageTransition() {
     // Safety: auto-remove after 8s in case navigation failed
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => hideSkeleton(), 8000);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const hideSkeleton = useCallback(() => {
-    showingRef.current = false;
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    overlay.style.transition = "opacity 0.25s ease";
-    overlay.style.opacity = "0";
-    overlay.style.pointerEvents = "none";
-    setTimeout(() => {
-      overlay.remove();
-      if (overlayRef.current === overlay) overlayRef.current = null;
-    }, 260);
-  }, []);
+  }, [hideSkeleton]);
 
   // Hide skeleton whenever the actual route has settled (pathname changed)
   useEffect(() => {
     if (showingRef.current) {
       hideSkeleton();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   // Intercept ALL link clicks and programmatic router.push calls
@@ -269,7 +267,6 @@ export default function PageTransition() {
       history.pushState = origPush;
       history.replaceState = origReplace;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, showSkeleton]);
 
   return null; // Renders nothing - skeleton is managed via raw DOM for cross-page guarantee
