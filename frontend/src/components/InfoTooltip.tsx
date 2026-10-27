@@ -35,7 +35,7 @@ export default function InfoTooltip({ metricKey }: InfoTooltipProps) {
     const rect = iconRef.current.getBoundingClientRect();
 
     // Position above the icon by default
-    let top = rect.top + window.scrollY - TOOLTIP_OFFSET;
+    const top = rect.top + window.scrollY - TOOLTIP_OFFSET;
     let left = rect.left + window.scrollX + rect.width / 2 - TOOLTIP_WIDTH / 2;
 
     // Clamp horizontally so it doesn't go off screen

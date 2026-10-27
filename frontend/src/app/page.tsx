@@ -143,6 +143,13 @@ export default function GitvitalLanding() {
     };
   }, []);
 
+  const switchTab = (id: string, btn: HTMLElement) => {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id)?.classList.add('active');
+    btn.classList.add('active');
+  };
+
   useEffect(() => {
     const tabsNav = document.querySelector('.tabs-nav') as HTMLElement | null;
     if (!tabsNav) return;
@@ -223,13 +230,6 @@ export default function GitvitalLanding() {
     const timer = setInterval(autoAdvance, 3000);
     return () => clearInterval(timer);
   }, []);
-
-  const switchTab = (id: string, btn: HTMLElement) => {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + id)?.classList.add('active');
-    btn.classList.add('active');
-  };
 
   const parseRepoInput = (raw: string) => {
     const val = raw.trim().replace(/^https?:\/\//i, '').replace(/^github\.com\//i, '').replace(/^www\.github\.com\//i, '');
